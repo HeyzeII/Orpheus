@@ -1,0 +1,34 @@
+name: orpheus
+description: "A premium local music & video player inspired by Tidal's dark aesthetic."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ── Database ──────────────────────────────────────────────
+  isar: ^3.1.0+1
+  isar_flutter_libs: ^3.1.0+1   # bundles the Isar native binary for all platforms
+
+  # ── Storage ───────────────────────────────────────────────
+  path_provider: ^2.1.4
+
+  # ── UI ────────────────────────────────────────────────────
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+  # ── Code generation ───────────────────────────────────────
+  isar_generator: ^3.1.0+1
+  build_runner: ^2.4.13
+
+flutter:
+  uses-material-design: true
