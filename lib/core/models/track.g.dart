@@ -109,6 +109,19 @@ const TrackSchema = CollectionSchema(
           caseSensitive: true,
         )
       ],
+    ),
+    r'filePath': IndexSchema(
+      id: 2918041768256347220,
+      name: r'filePath',
+      unique: true,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'filePath',
+          type: IndexType.hash,
+          caseSensitive: true,
+        )
+      ],
     )
   },
   links: {},
@@ -360,6 +373,58 @@ extension TrackByIndex on IsarCollection<Track> {
   List<Id> putAllByTrackIdSync(List<Track> objects, {bool saveLinks = true}) {
     return putAllByIndexSync(r'trackId', objects, saveLinks: saveLinks);
   }
+
+  Future<Track?> getByFilePath(String filePath) {
+    return getByIndex(r'filePath', [filePath]);
+  }
+
+  Track? getByFilePathSync(String filePath) {
+    return getByIndexSync(r'filePath', [filePath]);
+  }
+
+  Future<bool> deleteByFilePath(String filePath) {
+    return deleteByIndex(r'filePath', [filePath]);
+  }
+
+  bool deleteByFilePathSync(String filePath) {
+    return deleteByIndexSync(r'filePath', [filePath]);
+  }
+
+  Future<List<Track?>> getAllByFilePath(List<String> filePathValues) {
+    final values = filePathValues.map((e) => [e]).toList();
+    return getAllByIndex(r'filePath', values);
+  }
+
+  List<Track?> getAllByFilePathSync(List<String> filePathValues) {
+    final values = filePathValues.map((e) => [e]).toList();
+    return getAllByIndexSync(r'filePath', values);
+  }
+
+  Future<int> deleteAllByFilePath(List<String> filePathValues) {
+    final values = filePathValues.map((e) => [e]).toList();
+    return deleteAllByIndex(r'filePath', values);
+  }
+
+  int deleteAllByFilePathSync(List<String> filePathValues) {
+    final values = filePathValues.map((e) => [e]).toList();
+    return deleteAllByIndexSync(r'filePath', values);
+  }
+
+  Future<Id> putByFilePath(Track object) {
+    return putByIndex(r'filePath', object);
+  }
+
+  Id putByFilePathSync(Track object, {bool saveLinks = true}) {
+    return putByIndexSync(r'filePath', object, saveLinks: saveLinks);
+  }
+
+  Future<List<Id>> putAllByFilePath(List<Track> objects) {
+    return putAllByIndex(r'filePath', objects);
+  }
+
+  List<Id> putAllByFilePathSync(List<Track> objects, {bool saveLinks = true}) {
+    return putAllByIndexSync(r'filePath', objects, saveLinks: saveLinks);
+  }
 }
 
 extension TrackQueryWhereSort on QueryBuilder<Track, Track, QWhere> {
@@ -474,6 +539,51 @@ extension TrackQueryWhere on QueryBuilder<Track, Track, QWhereClause> {
               indexName: r'trackId',
               lower: [],
               upper: [trackId],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> filePathEqualTo(
+      String filePath) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'filePath',
+        value: [filePath],
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> filePathNotEqualTo(
+      String filePath) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'filePath',
+              lower: [],
+              upper: [filePath],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'filePath',
+              lower: [filePath],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'filePath',
+              lower: [filePath],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'filePath',
+              lower: [],
+              upper: [filePath],
               includeUpper: false,
             ));
       }

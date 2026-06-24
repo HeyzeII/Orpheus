@@ -28,6 +28,8 @@ class Track {
   late String trackId;
 
   /// Absolute path to the media file on disk.
+  /// Indexed for fast duplicate detection during library scanning.
+  @Index(unique: true, replace: false)
   late String filePath;
 
   /// Media container/codec type (mp3, flac, mp4, …).

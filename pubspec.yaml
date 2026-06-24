@@ -18,6 +18,9 @@ dependencies:
   # ── Storage ───────────────────────────────────────────────
   path_provider: ^2.1.4
 
+  # ── Media metadata (ID3 / Vorbis / MP4 tags + cover art) ──
+  metadata_god: ^1.1.0
+
   # ── UI ────────────────────────────────────────────────────
   cupertino_icons: ^1.0.8
 

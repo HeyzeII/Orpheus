@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:metadata_god/metadata_god.dart';
 
 import 'core/database/local_database.dart';
 
 /// Entry point for Orpheus.
 ///
-/// The database is initialized before [runApp] so that every widget subtree
-/// can safely access [LocalDatabase.instance] synchronously after startup.
+/// Initialization order is important:
+/// 1. [WidgetsFlutterBinding.ensureInitialized] — required by platform plugins.
+/// 2. [MetadataGod.initialize] — loads the Rust FFI bridge for tag reading.
+/// 3. [LocalDatabase.instance.initialize] — opens Isar and seeds default data.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
+  await MetadataGod.initialize();
   await LocalDatabase.instance.initialize();
 
   runApp(const OrpheusApp());

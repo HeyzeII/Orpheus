@@ -123,6 +123,11 @@ class LocalDatabase {
     return _isar.tracks.where().trackIdEqualTo(trackId).findFirst();
   }
 
+  /// Returns the [Track] whose [Track.filePath] matches [filePath], or `null`.
+  Future<Track?> getTrackByFilePath(String filePath) async {
+    return _isar.tracks.where().filePathEqualTo(filePath).findFirst();
+  }
+
   /// Returns all [Track]s whose [Track.artist] matches [artist].
   Future<List<Track>> getTracksByArtist(String artist) async {
     return _isar.tracks.filter().artistEqualTo(artist).findAll();
