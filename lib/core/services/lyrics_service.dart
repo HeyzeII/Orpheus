@@ -116,6 +116,10 @@ class LyricsService {
       return null;
     } on SocketException {
       return null;
+    } on http.ClientException {
+      return null;
+    } on HttpException {
+      return null;
     } on FormatException {
       // Malformed JSON — don't cache, treat as transient.
       return null;

@@ -330,13 +330,17 @@ const _TrackfileTypeEnumValueMap = {
   'mp3': 0,
   'flac': 1,
   'mp4': 2,
-  'unknown': 3,
+  'm4a': 3,
+  'wav': 4,
+  'unknown': 5,
 };
 const _TrackfileTypeValueEnumMap = {
   0: FileType.mp3,
   1: FileType.flac,
   2: FileType.mp4,
-  3: FileType.unknown,
+  3: FileType.m4a,
+  4: FileType.wav,
+  5: FileType.unknown,
 };
 
 Id _trackGetId(Track object) {

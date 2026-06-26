@@ -12,7 +12,7 @@ import 'scan_result.dart';
 export 'scan_result.dart';
 
 /// Supported media file extensions (lowercase, without the leading dot).
-const _kSupportedExtensions = {'mp3', 'flac', 'mp4'};
+const _kSupportedExtensions = {'mp3', 'flac', 'mp4', 'm4a', 'wav'};
 
 /// Batch size: how many tracks are committed in a single Isar transaction.
 /// Keeps individual write transactions short to avoid blocking the main thread.
@@ -306,6 +306,8 @@ class AudioScannerService {
       'mp3' => FileType.mp3,
       'flac' => FileType.flac,
       'mp4' => FileType.mp4,
+      'm4a' => FileType.m4a,
+      'wav' => FileType.wav,
       _ => FileType.unknown,
     };
   }

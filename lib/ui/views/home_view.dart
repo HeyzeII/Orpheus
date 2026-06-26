@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 
@@ -22,19 +23,34 @@ class _HomeViewState extends State<HomeView> {
   List<Track> _allTracks = [];
   bool _isLoading = true;
 
+  StreamSubscription<void>? _tracksSubscription;
+
   @override
   void initState() {
     super.initState();
-    _loadHomeData();
+    _loadHomeData(showSpinner: true);
+    _tracksSubscription = LocalDatabase.instance.watchTracks().listen((_) {
+      _loadHomeData(showSpinner: false);
+    });
   }
 
-  Future<void> _loadHomeData() async {
+  @override
+  void dispose() {
+    _tracksSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadHomeData({bool showSpinner = false}) async {
+    if (showSpinner) {
+      setState(() => _isLoading = true);
+    }
     final db = LocalDatabase.instance;
     final recentlyPlayed = await db.getRecentlyPlayedTracks(limit: 6);
     final mostPlayed = await db.getMostPlayedTracks(limit: 6);
     final genres = await db.getUniqueGenres();
     final allTracks = await db.getAllTracks();
 
+    if (!mounted) return;
     setState(() {
       _recentlyPlayed = recentlyPlayed;
       _mostPlayed = mostPlayed;

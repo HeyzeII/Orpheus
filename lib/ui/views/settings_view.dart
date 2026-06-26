@@ -172,6 +172,9 @@ class _SettingsViewState extends State<SettingsView> {
 
           // ── Section: Merge Conflicts ───────────────────────────────────────
           _buildMergeConflicts(),
+
+          // ── Section: Maintenance Tools ─────────────────────────────────────
+          _buildMaintenanceTools(),
         ],
       ),
     );
@@ -518,6 +521,219 @@ class _SettingsViewState extends State<SettingsView> {
               ),
             );
           },
+        ),
+      ],
+    );
+  }
+
+  Future<void> _clearLyricsCache() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.bgSurface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: AppTheme.divider),
+          ),
+          title: const Text(
+            '¿Limpiar caché de letras?',
+            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+          ),
+          content: const Text(
+            'Esto eliminará todas las letras descargadas de LRCLIB. La app volverá a buscar letras en internet cuando reproduzcas tus canciones.',
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar', style: TextStyle(color: AppTheme.textSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accent,
+                foregroundColor: AppTheme.bgDeep,
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Limpiar', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isScanning = true);
+    await LocalDatabase.instance.clearLyricsCache();
+    setState(() => _isScanning = false);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Caché de letras limpiada con éxito.'),
+        backgroundColor: AppTheme.bgSurface,
+      ),
+    );
+  }
+
+  Future<void> _resetApplication() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.bgSurface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: AppTheme.divider),
+          ),
+          title: const Text(
+            '¿Restablecer aplicación?',
+            style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
+          ),
+          content: const Text(
+            'Esta acción es irreversible. Se vaciará toda la biblioteca indexada (canciones, álbumes, artistas, playlists) y la configuración de carpetas locales. Tus archivos físicos de música no serán modificados.',
+            style: TextStyle(color: AppTheme.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar', style: TextStyle(color: AppTheme.textSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Restablecer', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    setState(() {
+      _isScanning = true;
+      _scanDirs.clear();
+    });
+
+    await LocalDatabase.instance.clearDatabase();
+    await _loadConfig();
+
+    setState(() => _isScanning = false);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Aplicación restablecida por completo.'),
+        backgroundColor: AppTheme.bgSurface,
+      ),
+    );
+  }
+
+  Widget _buildMaintenanceTools() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 40),
+        const Text(
+          'MANTENIMIENTO Y HERRAMIENTAS',
+          style: TextStyle(
+            color: AppTheme.textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 2.0,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: AppTheme.bgSurface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppTheme.divider),
+          ),
+          child: Column(
+            children: [
+              // Tool 1: Clear Lyrics Cache
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.cleaning_services_rounded, color: AppTheme.textSecondary, size: 22),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Limpiar Caché de Letras',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Borra todas las letras sincronizadas y planas guardadas offline. Se volverán a descargar automáticamente de internet al reproducir.',
+                          style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, height: 1.4),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppTheme.divider),
+                      foregroundColor: AppTheme.textPrimary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: _isScanning ? null : _clearLyricsCache,
+                    child: const Text('Limpiar Letras', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Container(height: 1, color: AppTheme.divider),
+              const SizedBox(height: 20),
+              // Tool 2: Reset DB
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 22),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Restablecer Aplicación / Limpiar Biblioteca',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Elimina todas las canciones indexadas, listas de reproducción, géneros y carpetas añadidas. Conserva intactos tus archivos locales de música.',
+                          style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, height: 1.4),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent.withAlpha(30),
+                      foregroundColor: Colors.redAccent,
+                      shadowColor: Colors.transparent,
+                      side: const BorderSide(color: Colors.redAccent, width: 1),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: _isScanning ? null : _resetApplication,
+                    child: const Text('Restablecer', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ],
     );

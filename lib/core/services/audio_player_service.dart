@@ -303,7 +303,7 @@ class AudioPlayerService {
     _consecutiveErrors = 0;
 
     try {
-      await _player.open(Media(track.filePath), play: true);
+      await _player.open(Media(Uri.file(track.filePath).toString()), play: true);
       _notifyState();
     } catch (e) {
       // Jump to next file if playback fails to initialize

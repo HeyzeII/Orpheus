@@ -43,3 +43,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+# ── Version overrides ──────────────────────────────────────────────────────
+# metadata_god's precompiled Rust dylib was built against flutter_rust_bridge
+# 2.11.1. Without this override the Dart-side runtime (2.12.0) is resolved,
+# causing a "Bad state: codegen version mismatch" crash at app startup.
+dependency_overrides:
+  flutter_rust_bridge: 2.11.1

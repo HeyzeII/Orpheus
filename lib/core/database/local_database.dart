@@ -122,6 +122,12 @@ class LocalDatabase {
     return _isar.tracks.where().findAll();
   }
 
+  /// Returns a stream that emits whenever the tracks collection changes.
+  Stream<void> watchTracks() {
+    if (_isTestUninitialized) return const Stream.empty();
+    return _isar.tracks.watchLazy();
+  }
+
   /// Returns the [Track] whose [Track.trackId] matches [trackId], or `null`.
   Future<Track?> getTrackByTrackId(String trackId) async {
     if (_isTestUninitialized) return null;
@@ -147,10 +153,48 @@ class LocalDatabase {
   }
 
   /// Permanently removes a [Track] by its Isar [id].
-  /// Also removes it from all playlists that referenced it.
+  ///
+  /// Safe Deletion:
+  /// - Conserva el archivo original intacto, pero lo mueve físicamente a una
+  ///   carpeta llamada `.trash` dentro del mismo directorio raíz donde se encuentra la canción.
+  /// - Si la carpeta `.trash` no existe, la crea en caliente.
+  /// - Una vez movido el archivo (o si el archivo no existe), lo elimina de la base de datos de Isar
+  ///   y lo remueve de las listas de reproducción.
   Future<void> deleteTrack(int id) async {
     final track = await _isar.tracks.get(id);
     if (track == null) return;
+
+    // Move the physical file to the .trash folder in the same directory.
+    final file = File(track.filePath);
+    if (file.existsSync()) {
+      try {
+        final directory = file.parent;
+        final trashDirectory = Directory('${directory.path}/.trash');
+        if (!trashDirectory.existsSync()) {
+          trashDirectory.createSync(recursive: true);
+        }
+
+        final fileName = file.path.split('/').last;
+        var targetFile = File('${trashDirectory.path}/$fileName');
+        if (targetFile.existsSync()) {
+          final dotIndex = fileName.lastIndexOf('.');
+          final baseName = dotIndex != -1 ? fileName.substring(0, dotIndex) : fileName;
+          final ext = dotIndex != -1 ? fileName.substring(dotIndex) : '';
+          final timestamp = DateTime.now().millisecondsSinceEpoch;
+          targetFile = File('${trashDirectory.path}/${baseName}_$timestamp$ext');
+        }
+
+        try {
+          await file.rename(targetFile.path);
+        } catch (e) {
+          // Fallback in case of volume boundaries: copy and delete
+          await file.copy(targetFile.path);
+          await file.delete();
+        }
+      } catch (_) {
+        // Continue to delete from DB even if physical file move fails
+      }
+    }
 
     await _isar.writeTxn(() async {
       await _isar.tracks.delete(id);
@@ -158,7 +202,9 @@ class LocalDatabase {
       final allPlaylists = await _isar.playlists.where().findAll();
       for (final playlist in allPlaylists) {
         if (playlist.trackIds.contains(track.trackId)) {
-          playlist.trackIds.remove(track.trackId);
+          final updatedTrackIds = List<String>.from(playlist.trackIds);
+          updatedTrackIds.remove(track.trackId);
+          playlist.trackIds = updatedTrackIds;
           await _isar.playlists.put(playlist);
         }
       }
@@ -283,7 +329,9 @@ class LocalDatabase {
     required String trackId,
   }) async {
     if (playlist.trackIds.contains(trackId)) return;
-    playlist.trackIds.add(trackId);
+    final updated = List<String>.from(playlist.trackIds);
+    updated.add(trackId);
+    playlist.trackIds = updated;
     await savePlaylist(playlist);
   }
 
@@ -293,7 +341,9 @@ class LocalDatabase {
     required String trackId,
   }) async {
     if (!playlist.trackIds.contains(trackId)) return;
-    playlist.trackIds.remove(trackId);
+    final updated = List<String>.from(playlist.trackIds);
+    updated.remove(trackId);
+    playlist.trackIds = updated;
     await savePlaylist(playlist);
   }
 
@@ -347,16 +397,26 @@ class LocalDatabase {
   Future<void> addScanDirectory(String path) async {
     final config = await getConfig();
     if (!config.scanDirectories.contains(path)) {
-      config.scanDirectories.add(path);
+      final updatedDirectories = List<String>.from(config.scanDirectories);
+      updatedDirectories.add(path);
+      config.scanDirectories = updatedDirectories;
       await saveConfig(config);
     }
   }
 
   /// Convenience method to remove a directory path from the scan list.
+  /// Also performs a cascade delete of all indexed tracks under that path.
   Future<void> removeScanDirectory(String path) async {
     final config = await getConfig();
-    config.scanDirectories.remove(path);
+    final updatedDirectories = List<String>.from(config.scanDirectories);
+    updatedDirectories.remove(path);
+    config.scanDirectories = updatedDirectories;
     await saveConfig(config);
+
+    // Delete all tracks whose path starts with the removed directory path.
+    await _isar.writeTxn(() async {
+      await _isar.tracks.filter().filePathStartsWith(path).deleteAll();
+    });
   }
 
   /// Adds an ignored artist pair to the conflict-resolution list.
@@ -373,13 +433,38 @@ class LocalDatabase {
           (p.artistA == artistB && p.artistB == artistA),
     );
     if (!alreadyIgnored) {
-      config.conflictResolution.ignoredPairs.add(
+      final updatedPairs = List<IgnoredArtistPair>.from(config.conflictResolution.ignoredPairs);
+      updatedPairs.add(
         IgnoredArtistPair()
           ..artistA = artistA
           ..artistB = artistB,
       );
+      config.conflictResolution.ignoredPairs = updatedPairs;
       await saveConfig(config);
     }
+  }
+
+  /// Clears all tracks, playlists, configs and re-seeds default data.
+  Future<void> clearDatabase() async {
+    if (_isTestUninitialized) return;
+    await _isar.writeTxn(() async {
+      await _isar.tracks.clear();
+      await _isar.playlists.clear();
+      await _isar.appConfigs.clear();
+    });
+    await _seedDefaultData();
+  }
+
+  /// Resets `syncedLyrics` to null for all tracks, effectively clearing the lyrics cache.
+  Future<void> clearLyricsCache() async {
+    if (_isTestUninitialized) return;
+    final tracks = await _isar.tracks.where().findAll();
+    await _isar.writeTxn(() async {
+      for (final track in tracks) {
+        track.syncedLyrics = null;
+      }
+      await _isar.tracks.putAll(tracks);
+    });
   }
 
   // ══════════════════════════════════════════════════════════════════════════

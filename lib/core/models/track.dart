@@ -6,7 +6,7 @@ import 'track_stats.dart';
 part 'track.g.dart';
 
 /// Supported media file types that Orpheus can play.
-enum FileType { mp3, flac, mp4, unknown }
+enum FileType { mp3, flac, mp4, m4a, wav, unknown }
 
 /// Isar Collection representing a single audio or video file on disk.
 ///

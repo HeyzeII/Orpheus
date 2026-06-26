@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 
@@ -35,14 +36,27 @@ class _LibraryViewState extends State<LibraryView> {
   String? _selectedArtist;
   Playlist? _selectedPlaylist;
 
+  StreamSubscription<void>? _tracksSubscription;
+
   @override
   void initState() {
     super.initState();
-    _refreshData();
+    _refreshData(showSpinner: true);
+    _tracksSubscription = LocalDatabase.instance.watchTracks().listen((_) {
+      _refreshData(showSpinner: false);
+    });
   }
 
-  Future<void> _refreshData() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _tracksSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshData({bool showSpinner = false}) async {
+    if (showSpinner) {
+      setState(() => _isLoading = true);
+    }
     final db = LocalDatabase.instance;
     final tracks = await db.getAllTracks();
     final albums = await db.getUniqueAlbums();
@@ -52,6 +66,7 @@ class _LibraryViewState extends State<LibraryView> {
     final likedPlaylist = await db.getPlaylistById('__liked__');
     final likedIds = likedPlaylist?.trackIds.toSet() ?? {};
 
+    if (!mounted) return;
     setState(() {
       _allTracks = tracks;
       _uniqueAlbums = albums;
@@ -113,6 +128,49 @@ class _LibraryViewState extends State<LibraryView> {
     setState(() {
       playlist.trackIds.remove(track.trackId);
     });
+    _refreshData();
+  }
+
+  // Safe Delete Track (moves file to .trash and removes from DB)
+  Future<void> _deleteTrack(Track track) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.bgSurface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: AppTheme.divider),
+          ),
+          title: const Text(
+            'Eliminar canción',
+            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            '¿Estás seguro de que deseas enviar "${track.displayTitle}" a la papelera (.trash)? El archivo se conservará en tu disco.',
+            style: const TextStyle(color: AppTheme.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar', style: TextStyle(color: AppTheme.textSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Eliminar', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    await LocalDatabase.instance.deleteTrack(track.id);
     _refreshData();
   }
 
@@ -941,6 +999,7 @@ class _LibraryViewState extends State<LibraryView> {
           onToggleLike: () => _toggleLike(track),
           onAddToPlaylist: (p) => _addTrackToPlaylist(track, p),
           onRemoveFromPlaylist: (p) => _removeTrackFromPlaylist(track, p),
+          onDelete: () => _deleteTrack(track),
         );
       },
     );
@@ -966,6 +1025,7 @@ class _TrackRow extends StatefulWidget {
     required this.onToggleLike,
     required this.onAddToPlaylist,
     required this.onRemoveFromPlaylist,
+    required this.onDelete,
   });
 
   final Track track;
@@ -978,6 +1038,7 @@ class _TrackRow extends StatefulWidget {
   final VoidCallback onToggleLike;
   final ValueChanged<Playlist> onAddToPlaylist;
   final ValueChanged<Playlist> onRemoveFromPlaylist;
+  final VoidCallback onDelete;
 
   @override
   State<_TrackRow> createState() => _TrackRowState();
@@ -1111,7 +1172,7 @@ class _TrackRowState extends State<_TrackRow> {
                     ],
                     const SizedBox(width: 8),
                     // Menu actions
-                    PopupMenuButton<Playlist>(
+                    PopupMenuButton<dynamic>(
                       icon: const Icon(Icons.more_vert_rounded, size: 16, color: AppTheme.textSecondary),
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
@@ -1120,20 +1181,24 @@ class _TrackRowState extends State<_TrackRow> {
                         borderRadius: BorderRadius.circular(8),
                         side: const BorderSide(color: AppTheme.divider),
                       ),
-                      onSelected: (playlist) {
-                        if (widget.playlistSource != null &&
-                            widget.playlistSource!.playlistId == playlist.playlistId) {
-                          widget.onRemoveFromPlaylist(playlist);
-                        } else {
-                          widget.onAddToPlaylist(playlist);
+                      onSelected: (value) {
+                        if (value == 'delete') {
+                          widget.onDelete();
+                        } else if (value is Playlist) {
+                          if (widget.playlistSource != null &&
+                              widget.playlistSource!.playlistId == value.playlistId) {
+                            widget.onRemoveFromPlaylist(value);
+                          } else {
+                            widget.onAddToPlaylist(value);
+                          }
                         }
                       },
                       itemBuilder: (context) {
-                        final items = <PopupMenuEntry<Playlist>>[];
+                        final items = <PopupMenuEntry<dynamic>>[];
 
                         if (widget.customPlaylists.isEmpty) {
                           items.add(
-                            const PopupMenuItem<Playlist>(
+                            const PopupMenuItem<dynamic>(
                               enabled: false,
                               child: Text(
                                 'Crea una playlist primero',
@@ -1145,7 +1210,7 @@ class _TrackRowState extends State<_TrackRow> {
                           // Show option to remove if looking at a custom playlist detail view
                           if (widget.playlistSource != null && !widget.playlistSource!.isDefault) {
                             items.add(
-                              PopupMenuItem<Playlist>(
+                              PopupMenuItem<dynamic>(
                                 value: widget.playlistSource,
                                 child: const Row(
                                   children: [
@@ -1162,7 +1227,7 @@ class _TrackRowState extends State<_TrackRow> {
                           }
 
                           items.add(
-                            const PopupMenuItem<Playlist>(
+                            const PopupMenuItem<dynamic>(
                               enabled: false,
                               child: Text(
                                 'AGREGAR A PLAYLIST',
@@ -1177,7 +1242,7 @@ class _TrackRowState extends State<_TrackRow> {
 
                           for (final p in widget.customPlaylists) {
                             items.add(
-                              PopupMenuItem<Playlist>(
+                              PopupMenuItem<dynamic>(
                                 value: p,
                                 child: Row(
                                   children: [
@@ -1193,6 +1258,24 @@ class _TrackRowState extends State<_TrackRow> {
                             );
                           }
                         }
+
+                        // Always append option to delete track from library
+                        items.add(const PopupMenuDivider(height: 1));
+                        items.add(
+                          const PopupMenuItem<dynamic>(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete_outline_rounded,
+                                    size: 14, color: Colors.redAccent),
+                                SizedBox(width: 8),
+                                Text('Eliminar de biblioteca',
+                                    style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                        );
+
                         return items;
                       },
                     ),
