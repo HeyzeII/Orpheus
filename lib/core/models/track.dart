@@ -53,6 +53,9 @@ class Track {
   /// Genre extracted from file tags.
   String? genre;
 
+  /// Where this track was downloaded from (e.g. YouTube, etc.).
+  String? downloadSource;
+
   /// Whether the user has applied custom metadata overrides via [customMetadata].
   bool hasCustomMetadata = false;
 

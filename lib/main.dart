@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:metadata_god/metadata_god.dart';
 
 import 'core/database/local_database.dart';
@@ -7,10 +8,12 @@ import 'core/database/local_database.dart';
 ///
 /// Initialization order is important:
 /// 1. [WidgetsFlutterBinding.ensureInitialized] — required by platform plugins.
-/// 2. [MetadataGod.initialize] — loads the Rust FFI bridge for tag reading.
-/// 3. [LocalDatabase.instance.initialize] — opens Isar and seeds default data.
+/// 2. [MediaKit.ensureInitialized] — registers media_kit native audio handlers.
+/// 3. [MetadataGod.initialize] — loads the Rust FFI bridge for tag reading.
+/// 4. [LocalDatabase.instance.initialize] — opens Isar and seeds default data.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
   await MetadataGod.initialize();
   await LocalDatabase.instance.initialize();
 

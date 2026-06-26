@@ -48,45 +48,50 @@ const TrackSchema = CollectionSchema(
       name: r'displayTitle',
       type: IsarType.string,
     ),
-    r'duration': PropertySchema(
+    r'downloadSource': PropertySchema(
       id: 6,
+      name: r'downloadSource',
+      type: IsarType.string,
+    ),
+    r'duration': PropertySchema(
+      id: 7,
       name: r'duration',
       type: IsarType.long,
     ),
     r'filePath': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'filePath',
       type: IsarType.string,
     ),
     r'fileType': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'fileType',
       type: IsarType.byte,
       enumMap: _TrackfileTypeEnumValueMap,
     ),
     r'genre': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'genre',
       type: IsarType.string,
     ),
     r'hasCustomMetadata': PropertySchema(
-      id: 10,
+      id: 11,
       name: r'hasCustomMetadata',
       type: IsarType.bool,
     ),
     r'stats': PropertySchema(
-      id: 11,
+      id: 12,
       name: r'stats',
       type: IsarType.object,
       target: r'TrackStats',
     ),
     r'title': PropertySchema(
-      id: 12,
+      id: 13,
       name: r'title',
       type: IsarType.string,
     ),
     r'trackId': PropertySchema(
-      id: 13,
+      id: 14,
       name: r'trackId',
       type: IsarType.string,
     )
@@ -159,6 +164,12 @@ int _trackEstimateSize(
   bytesCount += 3 + object.displayAlbum.length * 3;
   bytesCount += 3 + object.displayArtist.length * 3;
   bytesCount += 3 + object.displayTitle.length * 3;
+  {
+    final value = object.downloadSource;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.filePath.length * 3;
   {
     final value = object.genre;
@@ -196,19 +207,20 @@ void _trackSerialize(
   writer.writeString(offsets[3], object.displayAlbum);
   writer.writeString(offsets[4], object.displayArtist);
   writer.writeString(offsets[5], object.displayTitle);
-  writer.writeLong(offsets[6], object.duration);
-  writer.writeString(offsets[7], object.filePath);
-  writer.writeByte(offsets[8], object.fileType.index);
-  writer.writeString(offsets[9], object.genre);
-  writer.writeBool(offsets[10], object.hasCustomMetadata);
+  writer.writeString(offsets[6], object.downloadSource);
+  writer.writeLong(offsets[7], object.duration);
+  writer.writeString(offsets[8], object.filePath);
+  writer.writeByte(offsets[9], object.fileType.index);
+  writer.writeString(offsets[10], object.genre);
+  writer.writeBool(offsets[11], object.hasCustomMetadata);
   writer.writeObject<TrackStats>(
-    offsets[11],
+    offsets[12],
     allOffsets,
     TrackStatsSchema.serialize,
     object.stats,
   );
-  writer.writeString(offsets[12], object.title);
-  writer.writeString(offsets[13], object.trackId);
+  writer.writeString(offsets[13], object.title);
+  writer.writeString(offsets[14], object.trackId);
 }
 
 Track _trackDeserialize(
@@ -226,22 +238,23 @@ Track _trackDeserialize(
         allOffsets,
       ) ??
       CustomMetadata();
-  object.duration = reader.readLong(offsets[6]);
-  object.filePath = reader.readString(offsets[7]);
+  object.downloadSource = reader.readStringOrNull(offsets[6]);
+  object.duration = reader.readLong(offsets[7]);
+  object.filePath = reader.readString(offsets[8]);
   object.fileType =
-      _TrackfileTypeValueEnumMap[reader.readByteOrNull(offsets[8])] ??
+      _TrackfileTypeValueEnumMap[reader.readByteOrNull(offsets[9])] ??
           FileType.mp3;
-  object.genre = reader.readStringOrNull(offsets[9]);
-  object.hasCustomMetadata = reader.readBool(offsets[10]);
+  object.genre = reader.readStringOrNull(offsets[10]);
+  object.hasCustomMetadata = reader.readBool(offsets[11]);
   object.id = id;
   object.stats = reader.readObjectOrNull<TrackStats>(
-        offsets[11],
+        offsets[12],
         TrackStatsSchema.deserialize,
         allOffsets,
       ) ??
       TrackStats();
-  object.title = reader.readStringOrNull(offsets[12]);
-  object.trackId = reader.readString(offsets[13]);
+  object.title = reader.readStringOrNull(offsets[13]);
+  object.trackId = reader.readString(offsets[14]);
   return object;
 }
 
@@ -270,26 +283,28 @@ P _trackDeserializeProp<P>(
     case 5:
       return (reader.readString(offset)) as P;
     case 6:
-      return (reader.readLong(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 7:
-      return (reader.readString(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 8:
+      return (reader.readString(offset)) as P;
+    case 9:
       return (_TrackfileTypeValueEnumMap[reader.readByteOrNull(offset)] ??
           FileType.mp3) as P;
-    case 9:
-      return (reader.readStringOrNull(offset)) as P;
     case 10:
-      return (reader.readBool(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 11:
+      return (reader.readBool(offset)) as P;
+    case 12:
       return (reader.readObjectOrNull<TrackStats>(
             offset,
             TrackStatsSchema.deserialize,
             allOffsets,
           ) ??
           TrackStats()) as P;
-    case 12:
-      return (reader.readStringOrNull(offset)) as P;
     case 13:
+      return (reader.readStringOrNull(offset)) as P;
+    case 14:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1271,6 +1286,152 @@ extension TrackQueryFilter on QueryBuilder<Track, Track, QFilterCondition> {
     });
   }
 
+  QueryBuilder<Track, Track, QAfterFilterCondition> downloadSourceIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'downloadSource',
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> downloadSourceIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'downloadSource',
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> downloadSourceEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'downloadSource',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> downloadSourceGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'downloadSource',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> downloadSourceLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'downloadSource',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> downloadSourceBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'downloadSource',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> downloadSourceStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'downloadSource',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> downloadSourceEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'downloadSource',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> downloadSourceContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'downloadSource',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> downloadSourceMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'downloadSource',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> downloadSourceIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'downloadSource',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> downloadSourceIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'downloadSource',
+        value: '',
+      ));
+    });
+  }
+
   QueryBuilder<Track, Track, QAfterFilterCondition> durationEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.equalTo(
@@ -2066,6 +2227,18 @@ extension TrackQuerySortBy on QueryBuilder<Track, Track, QSortBy> {
     });
   }
 
+  QueryBuilder<Track, Track, QAfterSortBy> sortByDownloadSource() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'downloadSource', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortByDownloadSourceDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'downloadSource', Sort.desc);
+    });
+  }
+
   QueryBuilder<Track, Track, QAfterSortBy> sortByDuration() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'duration', Sort.asc);
@@ -2212,6 +2385,18 @@ extension TrackQuerySortThenBy on QueryBuilder<Track, Track, QSortThenBy> {
     });
   }
 
+  QueryBuilder<Track, Track, QAfterSortBy> thenByDownloadSource() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'downloadSource', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenByDownloadSourceDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'downloadSource', Sort.desc);
+    });
+  }
+
   QueryBuilder<Track, Track, QAfterSortBy> thenByDuration() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'duration', Sort.asc);
@@ -2346,6 +2531,14 @@ extension TrackQueryWhereDistinct on QueryBuilder<Track, Track, QDistinct> {
     });
   }
 
+  QueryBuilder<Track, Track, QDistinct> distinctByDownloadSource(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'downloadSource',
+          caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<Track, Track, QDistinct> distinctByDuration() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'duration');
@@ -2434,6 +2627,12 @@ extension TrackQueryProperty on QueryBuilder<Track, Track, QQueryProperty> {
   QueryBuilder<Track, String, QQueryOperations> displayTitleProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'displayTitle');
+    });
+  }
+
+  QueryBuilder<Track, String?, QQueryOperations> downloadSourceProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'downloadSource');
     });
   }
 

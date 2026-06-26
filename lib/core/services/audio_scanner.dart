@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import '../database/local_database.dart';
 import '../models/track.dart';
 import '../utils/fuzzy_matcher.dart';
+import '../utils/string_sanitizer.dart';
 import 'scan_result.dart';
 
 export 'scan_result.dart';
@@ -115,35 +116,61 @@ class AudioScannerService {
       final trackId = existingTrack?.trackId ?? _buildTrackId(entity.path);
       final isUpdate = existingTrack != null;
 
+      // ── Fallback Parsing & Sanitization ──────────────────────────────────
+      var rawTitle = meta.title?.trim();
+      var rawArtist = meta.artist?.trim();
+
+      // If both metadata title and artist are empty, fall back to file name parsing
+      if ((rawTitle == null || rawTitle.isEmpty) && (rawArtist == null || rawArtist.isEmpty)) {
+        final stem = _stemFromPath(entity.path);
+        final hyphenIndex = stem.indexOf(' - ');
+        if (hyphenIndex != -1) {
+          rawArtist = stem.substring(0, hyphenIndex).trim();
+          rawTitle = stem.substring(hyphenIndex + 3).trim();
+        } else {
+          rawTitle = stem;
+        }
+      }
+
+      // Sanitize fields using StringSanitizer
+      final cleanTitle = rawTitle != null && rawTitle.isNotEmpty
+          ? StringSanitizer.sanitize(rawTitle)
+          : null;
+      final cleanArtist = rawArtist != null && rawArtist.isNotEmpty
+          ? StringSanitizer.sanitize(rawArtist)
+          : null;
+
+      // Detect download source from path or raw metadata fields
+      final downloadSource = StringSanitizer.detectDownloadSource(entity.path) ??
+          (rawTitle != null ? StringSanitizer.detectDownloadSource(rawTitle) : null) ??
+          (rawArtist != null ? StringSanitizer.detectDownloadSource(rawArtist) : null);
+
       // ── Fuzzy artist deduplication ────────────────────────────────────────
-      final rawArtist = meta.artist?.trim();
       ScanOutcome outcome = isUpdate ? ScanOutcome.updated : ScanOutcome.added;
       String? mergeExistingArtist;
       String? mergeCandidateArtist;
 
-      if (rawArtist != null && rawArtist.isNotEmpty) {
-        final match = _findSimilarArtist(rawArtist, knownArtists);
-        if (match != null && match != rawArtist) {
+      if (cleanArtist != null && cleanArtist.isNotEmpty) {
+        final match = _findSimilarArtist(cleanArtist, knownArtists);
+        if (match != null && match != cleanArtist) {
           // Check if the user has explicitly ignored this pair.
           final isIgnored = ignoredPairs.any(
             (p) =>
-                (p.artistA == rawArtist && p.artistB == match) ||
-                (p.artistA == match && p.artistB == rawArtist),
+                (p.artistA == cleanArtist && p.artistB == match) ||
+                (p.artistA == match && p.artistB == cleanArtist),
           );
 
           if (!isIgnored) {
             // Surface to the UI for the user to decide.
             outcome = ScanOutcome.pendingArtistMerge;
             mergeExistingArtist = match;
-            mergeCandidateArtist = rawArtist;
+            mergeCandidateArtist = cleanArtist;
           }
-          // Note: we do NOT auto-rename the artist — that is a user decision.
-          // The track is saved with its original artist name.
         }
 
         // Register new artist so subsequent files in this scan can match it.
-        if (!knownArtists.contains(rawArtist)) {
-          knownArtists.add(rawArtist);
+        if (!knownArtists.contains(cleanArtist)) {
+          knownArtists.add(cleanArtist);
         }
       }
 
@@ -154,10 +181,11 @@ class AudioScannerService {
         ..filePath = entity.path
         ..fileType = fileType
         ..duration = durationSec
-        ..title = meta.title?.trim()
-        ..artist = rawArtist
+        ..title = cleanTitle
+        ..artist = cleanArtist
         ..album = meta.album?.trim()
-        ..genre = meta.genre?.trim();
+        ..genre = meta.genre?.trim()
+        ..downloadSource = downloadSource;
 
       // Persist cover art path only if not already overridden by user.
       if (coverPath != null && !track.hasCustomMetadata) {
@@ -290,5 +318,12 @@ class AudioScannerService {
       'image/webp' => '.webp',
       _ => '.jpg', // safest fallback for embedded ID3 art.
     };
+  }
+
+  /// Strips directory and extension from a file path to derive a fallback title.
+  static String _stemFromPath(String path) {
+    final name = path.split('/').last;
+    final dot = name.lastIndexOf('.');
+    return dot == -1 ? name : name.substring(0, dot);
   }
 }

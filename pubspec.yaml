@@ -21,6 +21,10 @@ dependencies:
   # ── Media metadata (ID3 / Vorbis / MP4 tags + cover art) ──
   metadata_god: ^1.1.0
 
+  # ── Audio playback ────────────────────────────────────────
+  media_kit: ^1.2.6
+  media_kit_libs_audio: ^1.0.7
+
   # ── UI ────────────────────────────────────────────────────
   cupertino_icons: ^1.0.8
 
