@@ -174,6 +174,15 @@ class LocalDatabase {
     await saveTrack(track);
   }
 
+  /// Caches the [lrcContent] (raw LRC string from LRCLIB) on [track].
+  ///
+  /// Pass an empty string to signal "no lyrics available" so the service
+  /// does not make redundant network requests for the same track.
+  Future<void> updateTrackLyrics(Track track, String lrcContent) async {
+    track.syncedLyrics = lrcContent;
+    await saveTrack(track);
+  }
+
   /// Returns recently played tracks (sorted by totalPlays > 0, falling back to all tracks).
   Future<List<Track>> getRecentlyPlayedTracks({int limit = 6}) async {
     final tracks = await getAllTracks();

@@ -56,6 +56,14 @@ class Track {
   /// Where this track was downloaded from (e.g. YouTube, etc.).
   String? downloadSource;
 
+  /// Cached synced lyrics in LRC format fetched from LRCLIB.
+  ///
+  /// Stored raw (e.g. `[00:23.45] Some lyric line`) so that [LrcParser]
+  /// can convert it to timed [LyricLine] objects at display time.
+  /// `null` means lyrics have not been fetched yet; an empty string
+  /// means a lookup was attempted but no lyrics were found.
+  String? syncedLyrics;
+
   /// Whether the user has applied custom metadata overrides via [customMetadata].
   bool hasCustomMetadata = false;
 

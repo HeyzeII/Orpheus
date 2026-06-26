@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../core/models/track.dart';
+import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
 import '../views/home_view.dart';
 import '../views/library_view.dart';
+import '../views/lyrics_view.dart';
 import '../views/settings_view.dart';
 import '../widgets/player_bar.dart';
 import '../widgets/sidebar.dart';
@@ -23,6 +26,9 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   NavDestination _selected = NavDestination.home;
+  bool _showLyrics = false;
+
+  void _toggleLyrics() => setState(() => _showLyrics = !_showLyrics);
 
   @override
   Widget build(BuildContext context) {
@@ -35,22 +41,57 @@ class _MainShellState extends State<MainShell> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Sidebar
+                // Sidebar (hidden behind lyrics panel but always built)
                 Sidebar(
                   selected: _selected,
-                  onSelect: (dest) => setState(() => _selected = dest),
+                  onSelect: (dest) {
+                    setState(() {
+                      _selected = dest;
+                      _showLyrics = false; // close lyrics on nav change
+                    });
+                  },
                 ),
                 // Thin divider between sidebar and content
                 Container(width: 1, color: AppTheme.divider),
-                // Main content
+                // Main content + Lyrics overlay
                 Expanded(
-                  child: _ContentArea(destination: _selected),
+                  child: Stack(
+                    children: [
+                      _ContentArea(destination: _selected),
+                      // Lyrics slide-up panel
+                      AnimatedSlide(
+                        duration: const Duration(milliseconds: 350),
+                        curve: Curves.easeInOutCubic,
+                        offset: _showLyrics
+                            ? Offset.zero
+                            : const Offset(0, 1),
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 300),
+                          opacity: _showLyrics ? 1.0 : 0.0,
+                          child: StreamBuilder<Track?>(
+                            stream: AudioPlayerService
+                                .instance.currentTrackStream,
+                            builder: (context, snap) {
+                              final track = snap.data;
+                              if (track == null) {
+                                return const _NoTrackLyricsPlaceholder();
+                              }
+                              return LyricsView(track: track);
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
           // ── Bottom: Player bar ────────────────────────────────────────────
-          const PlayerBar(),
+          PlayerBar(
+            lyricsActive: _showLyrics,
+            onToggleLyrics: _toggleLyrics,
+          ),
         ],
       ),
     );
@@ -110,6 +151,38 @@ class _PlaceholderView extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Shown inside the lyrics panel when no track is loaded.
+class _NoTrackLyricsPlaceholder extends StatelessWidget {
+  const _NoTrackLyricsPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppTheme.bgDeep,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.lyrics_outlined,
+              size: 48,
+              color: AppTheme.textHint,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Play a track to see lyrics',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(color: AppTheme.textSecondary),
+            ),
+          ],
+        ),
       ),
     );
   }

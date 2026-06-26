@@ -85,13 +85,18 @@ const TrackSchema = CollectionSchema(
       type: IsarType.object,
       target: r'TrackStats',
     ),
-    r'title': PropertySchema(
+    r'syncedLyrics': PropertySchema(
       id: 13,
+      name: r'syncedLyrics',
+      type: IsarType.string,
+    ),
+    r'title': PropertySchema(
+      id: 14,
       name: r'title',
       type: IsarType.string,
     ),
     r'trackId': PropertySchema(
-      id: 14,
+      id: 15,
       name: r'trackId',
       type: IsarType.string,
     )
@@ -181,6 +186,12 @@ int _trackEstimateSize(
       TrackStatsSchema.estimateSize(
           object.stats, allOffsets[TrackStats]!, allOffsets);
   {
+    final value = object.syncedLyrics;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
     final value = object.title;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
@@ -219,8 +230,9 @@ void _trackSerialize(
     TrackStatsSchema.serialize,
     object.stats,
   );
-  writer.writeString(offsets[13], object.title);
-  writer.writeString(offsets[14], object.trackId);
+  writer.writeString(offsets[13], object.syncedLyrics);
+  writer.writeString(offsets[14], object.title);
+  writer.writeString(offsets[15], object.trackId);
 }
 
 Track _trackDeserialize(
@@ -253,8 +265,9 @@ Track _trackDeserialize(
         allOffsets,
       ) ??
       TrackStats();
-  object.title = reader.readStringOrNull(offsets[13]);
-  object.trackId = reader.readString(offsets[14]);
+  object.syncedLyrics = reader.readStringOrNull(offsets[13]);
+  object.title = reader.readStringOrNull(offsets[14]);
+  object.trackId = reader.readString(offsets[15]);
   return object;
 }
 
@@ -305,6 +318,8 @@ P _trackDeserializeProp<P>(
     case 13:
       return (reader.readStringOrNull(offset)) as P;
     case 14:
+      return (reader.readStringOrNull(offset)) as P;
+    case 15:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1873,6 +1888,152 @@ extension TrackQueryFilter on QueryBuilder<Track, Track, QFilterCondition> {
     });
   }
 
+  QueryBuilder<Track, Track, QAfterFilterCondition> syncedLyricsIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'syncedLyrics',
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> syncedLyricsIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'syncedLyrics',
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> syncedLyricsEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'syncedLyrics',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> syncedLyricsGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'syncedLyrics',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> syncedLyricsLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'syncedLyrics',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> syncedLyricsBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'syncedLyrics',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> syncedLyricsStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'syncedLyrics',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> syncedLyricsEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'syncedLyrics',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> syncedLyricsContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'syncedLyrics',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> syncedLyricsMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'syncedLyrics',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> syncedLyricsIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'syncedLyrics',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> syncedLyricsIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'syncedLyrics',
+        value: '',
+      ));
+    });
+  }
+
   QueryBuilder<Track, Track, QAfterFilterCondition> titleIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(const FilterCondition.isNull(
@@ -2299,6 +2460,18 @@ extension TrackQuerySortBy on QueryBuilder<Track, Track, QSortBy> {
     });
   }
 
+  QueryBuilder<Track, Track, QAfterSortBy> sortBySyncedLyrics() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'syncedLyrics', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortBySyncedLyricsDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'syncedLyrics', Sort.desc);
+    });
+  }
+
   QueryBuilder<Track, Track, QAfterSortBy> sortByTitle() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'title', Sort.asc);
@@ -2469,6 +2642,18 @@ extension TrackQuerySortThenBy on QueryBuilder<Track, Track, QSortThenBy> {
     });
   }
 
+  QueryBuilder<Track, Track, QAfterSortBy> thenBySyncedLyrics() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'syncedLyrics', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenBySyncedLyricsDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'syncedLyrics', Sort.desc);
+    });
+  }
+
   QueryBuilder<Track, Track, QAfterSortBy> thenByTitle() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'title', Sort.asc);
@@ -2571,6 +2756,13 @@ extension TrackQueryWhereDistinct on QueryBuilder<Track, Track, QDistinct> {
     });
   }
 
+  QueryBuilder<Track, Track, QDistinct> distinctBySyncedLyrics(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'syncedLyrics', caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<Track, Track, QDistinct> distinctByTitle(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -2669,6 +2861,12 @@ extension TrackQueryProperty on QueryBuilder<Track, Track, QQueryProperty> {
   QueryBuilder<Track, TrackStats, QQueryOperations> statsProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'stats');
+    });
+  }
+
+  QueryBuilder<Track, String?, QQueryOperations> syncedLyricsProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'syncedLyrics');
     });
   }
 

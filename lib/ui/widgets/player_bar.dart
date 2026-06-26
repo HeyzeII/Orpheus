@@ -10,7 +10,17 @@ import '../theme/app_theme.dart';
 ///
 /// Fully reactive via [StreamBuilder]s connected to [AudioPlayerService].
 class PlayerBar extends StatelessWidget {
-  const PlayerBar({super.key});
+  const PlayerBar({
+    super.key,
+    this.lyricsActive = false,
+    this.onToggleLyrics,
+  });
+
+  /// Whether the lyrics panel is currently visible.
+  final bool lyricsActive;
+
+  /// Callback to toggle the lyrics overlay. If null, the button is hidden.
+  final VoidCallback? onToggleLyrics;
 
   static const double kHeight = 90.0;
 
@@ -25,14 +35,19 @@ class PlayerBar extends StatelessWidget {
         ),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: const Row(
+      child: Row(
         children: [
           // Left — Track info
-          Expanded(child: _TrackInfo()),
+          const Expanded(child: _TrackInfo()),
           // Center — Playback controls
-          _PlaybackControls(),
-          // Right — Volume
-          Expanded(child: _VolumeControl()),
+          const _PlaybackControls(),
+          // Right — Volume + Lyrics toggle
+          Expanded(
+            child: _VolumeControl(
+              lyricsActive: lyricsActive,
+              onToggleLyrics: onToggleLyrics,
+            ),
+          ),
         ],
       ),
     );
@@ -382,10 +397,16 @@ class _ProgressBar extends StatelessWidget {
   }
 }
 
-// ── Right: Volume Control ─────────────────────────────────────────────────────
+// ── Right: Volume Control ────────────────────────────────────────────────
 
 class _VolumeControl extends StatelessWidget {
-  const _VolumeControl();
+  const _VolumeControl({
+    this.lyricsActive = false,
+    this.onToggleLyrics,
+  });
+
+  final bool lyricsActive;
+  final VoidCallback? onToggleLyrics;
 
   @override
   Widget build(BuildContext context) {
@@ -399,6 +420,18 @@ class _VolumeControl extends StatelessWidget {
         return Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
+            // Lyrics toggle button
+            if (onToggleLyrics != null)
+              Tooltip(
+                message: lyricsActive ? 'Ocultar letras' : 'Ver letras',
+                child: _IconBtn(
+                  icon: Icons.lyrics_rounded,
+                  active: lyricsActive,
+                  onTap: onToggleLyrics!,
+                  tooltip: '',
+                ),
+              ),
+            const SizedBox(width: 8),
             Icon(
               vol == 0
                   ? Icons.volume_off_rounded

@@ -25,6 +25,9 @@ dependencies:
   media_kit: ^1.2.6
   media_kit_libs_audio: ^1.0.7
 
+  # ── Network ───────────────────────────────────────────────
+  http: ^1.2.2
+
   # ── UI ────────────────────────────────────────────────────
   cupertino_icons: ^1.0.8
   file_picker: ^8.0.0
