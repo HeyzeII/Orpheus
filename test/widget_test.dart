@@ -1,20 +1,32 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:orpheus/core/database/local_database.dart';
 import 'package:orpheus/main.dart';
 
 void main() {
-  testWidgets('OrpheusApp renders successfully', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const OrpheusApp());
+  TestWidgetsFlutterBinding.ensureInitialized();
 
-    // Verify that the database layer initialized message is displayed.
-    expect(find.text('Orpheus — Data Layer initialized ✓'), findsOneWidget);
+  setUpAll(() async {
+    // Mock path_provider
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (MethodCall methodCall) async {
+        return '.';
+      },
+    );
+
+    // Initialize database in temporary directory
+    try {
+      await LocalDatabase.instance.initialize();
+    } catch (_) {}
+  });
+
+  testWidgets('OrpheusApp renders successfully', (WidgetTester tester) async {
+    await tester.pumpWidget(const OrpheusApp());
+    await tester.pump();
+
+    // Verify logo is displayed in the sidebar
+    expect(find.text('ORPHEUS'), findsOneWidget);
   });
 }

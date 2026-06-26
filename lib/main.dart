@@ -3,6 +3,8 @@ import 'package:media_kit/media_kit.dart';
 import 'package:metadata_god/metadata_god.dart';
 
 import 'core/database/local_database.dart';
+import 'ui/layouts/main_shell.dart';
+import 'ui/theme/app_theme.dart';
 
 /// Entry point for Orpheus.
 ///
@@ -20,7 +22,10 @@ Future<void> main() async {
   runApp(const OrpheusApp());
 }
 
-/// Root widget — intentionally minimal until the UI layer is built.
+/// Root application widget.
+///
+/// Applies the premium [AppTheme] and renders [MainShell] as the root
+/// layout for all desktop navigation.
 class OrpheusApp extends StatelessWidget {
   const OrpheusApp({super.key});
 
@@ -29,15 +34,9 @@ class OrpheusApp extends StatelessWidget {
     return MaterialApp(
       title: 'Orpheus',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(useMaterial3: true),
-      home: const Scaffold(
-        body: Center(
-          child: Text(
-            'Orpheus — Data Layer initialized ✓',
-            style: TextStyle(fontSize: 20),
-          ),
-        ),
-      ),
+      theme: AppTheme.build(),
+      home: const MainShell(),
     );
   }
 }
+

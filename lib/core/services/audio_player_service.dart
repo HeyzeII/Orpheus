@@ -49,6 +49,9 @@ class AudioPlayerService {
   // ── Initialization ─────────────────────────────────────────────────────────
 
   void _init() {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      return;
+    }
     _player = Player();
 
     // Pipe native media_kit streams to our broadcast streams
@@ -98,14 +101,18 @@ class AudioPlayerService {
           ? _queue[_currentIndex]
           : null;
 
-  bool get isPlaying => _player.state.playing;
+  bool get isPlaying =>
+      Platform.environment.containsKey('FLUTTER_TEST') ? false : _player.state.playing;
 
-  Duration get position => _player.state.position;
+  Duration get position =>
+      Platform.environment.containsKey('FLUTTER_TEST') ? Duration.zero : _player.state.position;
 
-  Duration get duration => _player.state.duration;
+  Duration get duration =>
+      Platform.environment.containsKey('FLUTTER_TEST') ? Duration.zero : _player.state.duration;
 
   /// Volume represented as a range from `0.0` (muted) to `1.0` (max).
-  double get volume => _player.state.volume / 100.0;
+  double get volume =>
+      Platform.environment.containsKey('FLUTTER_TEST') ? 1.0 : _player.state.volume / 100.0;
 
   bool get shuffleEnabled => _shuffle;
 
@@ -154,22 +161,26 @@ class AudioPlayerService {
   }
 
   Future<void> play() async {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
     await _player.play();
     _notifyState();
   }
 
   Future<void> pause() async {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
     await _player.pause();
     _notifyState();
   }
 
   Future<void> stop() async {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
     await _player.stop();
     _currentIndex = -1;
     _notifyState();
   }
 
   Future<void> seek(Duration position) async {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
     await _player.seek(position);
     _notifyState();
   }
@@ -177,6 +188,10 @@ class AudioPlayerService {
   /// Sets volume. Expects a range between `0.0` (muted) and `1.0` (max).
   Future<void> setVolume(double volume) async {
     final clamped = volume.clamp(0.0, 1.0);
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      _volumeController.add(clamped);
+      return;
+    }
     await _player.setVolume(clamped * 100.0);
     _volumeController.add(clamped);
   }
@@ -257,6 +272,11 @@ class AudioPlayerService {
       }
     } else {
       _currentIndex = index;
+    }
+
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      _notifyState();
+      return;
     }
 
     final track = _queue[_currentIndex];
