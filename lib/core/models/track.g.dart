@@ -22,81 +22,93 @@ const TrackSchema = CollectionSchema(
       name: r'album',
       type: IsarType.string,
     ),
-    r'artist': PropertySchema(
+    r'artStatus': PropertySchema(
       id: 1,
+      name: r'artStatus',
+      type: IsarType.byte,
+      enumMap: _TrackartStatusEnumValueMap,
+    ),
+    r'artist': PropertySchema(
+      id: 2,
       name: r'artist',
       type: IsarType.string,
     ),
     r'customMetadata': PropertySchema(
-      id: 2,
+      id: 3,
       name: r'customMetadata',
       type: IsarType.object,
       target: r'CustomMetadata',
     ),
     r'displayAlbum': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'displayAlbum',
       type: IsarType.string,
     ),
     r'displayArtist': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'displayArtist',
       type: IsarType.string,
     ),
     r'displayTitle': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'displayTitle',
       type: IsarType.string,
     ),
     r'downloadSource': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'downloadSource',
       type: IsarType.string,
     ),
     r'duration': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'duration',
       type: IsarType.long,
     ),
     r'filePath': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'filePath',
       type: IsarType.string,
     ),
     r'fileType': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'fileType',
       type: IsarType.byte,
       enumMap: _TrackfileTypeEnumValueMap,
     ),
     r'genre': PropertySchema(
-      id: 10,
+      id: 11,
       name: r'genre',
       type: IsarType.string,
     ),
     r'hasCustomMetadata': PropertySchema(
-      id: 11,
+      id: 12,
       name: r'hasCustomMetadata',
       type: IsarType.bool,
     ),
+    r'lyricsStatus': PropertySchema(
+      id: 13,
+      name: r'lyricsStatus',
+      type: IsarType.byte,
+      enumMap: _TracklyricsStatusEnumValueMap,
+    ),
     r'stats': PropertySchema(
-      id: 12,
+      id: 14,
       name: r'stats',
       type: IsarType.object,
       target: r'TrackStats',
     ),
     r'syncedLyrics': PropertySchema(
-      id: 13,
+      id: 15,
       name: r'syncedLyrics',
       type: IsarType.string,
     ),
     r'title': PropertySchema(
-      id: 14,
+      id: 16,
       name: r'title',
       type: IsarType.string,
     ),
     r'trackId': PropertySchema(
-      id: 15,
+      id: 17,
       name: r'trackId',
       type: IsarType.string,
     )
@@ -208,31 +220,33 @@ void _trackSerialize(
   Map<Type, List<int>> allOffsets,
 ) {
   writer.writeString(offsets[0], object.album);
-  writer.writeString(offsets[1], object.artist);
+  writer.writeByte(offsets[1], object.artStatus.index);
+  writer.writeString(offsets[2], object.artist);
   writer.writeObject<CustomMetadata>(
-    offsets[2],
+    offsets[3],
     allOffsets,
     CustomMetadataSchema.serialize,
     object.customMetadata,
   );
-  writer.writeString(offsets[3], object.displayAlbum);
-  writer.writeString(offsets[4], object.displayArtist);
-  writer.writeString(offsets[5], object.displayTitle);
-  writer.writeString(offsets[6], object.downloadSource);
-  writer.writeLong(offsets[7], object.duration);
-  writer.writeString(offsets[8], object.filePath);
-  writer.writeByte(offsets[9], object.fileType.index);
-  writer.writeString(offsets[10], object.genre);
-  writer.writeBool(offsets[11], object.hasCustomMetadata);
+  writer.writeString(offsets[4], object.displayAlbum);
+  writer.writeString(offsets[5], object.displayArtist);
+  writer.writeString(offsets[6], object.displayTitle);
+  writer.writeString(offsets[7], object.downloadSource);
+  writer.writeLong(offsets[8], object.duration);
+  writer.writeString(offsets[9], object.filePath);
+  writer.writeByte(offsets[10], object.fileType.index);
+  writer.writeString(offsets[11], object.genre);
+  writer.writeBool(offsets[12], object.hasCustomMetadata);
+  writer.writeByte(offsets[13], object.lyricsStatus.index);
   writer.writeObject<TrackStats>(
-    offsets[12],
+    offsets[14],
     allOffsets,
     TrackStatsSchema.serialize,
     object.stats,
   );
-  writer.writeString(offsets[13], object.syncedLyrics);
-  writer.writeString(offsets[14], object.title);
-  writer.writeString(offsets[15], object.trackId);
+  writer.writeString(offsets[15], object.syncedLyrics);
+  writer.writeString(offsets[16], object.title);
+  writer.writeString(offsets[17], object.trackId);
 }
 
 Track _trackDeserialize(
@@ -243,31 +257,37 @@ Track _trackDeserialize(
 ) {
   final object = Track();
   object.album = reader.readStringOrNull(offsets[0]);
-  object.artist = reader.readStringOrNull(offsets[1]);
+  object.artStatus =
+      _TrackartStatusValueEnumMap[reader.readByteOrNull(offsets[1])] ??
+          FetchStatus.none;
+  object.artist = reader.readStringOrNull(offsets[2]);
   object.customMetadata = reader.readObjectOrNull<CustomMetadata>(
-        offsets[2],
+        offsets[3],
         CustomMetadataSchema.deserialize,
         allOffsets,
       ) ??
       CustomMetadata();
-  object.downloadSource = reader.readStringOrNull(offsets[6]);
-  object.duration = reader.readLong(offsets[7]);
-  object.filePath = reader.readString(offsets[8]);
+  object.downloadSource = reader.readStringOrNull(offsets[7]);
+  object.duration = reader.readLong(offsets[8]);
+  object.filePath = reader.readString(offsets[9]);
   object.fileType =
-      _TrackfileTypeValueEnumMap[reader.readByteOrNull(offsets[9])] ??
+      _TrackfileTypeValueEnumMap[reader.readByteOrNull(offsets[10])] ??
           FileType.mp3;
-  object.genre = reader.readStringOrNull(offsets[10]);
-  object.hasCustomMetadata = reader.readBool(offsets[11]);
+  object.genre = reader.readStringOrNull(offsets[11]);
+  object.hasCustomMetadata = reader.readBool(offsets[12]);
   object.id = id;
+  object.lyricsStatus =
+      _TracklyricsStatusValueEnumMap[reader.readByteOrNull(offsets[13])] ??
+          FetchStatus.none;
   object.stats = reader.readObjectOrNull<TrackStats>(
-        offsets[12],
+        offsets[14],
         TrackStatsSchema.deserialize,
         allOffsets,
       ) ??
       TrackStats();
-  object.syncedLyrics = reader.readStringOrNull(offsets[13]);
-  object.title = reader.readStringOrNull(offsets[14]);
-  object.trackId = reader.readString(offsets[15]);
+  object.syncedLyrics = reader.readStringOrNull(offsets[15]);
+  object.title = reader.readStringOrNull(offsets[16]);
+  object.trackId = reader.readString(offsets[17]);
   return object;
 }
 
@@ -281,51 +301,67 @@ P _trackDeserializeProp<P>(
     case 0:
       return (reader.readStringOrNull(offset)) as P;
     case 1:
-      return (reader.readStringOrNull(offset)) as P;
+      return (_TrackartStatusValueEnumMap[reader.readByteOrNull(offset)] ??
+          FetchStatus.none) as P;
     case 2:
+      return (reader.readStringOrNull(offset)) as P;
+    case 3:
       return (reader.readObjectOrNull<CustomMetadata>(
             offset,
             CustomMetadataSchema.deserialize,
             allOffsets,
           ) ??
           CustomMetadata()) as P;
-    case 3:
-      return (reader.readString(offset)) as P;
     case 4:
       return (reader.readString(offset)) as P;
     case 5:
       return (reader.readString(offset)) as P;
     case 6:
-      return (reader.readStringOrNull(offset)) as P;
-    case 7:
-      return (reader.readLong(offset)) as P;
-    case 8:
       return (reader.readString(offset)) as P;
+    case 7:
+      return (reader.readStringOrNull(offset)) as P;
+    case 8:
+      return (reader.readLong(offset)) as P;
     case 9:
+      return (reader.readString(offset)) as P;
+    case 10:
       return (_TrackfileTypeValueEnumMap[reader.readByteOrNull(offset)] ??
           FileType.mp3) as P;
-    case 10:
-      return (reader.readStringOrNull(offset)) as P;
     case 11:
-      return (reader.readBool(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 12:
+      return (reader.readBool(offset)) as P;
+    case 13:
+      return (_TracklyricsStatusValueEnumMap[reader.readByteOrNull(offset)] ??
+          FetchStatus.none) as P;
+    case 14:
       return (reader.readObjectOrNull<TrackStats>(
             offset,
             TrackStatsSchema.deserialize,
             allOffsets,
           ) ??
           TrackStats()) as P;
-    case 13:
-      return (reader.readStringOrNull(offset)) as P;
-    case 14:
-      return (reader.readStringOrNull(offset)) as P;
     case 15:
+      return (reader.readStringOrNull(offset)) as P;
+    case 16:
+      return (reader.readStringOrNull(offset)) as P;
+    case 17:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
   }
 }
 
+const _TrackartStatusEnumValueMap = {
+  'none': 0,
+  'success': 1,
+  'notFound': 2,
+};
+const _TrackartStatusValueEnumMap = {
+  0: FetchStatus.none,
+  1: FetchStatus.success,
+  2: FetchStatus.notFound,
+};
 const _TrackfileTypeEnumValueMap = {
   'mp3': 0,
   'flac': 1,
@@ -341,6 +377,16 @@ const _TrackfileTypeValueEnumMap = {
   3: FileType.m4a,
   4: FileType.wav,
   5: FileType.unknown,
+};
+const _TracklyricsStatusEnumValueMap = {
+  'none': 0,
+  'success': 1,
+  'notFound': 2,
+};
+const _TracklyricsStatusValueEnumMap = {
+  0: FetchStatus.none,
+  1: FetchStatus.success,
+  2: FetchStatus.notFound,
 };
 
 Id _trackGetId(Track object) {
@@ -766,6 +812,59 @@ extension TrackQueryFilter on QueryBuilder<Track, Track, QFilterCondition> {
       return query.addFilterCondition(FilterCondition.greaterThan(
         property: r'album',
         value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artStatusEqualTo(
+      FetchStatus value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'artStatus',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artStatusGreaterThan(
+    FetchStatus value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'artStatus',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artStatusLessThan(
+    FetchStatus value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'artStatus',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artStatusBetween(
+    FetchStatus lower,
+    FetchStatus upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'artStatus',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
       ));
     });
   }
@@ -1892,6 +1991,59 @@ extension TrackQueryFilter on QueryBuilder<Track, Track, QFilterCondition> {
     });
   }
 
+  QueryBuilder<Track, Track, QAfterFilterCondition> lyricsStatusEqualTo(
+      FetchStatus value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'lyricsStatus',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> lyricsStatusGreaterThan(
+    FetchStatus value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'lyricsStatus',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> lyricsStatusLessThan(
+    FetchStatus value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'lyricsStatus',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> lyricsStatusBetween(
+    FetchStatus lower,
+    FetchStatus upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'lyricsStatus',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
   QueryBuilder<Track, Track, QAfterFilterCondition> syncedLyricsIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(const FilterCondition.isNull(
@@ -2344,6 +2496,18 @@ extension TrackQuerySortBy on QueryBuilder<Track, Track, QSortBy> {
     });
   }
 
+  QueryBuilder<Track, Track, QAfterSortBy> sortByArtStatus() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'artStatus', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortByArtStatusDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'artStatus', Sort.desc);
+    });
+  }
+
   QueryBuilder<Track, Track, QAfterSortBy> sortByArtist() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'artist', Sort.asc);
@@ -2464,6 +2628,18 @@ extension TrackQuerySortBy on QueryBuilder<Track, Track, QSortBy> {
     });
   }
 
+  QueryBuilder<Track, Track, QAfterSortBy> sortByLyricsStatus() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lyricsStatus', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortByLyricsStatusDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lyricsStatus', Sort.desc);
+    });
+  }
+
   QueryBuilder<Track, Track, QAfterSortBy> sortBySyncedLyrics() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'syncedLyrics', Sort.asc);
@@ -2511,6 +2687,18 @@ extension TrackQuerySortThenBy on QueryBuilder<Track, Track, QSortThenBy> {
   QueryBuilder<Track, Track, QAfterSortBy> thenByAlbumDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'album', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenByArtStatus() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'artStatus', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenByArtStatusDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'artStatus', Sort.desc);
     });
   }
 
@@ -2646,6 +2834,18 @@ extension TrackQuerySortThenBy on QueryBuilder<Track, Track, QSortThenBy> {
     });
   }
 
+  QueryBuilder<Track, Track, QAfterSortBy> thenByLyricsStatus() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lyricsStatus', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenByLyricsStatusDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lyricsStatus', Sort.desc);
+    });
+  }
+
   QueryBuilder<Track, Track, QAfterSortBy> thenBySyncedLyrics() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'syncedLyrics', Sort.asc);
@@ -2688,6 +2888,12 @@ extension TrackQueryWhereDistinct on QueryBuilder<Track, Track, QDistinct> {
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'album', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<Track, Track, QDistinct> distinctByArtStatus() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'artStatus');
     });
   }
 
@@ -2760,6 +2966,12 @@ extension TrackQueryWhereDistinct on QueryBuilder<Track, Track, QDistinct> {
     });
   }
 
+  QueryBuilder<Track, Track, QDistinct> distinctByLyricsStatus() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'lyricsStatus');
+    });
+  }
+
   QueryBuilder<Track, Track, QDistinct> distinctBySyncedLyrics(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -2792,6 +3004,12 @@ extension TrackQueryProperty on QueryBuilder<Track, Track, QQueryProperty> {
   QueryBuilder<Track, String?, QQueryOperations> albumProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'album');
+    });
+  }
+
+  QueryBuilder<Track, FetchStatus, QQueryOperations> artStatusProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'artStatus');
     });
   }
 
@@ -2859,6 +3077,12 @@ extension TrackQueryProperty on QueryBuilder<Track, Track, QQueryProperty> {
   QueryBuilder<Track, bool, QQueryOperations> hasCustomMetadataProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'hasCustomMetadata');
+    });
+  }
+
+  QueryBuilder<Track, FetchStatus, QQueryOperations> lyricsStatusProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'lyricsStatus');
     });
   }
 

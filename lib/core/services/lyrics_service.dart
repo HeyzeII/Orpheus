@@ -54,7 +54,10 @@ class LyricsService {
   /// - Returns **`null`** only on transient network/parse failures so the UI
   ///   can display a retry option.
   Future<String?> fetchLyrics(Track track) async {
-    // ── 1. Offline cache hit ───────────────────────────────────────────────
+    // ── 1. Offline cache hit / Not Found ───────────────────────────────────
+    if (track.lyricsStatus == FetchStatus.notFound) {
+      return '';
+    }
     if (track.syncedLyrics != null) {
       return track.syncedLyrics;
     }
@@ -65,6 +68,7 @@ class LyricsService {
 
     if (artist == 'Unknown Artist' || title.isEmpty) {
       // Cache the "not found" result so we don't retry every time.
+      track.lyricsStatus = FetchStatus.notFound;
       await _persistLyrics(track, '');
       return '';
     }
@@ -86,6 +90,7 @@ class LyricsService {
 
       if (response.statusCode == 404) {
         // LRCLIB definitively has no entry for this track.
+        track.lyricsStatus = FetchStatus.notFound;
         await _persistLyrics(track, '');
         return '';
       }
@@ -109,6 +114,7 @@ class LyricsService {
               ? plainLyrics!
               : '';
 
+      track.lyricsStatus = lrcContent.isEmpty ? FetchStatus.notFound : FetchStatus.success;
       await _persistLyrics(track, lrcContent);
       return lrcContent;
     } on TimeoutException {
@@ -133,6 +139,7 @@ class LyricsService {
     await _db.updateTrackLyrics(track, '');
     // Reset to null so the next fetchLyrics call hits the network.
     track.syncedLyrics = null;
+    track.lyricsStatus = FetchStatus.none;
     await _db.saveTrack(track);
   }
 

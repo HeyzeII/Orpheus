@@ -3,6 +3,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:metadata_god/metadata_god.dart';
 
 import 'core/database/local_database.dart';
+import 'core/services/album_art_fetcher_service.dart';
 import 'core/services/audio_player_service.dart';
 import 'ui/layouts/main_shell.dart';
 import 'ui/theme/app_theme.dart';
@@ -21,6 +22,9 @@ Future<void> main() async {
   await LocalDatabase.instance.initialize();
   // Restore last playback queue + position before building the widget tree.
   await AudioPlayerService.instance.hydratePlaybackState();
+
+  // Start background album art fetching for any missing cover art
+  AlbumArtFetcherService.instance.processLibrary();
 
   runApp(const OrpheusApp());
 }

@@ -8,6 +8,9 @@ part 'track.g.dart';
 /// Supported media file types that Orpheus can play.
 enum FileType { mp3, flac, mp4, m4a, wav, unknown }
 
+/// Fetch status of external metadata.
+enum FetchStatus { none, success, notFound }
+
 /// Isar Collection representing a single audio or video file on disk.
 ///
 /// Design principles:
@@ -63,6 +66,14 @@ class Track {
   /// `null` means lyrics have not been fetched yet; an empty string
   /// means a lookup was attempted but no lyrics were found.
   String? syncedLyrics;
+
+  /// Fetch status of the track's album art.
+  @enumerated
+  FetchStatus artStatus = FetchStatus.none;
+
+  /// Fetch status of the track's lyrics.
+  @enumerated
+  FetchStatus lyricsStatus = FetchStatus.none;
 
   /// Whether the user has applied custom metadata overrides via [customMetadata].
   bool hasCustomMetadata = false;

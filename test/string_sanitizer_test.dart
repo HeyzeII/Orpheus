@@ -99,4 +99,33 @@ void main() {
       );
     });
   });
+
+  group('StringSanitizer - prepareSearchQuery', () {
+    test('Uses non-empty ID3 tag and sanitizes it', () {
+      expect(
+        StringSanitizer.prepareSearchQuery(
+          id3Tag: 'y2mate.com - Linkin Park [Official Video]',
+          filePath: '/path/to/numb.mp3',
+        ),
+        equals('Linkin Park'),
+      );
+    });
+
+    test('Falls back to filename and cleans common modifiers when ID3 tag is empty', () {
+      expect(
+        StringSanitizer.prepareSearchQuery(
+          id3Tag: null,
+          filePath: '/path/to/My Song [Official Audio] (Sub Esp).mp3',
+        ),
+        equals('My Song'),
+      );
+      expect(
+        StringSanitizer.prepareSearchQuery(
+          id3Tag: '',
+          filePath: '/path/to/Another Track sub esp official audio.mp3',
+        ),
+        equals('Another Track'),
+      );
+    });
+  });
 }

@@ -20,9 +20,9 @@ import '../models/track.dart';
 class LocalDatabase {
   // ── Singleton boilerplate ──────────────────────────────────────────────────
 
-  LocalDatabase._internal();
+  LocalDatabase.internal();
 
-  static final LocalDatabase instance = LocalDatabase._internal();
+  static final LocalDatabase instance = LocalDatabase.internal();
 
   factory LocalDatabase() => instance;
 
@@ -464,6 +464,7 @@ class LocalDatabase {
     await _isar.writeTxn(() async {
       for (final track in tracks) {
         track.syncedLyrics = null;
+        track.lyricsStatus = FetchStatus.none;
       }
       await _isar.tracks.putAll(tracks);
     });

@@ -88,4 +88,33 @@ class StringSanitizer {
     }
     return result;
   }
+
+  /// Prepares metadata strings for API searches.
+  /// If the ID3 tag is empty, it uses the filename (stem) and cleans it using regex
+  /// to remove common modifiers such as "Sub Esp", "Official Audio", brackets "[]", or parentheses "()".
+  static String prepareSearchQuery({
+    String? id3Tag,
+    required String filePath,
+  }) {
+    if (id3Tag != null && id3Tag.trim().isNotEmpty) {
+      return sanitize(id3Tag);
+    }
+
+    // Extract filename stem
+    final fileName = filePath.split('/').last;
+    final dotIndex = fileName.lastIndexOf('.');
+    var stem = dotIndex != -1 ? fileName.substring(0, dotIndex) : fileName;
+
+    // Clean modifiers
+    stem = stem.replaceAll(RegExp(r'[\(\[]\s*sub\s*esp\s*[\)\]]', caseSensitive: false), '');
+    stem = stem.replaceAll(RegExp(r'\bsub\s+esp\b', caseSensitive: false), '');
+    
+    stem = stem.replaceAll(RegExp(r'[\(\[]\s*official\s+audio\s*[\)\]]', caseSensitive: false), '');
+    stem = stem.replaceAll(RegExp(r'\bofficial\s+audio\b', caseSensitive: false), '');
+
+    stem = stem.replaceAll(RegExp(r'\(\s*\)'), '');
+    stem = stem.replaceAll(RegExp(r'\[\s*\]'), '');
+
+    return sanitize(stem);
+  }
 }

@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/database/local_database.dart';
+import '../../core/services/album_art_fetcher_service.dart';
 import '../../core/services/audio_scanner.dart';
 import '../theme/app_theme.dart';
 
@@ -89,6 +90,9 @@ class _SettingsViewState extends State<SettingsView> {
         debugPrint('Error scanning directory $dir: $e');
       }
     }
+
+    // Trigger cover art fetching for the newly added tracks in the background
+    AlbumArtFetcherService.instance.processLibrary();
 
     setState(() {
       _isScanning = false;
