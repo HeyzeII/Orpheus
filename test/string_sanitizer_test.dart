@@ -126,6 +126,13 @@ void main() {
         ),
         equals('Another Track'),
       );
+      expect(
+        StringSanitizer.prepareSearchQuery(
+          id3Tag: null,
+          filePath: '/path/to/Nico Borie - In the End en Español_360p-mc-mc.mp3',
+        ),
+        equals('Nico Borie - In the End en Español'),
+      );
     });
   });
 }

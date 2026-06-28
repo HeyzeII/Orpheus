@@ -19,6 +19,9 @@ class StringSanitizer {
     RegExp(r'HD\s*4K|4K\s*HD', caseSensitive: false),
     RegExp(r'\b4K\b', caseSensitive: false),
     RegExp(r'\bHD\b', caseSensitive: false),
+    RegExp(r'(_|-)?\d{3,4}p\b', caseSensitive: false),
+    RegExp(r'-mc', caseSensitive: false),
+    RegExp(r'_mc', caseSensitive: false),
   ];
 
   /// Cleans the input string by removing downloader footprints and cosmetic modisms.
@@ -95,9 +98,14 @@ class StringSanitizer {
   static String prepareSearchQuery({
     String? id3Tag,
     required String filePath,
+    bool fallbackToFilename = true,
   }) {
     if (id3Tag != null && id3Tag.trim().isNotEmpty) {
       return sanitize(id3Tag);
+    }
+
+    if (!fallbackToFilename) {
+      return '';
     }
 
     // Extract filename stem

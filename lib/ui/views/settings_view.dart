@@ -530,6 +530,23 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
+  Future<void> _resetFailedMedia() async {
+    setState(() => _isScanning = true);
+    await LocalDatabase.instance.resetNotFoundMediaFlags();
+    setState(() => _isScanning = false);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Búsquedas fallidas (notFound) reseteadas. Re-intentando en segundo plano...'),
+        backgroundColor: AppTheme.bgSurface,
+      ),
+    );
+
+    // Trigger cover art fetching in the background to retry immediately
+    AlbumArtFetcherService.instance.processLibrary();
+  }
+
   Future<void> _clearLyricsCache() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -694,6 +711,43 @@ class _SettingsViewState extends State<SettingsView> {
                     ),
                     onPressed: _isScanning ? null : _clearLyricsCache,
                     child: const Text('Limpiar Letras', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Container(height: 1, color: AppTheme.divider),
+              const SizedBox(height: 20),
+              // Tool 2: Reset Failed Media
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.refresh_rounded, color: AppTheme.textSecondary, size: 22),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Re-intentar Portadas/Letras Fallidas',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Resetea el estado de los archivos que no se encontraron (notFound) para volver a buscarlos con los metadatos limpios o editados.',
+                          style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, height: 1.4),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppTheme.divider),
+                      foregroundColor: AppTheme.textPrimary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: _isScanning ? null : _resetFailedMedia,
+                    child: const Text('Re-intentar', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                   ),
                 ],
               ),

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
 import '../../core/services/audio_player_service.dart';
+import '../dialogs/edit_metadata_dialog.dart';
 import '../theme/app_theme.dart';
 
 enum LibraryTab { tracks, albums, artists, playlists }
@@ -129,6 +130,16 @@ class _LibraryViewState extends State<LibraryView> {
       playlist.trackIds.remove(track.trackId);
     });
     _refreshData();
+  }
+
+  // Edit track metadata
+  Future<void> _editTrackMetadata(Track track) async {
+    final changed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => EditMetadataDialog(track: track),
+    );
+    if (changed == true) _refreshData();
   }
 
   // Safe Delete Track (moves file to .trash and removes from DB)
@@ -1000,6 +1011,7 @@ class _LibraryViewState extends State<LibraryView> {
           onAddToPlaylist: (p) => _addTrackToPlaylist(track, p),
           onRemoveFromPlaylist: (p) => _removeTrackFromPlaylist(track, p),
           onDelete: () => _deleteTrack(track),
+          onEditMetadata: () => _editTrackMetadata(track),
         );
       },
     );
@@ -1026,6 +1038,7 @@ class _TrackRow extends StatefulWidget {
     required this.onAddToPlaylist,
     required this.onRemoveFromPlaylist,
     required this.onDelete,
+    required this.onEditMetadata,
   });
 
   final Track track;
@@ -1039,6 +1052,7 @@ class _TrackRow extends StatefulWidget {
   final ValueChanged<Playlist> onAddToPlaylist;
   final ValueChanged<Playlist> onRemoveFromPlaylist;
   final VoidCallback onDelete;
+  final VoidCallback onEditMetadata;
 
   @override
   State<_TrackRow> createState() => _TrackRowState();
@@ -1182,7 +1196,9 @@ class _TrackRowState extends State<_TrackRow> {
                         side: const BorderSide(color: AppTheme.divider),
                       ),
                       onSelected: (value) {
-                        if (value == 'delete') {
+                        if (value == 'edit') {
+                          widget.onEditMetadata();
+                        } else if (value == 'delete') {
                           widget.onDelete();
                         } else if (value is Playlist) {
                           if (widget.playlistSource != null &&
@@ -1258,6 +1274,23 @@ class _TrackRowState extends State<_TrackRow> {
                             );
                           }
                         }
+
+                        // Edit metadata option
+                        items.add(const PopupMenuDivider(height: 1));
+                        items.add(
+                          const PopupMenuItem<dynamic>(
+                            value: 'edit',
+                            child: Row(
+                              children: [
+                                Icon(Icons.edit_rounded,
+                                    size: 14, color: AppTheme.textSecondary),
+                                SizedBox(width: 8),
+                                Text('Editar Información',
+                                    style: TextStyle(color: AppTheme.textPrimary, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                        );
 
                         // Always append option to delete track from library
                         items.add(const PopupMenuDivider(height: 1));

@@ -88,12 +88,32 @@ class AlbumArtFetcherService {
     }
   }
 
+  /// Fetches and caches cover art for a single [track] immediately.
+  ///
+  /// Use this when the user has just corrected a track's metadata and wants
+  /// the system to re-identify the artwork right away, without waiting for the
+  /// full [processLibrary] sweep.
+  Future<void> processTrack(Track track) async {
+    await _fetchArtForTrack(track);
+  }
+
   /// Single-track lookup worker using iTunes Search API.
+
   Future<void> _fetchArtForTrack(Track track) async {
-    // 1. Sanitize values using prepareSearchQuery
-    final artist = StringSanitizer.prepareSearchQuery(id3Tag: track.artist, filePath: track.filePath);
-    final album = StringSanitizer.prepareSearchQuery(id3Tag: track.album, filePath: track.filePath);
-    final title = StringSanitizer.prepareSearchQuery(id3Tag: track.title, filePath: track.filePath);
+    // 1. Sanitize values using prepareSearchQuery (preferring custom metadata overrides if present)
+    final rawArtist = track.hasCustomMetadata && track.customMetadata.artist != null
+        ? track.customMetadata.artist
+        : track.artist;
+    final rawAlbum = track.hasCustomMetadata && track.customMetadata.album != null
+        ? track.customMetadata.album
+        : track.album;
+    final rawTitle = track.hasCustomMetadata && track.customMetadata.title != null
+        ? track.customMetadata.title
+        : track.title;
+
+    final artist = StringSanitizer.prepareSearchQuery(id3Tag: rawArtist, filePath: track.filePath, fallbackToFilename: false);
+    final album = StringSanitizer.prepareSearchQuery(id3Tag: rawAlbum, filePath: track.filePath, fallbackToFilename: false);
+    final title = StringSanitizer.prepareSearchQuery(id3Tag: rawTitle, filePath: track.filePath, fallbackToFilename: true);
 
     if (artist.isEmpty && album.isEmpty && title.isEmpty) {
       track.artStatus = FetchStatus.notFound;
@@ -104,14 +124,31 @@ class AlbumArtFetcherService {
     final displayArtist = track.displayArtist;
     final displayTitle = track.displayTitle;
 
-    // Prefer Album + Artist search term, fallback to Artist + Title, fallback to Title
+    // Prefer Album + Artist search term, fallback to Artist + Title, fallback to Title.
+    // Deduplicate to avoid repeating identical or containing sub-strings.
     String searchTerm = '';
+    final lowerArtist = artist.toLowerCase();
+    final lowerAlbum = album.toLowerCase();
+    final lowerTitle = title.toLowerCase();
+
     if (artist.isNotEmpty && album.isNotEmpty) {
-      searchTerm = '$artist $album';
+      if (lowerAlbum.contains(lowerArtist)) {
+        searchTerm = album;
+      } else if (lowerArtist.contains(lowerAlbum)) {
+        searchTerm = artist;
+      } else {
+        searchTerm = '$artist $album';
+      }
     } else if (artist.isNotEmpty && title.isNotEmpty) {
-      searchTerm = '$artist $title';
+      if (lowerTitle.contains(lowerArtist)) {
+        searchTerm = title;
+      } else if (lowerArtist.contains(lowerTitle)) {
+        searchTerm = artist;
+      } else {
+        searchTerm = '$artist $title';
+      }
     } else {
-      searchTerm = title.isNotEmpty ? title : album;
+      searchTerm = title.isNotEmpty ? title : (album.isNotEmpty ? album : artist);
     }
 
     print('[Art Fetcher] Buscando portada para: $displayArtist - $displayTitle (Búsqueda: "$searchTerm")');

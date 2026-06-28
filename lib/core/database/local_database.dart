@@ -230,6 +230,46 @@ class LocalDatabase {
     await saveTrack(track);
   }
 
+  /// Updates the user-editable metadata fields on [track] and persists to Isar.
+  ///
+  /// Writes the new values into [track.customMetadata] so that the original
+  /// file tags are never modified. Empty strings are treated as "no override"
+  /// and stored as `null`.
+  ///
+  /// When [resetMediaFlags] is `true` (typically because the user changed the
+  /// title or artist), the following fields are cleared so that both the
+  /// [AlbumArtFetcherService] and [LyricsService] will re-fetch with the new
+  /// corrected strings:
+  /// - [Track.artStatus] → [FetchStatus.none]
+  /// - [Track.lyricsStatus] → [FetchStatus.none]
+  /// - [Track.syncedLyrics] → `null`
+  Future<void> updateTrackMetadata(
+    Track track, {
+    required String newTitle,
+    required String newArtist,
+    required String newAlbum,
+    bool resetMediaFlags = false,
+  }) async {
+    final trimTitle = newTitle.trim();
+    final trimArtist = newArtist.trim();
+    final trimAlbum = newAlbum.trim();
+
+    track.customMetadata.title = trimTitle.isEmpty ? null : trimTitle;
+    track.customMetadata.artist = trimArtist.isEmpty ? null : trimArtist;
+    track.customMetadata.album = trimAlbum.isEmpty ? null : trimAlbum;
+    track.customMetadata.isEdited = true;
+    track.hasCustomMetadata = true;
+
+    if (resetMediaFlags) {
+      track.artStatus = FetchStatus.none;
+      track.lyricsStatus = FetchStatus.none;
+      track.syncedLyrics = null;
+    }
+
+    await saveTrack(track);
+  }
+
+
   /// Returns recently played tracks (sorted by totalPlays > 0, falling back to all tracks).
   Future<List<Track>> getRecentlyPlayedTracks({int limit = 6}) async {
     final tracks = await getAllTracks();
@@ -469,6 +509,36 @@ class LocalDatabase {
       await _isar.tracks.putAll(tracks);
     });
   }
+
+  /// Resets `artStatus` and `lyricsStatus` back to [FetchStatus.none] ONLY for tracks
+  /// that currently have `artStatus == FetchStatus.notFound` or `lyricsStatus == FetchStatus.notFound`.
+  /// This allows the system to retry lookups for previously failed/unresolved items.
+  Future<void> resetNotFoundMediaFlags() async {
+    if (_isTestUninitialized) return;
+    final tracks = await _isar.tracks.where().findAll();
+    final toUpdate = <Track>[];
+    for (final track in tracks) {
+      bool changed = false;
+      if (track.artStatus == FetchStatus.notFound) {
+        track.artStatus = FetchStatus.none;
+        changed = true;
+      }
+      if (track.lyricsStatus == FetchStatus.notFound) {
+        track.lyricsStatus = FetchStatus.none;
+        track.syncedLyrics = null;
+        changed = true;
+      }
+      if (changed) {
+        toUpdate.add(track);
+      }
+    }
+    if (toUpdate.isNotEmpty) {
+      await _isar.writeTxn(() async {
+        await _isar.tracks.putAll(toUpdate);
+      });
+    }
+  }
+
 
   // ══════════════════════════════════════════════════════════════════════════
   // PLAYBACK STATE

@@ -179,5 +179,54 @@ void main() {
       expect(updated, isNotNull);
       expect(updated!.artStatus, equals(FetchStatus.notFound));
     });
+
+    test('Query term is deduplicated when artist and title are identical', () async {
+      final db = FakeLocalDatabase();
+      final track = Track()
+        ..trackId = 'track_dup'
+        ..filePath = '/music/Imagine Dragons - Imagine Dragons.mp3'
+        ..title = 'Imagine Dragons'
+        ..artist = 'Imagine Dragons'
+        ..fileType = FileType.mp3;
+
+      await db.saveTrack(track);
+
+      String? requestedTerm;
+      final client = FakeHttpClient((request) async {
+        requestedTerm = request.url.queryParameters['term'];
+        return http.Response(jsonEncode({'results': []}), 200);
+      });
+
+      final fetcher = AlbumArtFetcherService.internal(db: db, client: client);
+      await fetcher.processLibrary();
+
+      expect(requestedTerm, equals('Imagine Dragons'));
+    });
+
+    test('Uses custom metadata overrides instead of falling back to raw fields/path', () async {
+      final db = FakeLocalDatabase();
+      final track = Track()
+        ..trackId = 'track_custom'
+        ..filePath = '/music/Como sonaria LINKIN PARK en Espanol Nico Borie_360p-mc-mc.mp3'
+        ..fileType = FileType.mp3;
+
+      track.hasCustomMetadata = true;
+      track.customMetadata.title = 'In the End en Español';
+      track.customMetadata.artist = 'Nico Borie';
+
+      await db.saveTrack(track);
+
+      String? requestedTerm;
+      final client = FakeHttpClient((request) async {
+        requestedTerm = request.url.queryParameters['term'];
+        return http.Response(jsonEncode({'results': []}), 200);
+      });
+
+      final fetcher = AlbumArtFetcherService.internal(db: db, client: client);
+      await fetcher.processLibrary();
+
+      // Should search for "Nico Borie In the End en Español" instead of "Como sonaria..." filename fallback
+      expect(requestedTerm, equals('Nico Borie In the End en Español'));
+    });
   });
 }
