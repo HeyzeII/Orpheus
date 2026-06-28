@@ -5,10 +5,25 @@ import 'dart:math';
 import 'package:media_kit/media_kit.dart' hide Track;
 
 import '../database/local_database.dart';
+import '../models/playback_state.dart';
 import '../models/track.dart';
 
 /// Singleton service managing the native audio player engine, play queue,
-/// and automated playback statistics tracking.
+/// automated playback statistics tracking, and **persistent playback state**.
+///
+/// ## Playback-state persistence strategy
+///
+/// We deliberately avoid timers or periodic writes to keep disk I/O minimal:
+///
+/// 1. **On pause** — the `playing` stream emits `false`. We capture the exact
+///    position at that instant and write to Isar once.
+/// 2. **On track change** — before opening a new file we write a snapshot with
+///    the new [Track.trackId] and `positionMs = 0`.
+/// 3. **On app lifecycle change** — [MainShell] calls [savePlaybackStateNow]
+///    when the app transitions to `inactive` or `paused`.
+/// 4. **On hydration** — [hydratePlaybackState] is called once from `main()`
+///    after the DB is ready. It restores the queue, seeks to the saved
+///    position, and leaves the player in the **paused** state.
 class AudioPlayerService {
   // ── Singleton Boilerplate ──────────────────────────────────────────────────
 
@@ -34,6 +49,10 @@ class AudioPlayerService {
 
   int _consecutiveErrors = 0;
 
+  /// Suppresses the "pause → save" listener during the hydration phase so we
+  /// don't overwrite the restored state with a position-0 snapshot.
+  bool _hydrating = false;
+
   // ── Stream Controllers ─────────────────────────────────────────────────────
 
   final _currentTrackController = StreamController<Track?>.broadcast();
@@ -54,9 +73,15 @@ class AudioPlayerService {
     }
     _player = Player();
 
-    // Pipe native media_kit streams to our broadcast streams
+    // ── Pipe native media_kit streams to our broadcast streams ────────────────
+
     _subscriptions.add(_player.stream.playing.listen((playing) {
       _isPlayingController.add(playing);
+
+      // 🔑 Event-based save: capture position the moment playback pauses.
+      if (!playing && !_hydrating) {
+        _saveCurrentPlaybackState();
+      }
     }));
 
     _subscriptions.add(_player.stream.position.listen((pos) {
@@ -71,7 +96,7 @@ class AudioPlayerService {
       _volumeController.add(vol / 100.0);
     }));
 
-    // Auto-advance and statistics logging on completion
+    // Auto-advance and statistics logging on track completion
     _subscriptions.add(_player.stream.completed.listen((completed) async {
       if (completed) {
         final finishedTrack = currentTrack;
@@ -84,7 +109,6 @@ class AudioPlayerService {
         }
 
         if (_repeat) {
-          // Repeat current track (repeat-one style)
           await _player.seek(Duration.zero);
           await _player.play();
         } else {
@@ -157,6 +181,9 @@ class AudioPlayerService {
     if (startIndex < 0 || startIndex >= _queue.length) {
       startIndex = 0;
     }
+
+    // 🔑 Save state before opening the new track (position resets to 0).
+    await _saveCurrentPlaybackState(overrideTrackId: _queue[startIndex].trackId, overridePositionMs: 0);
     await _playIndex(startIndex);
   }
 
@@ -254,6 +281,105 @@ class AudioPlayerService {
     }
   }
 
+  // ── Persistence ────────────────────────────────────────────────────────────
+
+  /// Captures and persists the current playback state to Isar.
+  ///
+  /// All parameters are optional overrides used internally (e.g. when
+  /// switching tracks we know the next [trackId] before the player opens it).
+  Future<void> _saveCurrentPlaybackState({
+    String? overrideTrackId,
+    int? overridePositionMs,
+  }) async {
+    try {
+      final trackId = overrideTrackId ?? currentTrack?.trackId;
+      if (trackId == null) return; // Nothing to save yet.
+
+      final posMs = overridePositionMs ?? position.inMilliseconds;
+      final queueIds = _queue.map((t) => t.trackId).toList();
+
+      final state = PlaybackState()
+        ..trackId = trackId
+        ..positionMs = posMs
+        ..queueTrackIds = queueIds;
+
+      await _db.savePlaybackState(state);
+    } catch (_) {
+      // Non-fatal: persistence failures should never interrupt playback.
+    }
+  }
+
+  /// Public entry point called by [MainShell] on lifecycle transitions
+  /// (inactive / paused) to capture an immediate snapshot before the OS
+  /// may suspend the process.
+  Future<void> savePlaybackStateNow() => _saveCurrentPlaybackState();
+
+  /// Restores the last saved playback state on app startup.
+  ///
+  /// Call this **after** [LocalDatabase.initialize] and **before** [runApp].
+  /// The method:
+  /// 1. Reads the persisted [PlaybackState] from Isar.
+  /// 2. Looks up every [Track] in [queueTrackIds] from the library.
+  /// 3. Loads the queue without auto-playing (the `_hydrating` flag prevents
+  ///    the "pause → save" listener from immediately overwriting the state).
+  /// 4. Seeks to [positionMs] and leaves the player paused.
+  Future<void> hydratePlaybackState() async {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
+
+    try {
+      final saved = await _db.getPlaybackState();
+      if (saved == null || saved.trackId == null) return;
+
+      // Resolve Track objects from their stable trackIds.
+      final resolvedTracks = <Track>[];
+      for (final id in saved.queueTrackIds) {
+        final track = await _db.getTrackByTrackId(id);
+        if (track != null) resolvedTracks.add(track);
+      }
+      if (resolvedTracks.isEmpty) return;
+
+      // Find the index of the track that was playing.
+      final startIndex = resolvedTracks.indexWhere(
+        (t) => t.trackId == saved.trackId,
+      );
+      if (startIndex == -1) return;
+
+      // Populate the in-memory queue without triggering persistence callbacks.
+      _hydrating = true;
+      _queue
+        ..clear()
+        ..addAll(resolvedTracks);
+      _currentIndex = startIndex;
+
+      final track = _queue[_currentIndex];
+      final file = File(track.filePath);
+      if (!file.existsSync()) {
+        _hydrating = false;
+        return;
+      }
+
+      // Open the file and pause immediately after the engine is ready.
+      await _player.open(
+        Media(Uri.file(track.filePath).toString()),
+        play: false,
+      );
+
+      // Give media_kit's native engine a moment to load metadata/duration
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // Seek to the saved position once the duration becomes available.
+      if (saved.positionMs > 0) {
+        await _player.seek(Duration(milliseconds: saved.positionMs));
+      }
+
+      _hydrating = false;
+      _notifyState();
+    } catch (_) {
+      _hydrating = false;
+      // Non-fatal: if hydration fails the app starts fresh.
+    }
+  }
+
   // ── Helper Methods ─────────────────────────────────────────────────────────
 
   Future<void> _playIndex(int index) async {
@@ -286,13 +412,11 @@ class AudioPlayerService {
     if (!file.existsSync()) {
       _consecutiveErrors++;
       if (_consecutiveErrors >= _queue.length) {
-        // Prevent infinite loop if all files in the playlist are missing
         _consecutiveErrors = 0;
         await stop();
         return;
       }
 
-      // Skip this missing file and trigger next automatically
       _currentTrackController.add(null);
       Future.delayed(const Duration(milliseconds: 100), () {
         next();
@@ -303,10 +427,14 @@ class AudioPlayerService {
     _consecutiveErrors = 0;
 
     try {
+      // 🔑 Save state before opening (new track, position = 0).
+      await _saveCurrentPlaybackState(
+        overrideTrackId: track.trackId,
+        overridePositionMs: 0,
+      );
       await _player.open(Media(Uri.file(track.filePath).toString()), play: true);
       _notifyState();
     } catch (e) {
-      // Jump to next file if playback fails to initialize
       Future.delayed(const Duration(milliseconds: 100), () {
         next();
       });

@@ -8,6 +8,7 @@ library;
 
 export 'app_config.dart';
 export 'custom_metadata.dart';
+export 'playback_state.dart';
 export 'playlist.dart';
 export 'track.dart';
 export 'track_stats.dart';

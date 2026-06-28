@@ -63,6 +63,7 @@ class _TrackInfo extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<Track?>(
       stream: AudioPlayerService.instance.currentTrackStream,
+      initialData: AudioPlayerService.instance.currentTrack,
       builder: (context, snap) {
         final track = snap.data;
 

@@ -3,6 +3,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:metadata_god/metadata_god.dart';
 
 import 'core/database/local_database.dart';
+import 'core/services/audio_player_service.dart';
 import 'ui/layouts/main_shell.dart';
 import 'ui/theme/app_theme.dart';
 
@@ -18,6 +19,8 @@ Future<void> main() async {
   MediaKit.ensureInitialized();
   await MetadataGod.initialize();
   await LocalDatabase.instance.initialize();
+  // Restore last playback queue + position before building the widget tree.
+  await AudioPlayerService.instance.hydratePlaybackState();
 
   runApp(const OrpheusApp());
 }

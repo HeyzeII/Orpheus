@@ -24,11 +24,37 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   NavDestination _selected = NavDestination.home;
   bool _showLyrics = false;
 
   void _toggleLyrics() => setState(() => _showLyrics = !_showLyrics);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Called by Flutter when the app lifecycle changes.
+  ///
+  /// On [AppLifecycleState.inactive] or [AppLifecycleState.paused] we fire
+  /// an immediate state snapshot so that the position is captured even if
+  /// the OS suspends the process milliseconds later (e.g. Command+Q on macOS,
+  /// home button on Android, or screen lock).
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      AudioPlayerService.instance.savePlaybackStateNow();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,6 +97,8 @@ class _MainShellState extends State<MainShell> {
                           child: StreamBuilder<Track?>(
                             stream: AudioPlayerService
                                 .instance.currentTrackStream,
+                            initialData: AudioPlayerService
+                                .instance.currentTrack,
                             builder: (context, snap) {
                               final track = snap.data;
                               if (track == null) {

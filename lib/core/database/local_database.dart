@@ -4,6 +4,7 @@ import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/app_config.dart';
+import '../models/playback_state.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 
@@ -50,7 +51,7 @@ class LocalDatabase {
     final Directory supportDir = await getApplicationSupportDirectory();
 
     _isar = await Isar.open(
-      [TrackSchema, PlaylistSchema, AppConfigSchema],
+      [TrackSchema, PlaylistSchema, AppConfigSchema, PlaybackStateSchema],
       directory: supportDir.path,
       name: 'orpheus_db',
       inspector: !_isRelease,
@@ -451,6 +452,7 @@ class LocalDatabase {
       await _isar.tracks.clear();
       await _isar.playlists.clear();
       await _isar.appConfigs.clear();
+      await _isar.playbackStates.clear();
     });
     await _seedDefaultData();
   }
@@ -465,6 +467,28 @@ class LocalDatabase {
       }
       await _isar.tracks.putAll(tracks);
     });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PLAYBACK STATE
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Persists (upserts) the single [PlaybackState] document (id == 1).
+  ///
+  /// Called by [AudioPlayerService] on pause events and lifecycle transitions.
+  /// This is an efficient upsert — no reads needed before writing.
+  Future<void> savePlaybackState(PlaybackState state) async {
+    if (_isTestUninitialized) return;
+    state.id = 1; // guard: always the singleton document.
+    await _isar.writeTxn(() async {
+      await _isar.playbackStates.put(state);
+    });
+  }
+
+  /// Returns the persisted [PlaybackState], or `null` if none exists yet.
+  Future<PlaybackState?> getPlaybackState() async {
+    if (_isTestUninitialized) return null;
+    return _isar.playbackStates.get(1);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
