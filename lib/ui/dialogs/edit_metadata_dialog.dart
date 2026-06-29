@@ -1,6 +1,8 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart' as fp;
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/database/local_database.dart';
 import '../../core/models/track.dart';
@@ -39,6 +41,7 @@ class _EditMetadataDialogState extends State<EditMetadataDialog> {
 
   bool _reidentify = false;
   bool _isSaving = false;
+  String? _selectedNewCoverPath;
 
   @override
   void initState() {
@@ -58,23 +61,55 @@ class _EditMetadataDialogState extends State<EditMetadataDialog> {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  /// Returns true if the user has changed any of the text fields.
+  /// Returns true if the user has changed any of the text fields or selected a new cover.
   bool get _hasChanges =>
       _titleCtrl.text.trim() != widget.track.displayTitle ||
       _artistCtrl.text.trim() != widget.track.displayArtist ||
-      _albumCtrl.text.trim() != widget.track.displayAlbum;
+      _albumCtrl.text.trim() != widget.track.displayAlbum ||
+      _selectedNewCoverPath != null;
+
+  Future<void> _pickCoverImage() async {
+    final result = await fp.FilePicker.platform.pickFiles(
+      type: fp.FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png'],
+    );
+
+    if (result != null && result.files.single.path != null) {
+      setState(() {
+        _selectedNewCoverPath = result.files.single.path;
+      });
+    }
+  }
 
   Future<void> _save() async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
 
     final track = widget.track;
+    String? persistentCoverPath;
+
+    if (_selectedNewCoverPath != null) {
+      final tempFile = File(_selectedNewCoverPath!);
+      if (tempFile.existsSync()) {
+        final supportDir = await getApplicationSupportDirectory();
+        final coverDir = Directory('${supportDir.path}/cover_art');
+        if (!coverDir.existsSync()) {
+          coverDir.createSync(recursive: true);
+        }
+
+        final ext = _selectedNewCoverPath!.toLowerCase().endsWith('.png') ? '.png' : '.jpg';
+        final destinationFile = File('${coverDir.path}/custom_${track.trackId}$ext');
+        await tempFile.copy(destinationFile.path);
+        persistentCoverPath = destinationFile.path;
+      }
+    }
 
     await LocalDatabase.instance.updateTrackMetadata(
       track,
       newTitle: _titleCtrl.text,
       newArtist: _artistCtrl.text,
       newAlbum: _albumCtrl.text,
+      newCustomCoverPath: persistentCoverPath,
       resetMediaFlags: _reidentify,
     );
 
@@ -172,26 +207,54 @@ class _EditMetadataDialogState extends State<EditMetadataDialog> {
   }
 
   Widget _buildHeader(String? coverPath, Track track) {
+    final effectiveCoverPath = _selectedNewCoverPath ?? coverPath;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
       child: Row(
         children: [
-          // Miniatura de portada
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              width: 52,
-              height: 52,
-              child: coverPath != null
-                  ? Image.file(File(coverPath), fit: BoxFit.cover)
-                  : Container(
-                      color: AppTheme.bgHover,
-                      child: const Icon(
-                        Icons.music_note_rounded,
-                        color: AppTheme.textHint,
-                        size: 28,
+          // Miniatura de portada interactiva
+          Tooltip(
+            message: 'Cambiar carátula personalizada',
+            child: GestureDetector(
+              key: const ValueKey('pick-cover-btn'),
+              onTap: _isSaving ? null : _pickCoverImage,
+              child: Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: effectiveCoverPath != null
+                          ? Image.file(File(effectiveCoverPath), fit: BoxFit.cover)
+                          : Container(
+                              color: AppTheme.bgHover,
+                              child: const Icon(
+                                Icons.music_note_rounded,
+                                color: AppTheme.textHint,
+                                size: 28,
+                              ),
+                            ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withAlpha(110),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.camera_alt_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
                       ),
                     ),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(width: 16),

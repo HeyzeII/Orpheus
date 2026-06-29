@@ -248,6 +248,7 @@ class LocalDatabase {
     required String newTitle,
     required String newArtist,
     required String newAlbum,
+    String? newCustomCoverPath,
     bool resetMediaFlags = false,
   }) async {
     final trimTitle = newTitle.trim();
@@ -264,6 +265,11 @@ class LocalDatabase {
       track.artStatus = FetchStatus.none;
       track.lyricsStatus = FetchStatus.none;
       track.syncedLyrics = null;
+    }
+
+    if (newCustomCoverPath != null && newCustomCoverPath.isNotEmpty) {
+      track.customMetadata.customCoverPath = newCustomCoverPath;
+      track.artStatus = FetchStatus.custom;
     }
 
     await saveTrack(track);

@@ -150,5 +150,19 @@ void main() {
       expect(track2.lyricsStatus, FetchStatus.success);
       expect(track2.syncedLyrics, 'lyrics content');
     });
+
+    test('setting newCustomCoverPath sets artStatus to FetchStatus.custom', () async {
+      await db.updateTrackMetadata(
+        track,
+        newTitle: 'Title',
+        newArtist: 'Artist',
+        newAlbum: 'Album',
+        newCustomCoverPath: '/custom/cover.jpg',
+        resetMediaFlags: true,
+      );
+
+      expect(track.customMetadata.customCoverPath, '/custom/cover.jpg');
+      expect(track.artStatus, FetchStatus.custom);
+    });
   });
 }

@@ -9,7 +9,7 @@ part 'track.g.dart';
 enum FileType { mp3, flac, mp4, m4a, wav, unknown }
 
 /// Fetch status of external metadata.
-enum FetchStatus { none, success, notFound }
+enum FetchStatus { none, success, notFound, custom }
 
 /// Isar Collection representing a single audio or video file on disk.
 ///

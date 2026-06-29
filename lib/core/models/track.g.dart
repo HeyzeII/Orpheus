@@ -356,11 +356,13 @@ const _TrackartStatusEnumValueMap = {
   'none': 0,
   'success': 1,
   'notFound': 2,
+  'custom': 3,
 };
 const _TrackartStatusValueEnumMap = {
   0: FetchStatus.none,
   1: FetchStatus.success,
   2: FetchStatus.notFound,
+  3: FetchStatus.custom,
 };
 const _TrackfileTypeEnumValueMap = {
   'mp3': 0,
@@ -382,11 +384,13 @@ const _TracklyricsStatusEnumValueMap = {
   'none': 0,
   'success': 1,
   'notFound': 2,
+  'custom': 3,
 };
 const _TracklyricsStatusValueEnumMap = {
   0: FetchStatus.none,
   1: FetchStatus.success,
   2: FetchStatus.notFound,
+  3: FetchStatus.custom,
 };
 
 Id _trackGetId(Track object) {

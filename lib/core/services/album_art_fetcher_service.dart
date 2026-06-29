@@ -100,6 +100,10 @@ class AlbumArtFetcherService {
   /// Single-track lookup worker using iTunes Search API.
 
   Future<void> _fetchArtForTrack(Track track) async {
+    if (track.artStatus == FetchStatus.custom) {
+      return;
+    }
+
     // 1. Sanitize values using prepareSearchQuery (preferring custom metadata overrides if present)
     final rawArtist = track.hasCustomMetadata && track.customMetadata.artist != null
         ? track.customMetadata.artist
