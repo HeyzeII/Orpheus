@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../core/database/local_database.dart';
@@ -36,6 +37,7 @@ class _LibraryViewState extends State<LibraryView> {
   String? _selectedAlbum;
   String? _selectedArtist;
   Playlist? _selectedPlaylist;
+  Color _playlistColor = const Color(0xFF1E1E1E);
 
   StreamSubscription<void>? _tracksSubscription;
 
@@ -75,13 +77,84 @@ class _LibraryViewState extends State<LibraryView> {
       _playlists = playlists;
       _likedTrackIds = likedIds;
       _isLoading = false;
+
+      if (_selectedPlaylist != null) {
+        final updated = playlists.firstWhere(
+          (p) => p.playlistId == _selectedPlaylist!.playlistId,
+          orElse: () => _selectedPlaylist!,
+        );
+        _selectedPlaylist = updated;
+        _updatePlaylistColor(updated);
+      }
     });
+  }
+
+  void _selectPlaylist(Playlist playlist) {
+    setState(() {
+      _selectedPlaylist = playlist;
+    });
+    _updatePlaylistColor(playlist);
+  }
+
+  Future<void> _updatePlaylistColor(Playlist playlist) async {
+    Color extracted = const Color(0xFF1E1E1E);
+    final playlistTracks = playlist.trackIds
+        .map((id) => _allTracks.firstWhere((t) => t.trackId == id, orElse: () => Track()))
+        .where((t) => t.trackId.isNotEmpty)
+        .toList();
+
+    if (playlistTracks.isNotEmpty) {
+      final firstTrack = playlistTracks.first;
+      final coverPath = firstTrack.customMetadata.customCoverPath;
+      if (coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync()) {
+        extracted = await _extractAverageColor(coverPath);
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _playlistColor = extracted;
+      });
+    }
+  }
+
+  Future<Color> _extractAverageColor(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (!file.existsSync()) return const Color(0xFF1E1E1E);
+      final bytes = await file.readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes, targetWidth: 10, targetHeight: 10);
+      final frameInfo = await codec.getNextFrame();
+      final uiImage = frameInfo.image;
+      final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (byteData == null) return const Color(0xFF1E1E1E);
+
+      int r = 0, g = 0, b = 0;
+      int count = 0;
+      for (int i = 0; i < byteData.lengthInBytes; i += 4) {
+        r += byteData.getUint8(i);
+        g += byteData.getUint8(i + 1);
+        b += byteData.getUint8(i + 2);
+        count++;
+      }
+      if (count == 0) return const Color(0xFF1E1E1E);
+      return Color.fromARGB(255, r ~/ count, g ~/ count, b ~/ count);
+    } catch (e) {
+      print('Error extracting color: $e');
+      return const Color(0xFF1E1E1E);
+    }
   }
 
   // Playback integration
   Future<void> _playTracks(List<Track> tracks, int startIndex) async {
     if (tracks.isEmpty) return;
     await AudioPlayerService.instance.loadPlaylist(tracks, initialIndex: startIndex);
+  }
+
+  Future<void> _shufflePlayTracks(List<Track> tracks) async {
+    if (tracks.isEmpty) return;
+    final shuffled = List<Track>.from(tracks)..shuffle();
+    await AudioPlayerService.instance.loadPlaylist(shuffled, initialIndex: 0);
   }
 
   // Favorite toggle
@@ -616,12 +689,11 @@ class _LibraryViewState extends State<LibraryView> {
                   itemCount: _playlists.length,
                   itemBuilder: (context, idx) {
                     final playlist = _playlists[idx];
-                    final isLiked = playlist.playlistId == '__liked__';
 
                     return MouseRegion(
                       cursor: SystemMouseCursors.click,
                       child: GestureDetector(
-                        onTap: () => setState(() => _selectedPlaylist = playlist),
+                        onTap: () => _selectPlaylist(playlist),
                         child: Container(
                           decoration: BoxDecoration(
                             color: AppTheme.bgSurface,
@@ -637,17 +709,11 @@ class _LibraryViewState extends State<LibraryView> {
                                   borderRadius: BorderRadius.circular(6),
                                   child: AspectRatio(
                                     aspectRatio: 1,
-                                    child: isLiked
-                                        ? Container(
-                                            color: AppTheme.bgHover,
-                                            child: const Icon(Icons.favorite_rounded,
-                                                color: Colors.redAccent, size: 48),
-                                          )
-                                        : Container(
-                                            color: AppTheme.bgHover,
-                                            child: const Icon(Icons.playlist_play_rounded,
-                                                color: AppTheme.accent, size: 48),
-                                          ),
+                                    child: PlaylistCover(
+                                      playlist: playlist,
+                                      allTracks: _allTracks,
+                                      size: 150,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -835,89 +901,153 @@ class _LibraryViewState extends State<LibraryView> {
 
     final isLiked = playlist.playlistId == '__liked__';
 
-    return Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                onPressed: () => setState(() => _selectedPlaylist = null),
+    return Stack(
+      children: [
+        // 🔮 Atmospheric Background Gradient
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  _playlistColor.withOpacity(0.22),
+                  const Color(0xFF141414),
+                ],
+                stops: const [0.0, 0.75],
               ),
-              const SizedBox(width: 8),
-              const Text('Volver a Playlists', style: TextStyle(color: AppTheme.textSecondary)),
-            ],
+            ),
           ),
-          const SizedBox(height: 24),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+        ),
+        // 🔮 Glassmorphic Radial Light Source
+        Positioned(
+          top: -80,
+          left: -80,
+          child: Container(
+            width: 320,
+            height: 320,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: _playlistColor.withOpacity(0.12),
+            ),
+            child: BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 70, sigmaY: 70),
+              child: Container(color: Colors.transparent),
+            ),
+          ),
+        ),
+        // 🔮 Main Content Overlay
+        Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 160,
-                  height: 160,
-                  child: Container(
-                    color: AppTheme.bgSurface,
-                    child: Icon(
-                      isLiked ? Icons.favorite_rounded : Icons.playlist_play_rounded,
-                      color: isLiked ? Colors.redAccent : AppTheme.accent,
-                      size: 64,
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
+                    onPressed: () => setState(() => _selectedPlaylist = null),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text('Volver a Playlists', style: TextStyle(color: AppTheme.textSecondary)),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  // Playlist Cover Widget
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: 180,
+                      height: 180,
+                      child: PlaylistCover(
+                        playlist: playlist,
+                        allTracks: _allTracks,
+                        size: 180,
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 28),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('PLAYLIST',
+                            style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textSecondary,
+                                letterSpacing: 1.5)),
+                        const SizedBox(height: 6),
+                        Text(
+                          playlist.name,
+                          style: const TextStyle(
+                              fontSize: 36, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                        ),
+                        if (playlist.description != null && playlist.description!.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            playlist.description!,
+                            style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        Text(
+                          '${playlistTracks.length} canciones',
+                          style: const TextStyle(fontSize: 12, color: AppTheme.textHint),
+                        ),
+                        const SizedBox(height: 16),
+                        // Action buttons row (Shuffle Play / delete)
+                        Row(
+                          children: [
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.accent,
+                                foregroundColor: AppTheme.bgDeep,
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                elevation: 0,
+                              ),
+                              onPressed: () => _shufflePlayTracks(playlistTracks),
+                              icon: const Icon(Icons.shuffle_rounded, size: 16, color: AppTheme.bgDeep),
+                              label: const Text(
+                                'Reproducción Aleatoria',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                            ),
+                            if (!isLiked) ...[
+                              const SizedBox(width: 16),
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.redAccent,
+                                  side: const BorderSide(color: Colors.redAccent, width: 1),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                ),
+                                onPressed: () => _deletePlaylist(playlist),
+                                icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                                label: const Text('Eliminar', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 24),
+              const SizedBox(height: 32),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('PLAYLIST',
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textSecondary,
-                            letterSpacing: 1.5)),
-                    const SizedBox(height: 6),
-                    Text(
-                      playlist.name,
-                      style: const TextStyle(
-                          fontSize: 32, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                    ),
-                    if (playlist.description != null && playlist.description!.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        playlist.description!,
-                        style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Text(
-                      '${playlistTracks.length} canciones',
-                      style: const TextStyle(fontSize: 12, color: AppTheme.textHint),
-                    ),
-                  ],
-                ),
+                child: playlistTracks.isEmpty
+                    ? _buildEmptyState('No hay canciones en esta playlist.')
+                    : _buildTrackTable(playlistTracks, playlistSource: playlist),
               ),
-              if (!isLiked) ...[
-                IconButton(
-                  icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
-                  onPressed: () => _deletePlaylist(playlist),
-                  tooltip: 'Eliminar Playlist',
-                ),
-              ],
             ],
           ),
-          const SizedBox(height: 32),
-          Expanded(
-            child: playlistTracks.isEmpty
-                ? _buildEmptyState('No hay canciones en esta playlist.')
-                : _buildTrackTable(playlistTracks, playlistSource: playlist),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -989,7 +1119,7 @@ class _LibraryViewState extends State<LibraryView> {
                 Expanded(flex: 2, child: Text('ARTISTA', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
                 Expanded(flex: 2, child: Text('ÁLBUM', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
                 SizedBox(width: 70, child: Align(alignment: Alignment.centerRight, child: Text('DURACIÓN', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold)))),
-                SizedBox(width: 90), // actions column
+                SizedBox(width: 110), // actions column
               ],
             ),
           );
@@ -1165,10 +1295,25 @@ class _TrackRowState extends State<_TrackRow> {
               ),
               // Actions
               SizedBox(
-                width: 90,
+                width: 110,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
+                    // Quick remove from playlist button (shows on hover when in a custom playlist)
+                    if (_hovered && widget.playlistSource != null && !widget.playlistSource!.isDefault) ...[
+                      IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        icon: const Icon(
+                          Icons.remove_circle_outline_rounded,
+                          size: 16,
+                          color: Colors.redAccent,
+                        ),
+                        onPressed: () => widget.onRemoveFromPlaylist(widget.playlistSource!),
+                        tooltip: 'Quitar de la playlist',
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     // Like button (shows on hover or if liked)
                     if (_hovered || widget.isLiked) ...[
                       IconButton(
@@ -1317,6 +1462,119 @@ class _TrackRowState extends State<_TrackRow> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class PlaylistCover extends StatelessWidget {
+  final Playlist playlist;
+  final List<Track> allTracks;
+  final double size;
+
+  const PlaylistCover({
+    super.key,
+    required this.playlist,
+    required this.allTracks,
+    required this.size,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isLiked = playlist.playlistId == '__liked__';
+
+    // Resolve tracks in order
+    final playlistTracks = playlist.trackIds
+        .map((id) => allTracks.firstWhere((t) => t.trackId == id, orElse: () => Track()))
+        .where((t) => t.trackId.isNotEmpty)
+        .toList();
+
+    if (playlistTracks.isEmpty) {
+      // 0 songs: a minimalist dark vinyl/disc placeholder with music icon or heart
+      return _buildVinylPlaceholder(isLiked);
+    } else if (playlistTracks.length < 4) {
+      // 1 to 3 songs: first song cover
+      final firstTrack = playlistTracks.first;
+      final coverPath = firstTrack.customMetadata.customCoverPath;
+      if (coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync()) {
+        return Image.file(
+          File(coverPath),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+        );
+      } else {
+        return _buildTrackPlaceholder(isLiked);
+      }
+    } else {
+      // 4 or more songs: 2x2 grid collage of the first 4 tracks
+      final first4 = playlistTracks.take(4).toList();
+      return SizedBox(
+        width: size,
+        height: size,
+        child: GridView.count(
+          crossAxisCount: 2,
+          padding: EdgeInsets.zero,
+          physics: const NeverScrollableScrollPhysics(),
+          children: first4.map((track) {
+            final coverPath = track.customMetadata.customCoverPath;
+            if (coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync()) {
+              return Image.file(
+                File(coverPath),
+                fit: BoxFit.cover,
+              );
+            } else {
+              return _buildTrackPlaceholder(false, iconSize: size / 6);
+            }
+          }).toList(),
+        ),
+      );
+    }
+  }
+
+  Widget _buildVinylPlaceholder(bool isLiked) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        color: Color(0xFF0F0F0F),
+        gradient: RadialGradient(
+          colors: [
+            Color(0xFF222222),
+            Color(0xFF0C0C0C),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Container(
+          width: size * 0.8,
+          height: size * 0.8,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.transparent,
+            border: Border.all(color: Colors.white10, width: 1),
+          ),
+          child: Center(
+            child: Icon(
+              isLiked ? Icons.favorite_rounded : Icons.music_note_rounded,
+              color: isLiked ? Colors.redAccent.withAlpha(180) : AppTheme.accent.withAlpha(160),
+              size: size * 0.3,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTrackPlaceholder(bool isLiked, {double? iconSize}) {
+    return Container(
+      color: AppTheme.bgHover,
+      child: Center(
+        child: Icon(
+          isLiked ? Icons.favorite_rounded : Icons.music_note_rounded,
+          color: isLiked ? Colors.redAccent.withAlpha(140) : AppTheme.textHint,
+          size: iconSize ?? (size * 0.3),
         ),
       ),
     );
