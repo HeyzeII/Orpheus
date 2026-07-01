@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../../core/models/track.dart';
+import '../../core/database/local_database.dart';
+import '../../core/models/models.dart';
 import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
 
@@ -106,6 +108,7 @@ class _TrackInfo extends StatelessWidget {
                 ],
               ),
             ),
+            if (track != null) _TrackActions(track: track),
           ],
         );
       },
@@ -144,6 +147,167 @@ class _CoverArt extends StatelessWidget {
           size: 22,
         ),
       );
+}
+
+class _TrackActions extends StatefulWidget {
+  const _TrackActions({required this.track});
+
+  final Track track;
+
+  @override
+  State<_TrackActions> createState() => _TrackActionsState();
+}
+
+class _TrackActionsState extends State<_TrackActions> {
+  List<Playlist> _playlists = [];
+  late StreamSubscription _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchPlaylists();
+    _sub = LocalDatabase.instance.watchPlaylists().listen((_) => _fetchPlaylists());
+  }
+
+  @override
+  void dispose() {
+    _sub.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetchPlaylists() async {
+    final list = await LocalDatabase.instance.getAllPlaylists();
+    if (mounted) setState(() => _playlists = list);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final customPlaylists = _playlists.where((p) => !p.isDefault).toList();
+    final likedPlaylist = _playlists.firstWhere(
+      (p) => p.playlistId == '__liked__',
+      orElse: () => Playlist()..playlistId = '__liked__',
+    );
+    final isLiked = likedPlaylist.trackIds.contains(widget.track.trackId);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: Icon(
+            isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+            size: 18,
+            color: isLiked ? Colors.redAccent : AppTheme.textSecondary,
+          ),
+          onPressed: () async {
+            final db = LocalDatabase.instance;
+            if (isLiked) {
+              await db.removeTrackFromPlaylist(playlist: likedPlaylist, trackId: widget.track.trackId);
+            } else {
+              await db.addTrackToPlaylist(playlist: likedPlaylist, trackId: widget.track.trackId);
+            }
+          },
+        ),
+        PopupMenuButton<dynamic>(
+              icon: const Icon(Icons.more_vert_rounded, size: 18, color: AppTheme.textSecondary),
+              color: AppTheme.bgSurface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: const BorderSide(color: AppTheme.divider),
+              ),
+              onSelected: (value) {
+                if (value == 'play_next') {
+                  AudioPlayerService.instance.playNext(widget.track);
+                } else if (value == 'add_to_queue') {
+                  AudioPlayerService.instance.addToQueue(widget.track);
+                } else if (value is Playlist) {
+                  LocalDatabase.instance.addTrackToPlaylist(
+                    playlist: value,
+                    trackId: widget.track.trackId,
+                  ).then((_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('"${widget.track.displayTitle}" añadido a "${value.name}"'),
+                          backgroundColor: AppTheme.bgSurface,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  });
+                }
+              },
+              itemBuilder: (context) {
+                final items = <PopupMenuEntry<dynamic>>[];
+
+                items.add(
+                  const PopupMenuItem<dynamic>(
+                    value: 'play_next',
+                    child: Row(
+                      children: [
+                        Icon(Icons.playlist_play_rounded, size: 14, color: AppTheme.textPrimary),
+                        SizedBox(width: 8),
+                        Text('Reproducir siguiente', style: TextStyle(color: AppTheme.textPrimary, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                );
+                items.add(
+                  const PopupMenuItem<dynamic>(
+                    value: 'add_to_queue',
+                    child: Row(
+                      children: [
+                        Icon(Icons.queue_music_rounded, size: 14, color: AppTheme.textPrimary),
+                        SizedBox(width: 8),
+                        Text('Añadir a cola', style: TextStyle(color: AppTheme.textPrimary, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                );
+                items.add(const PopupMenuDivider(height: 1));
+
+                items.add(
+                  const PopupMenuItem<dynamic>(
+                    enabled: false,
+                    child: Text(
+                      'AGREGAR A PLAYLIST',
+                      style: TextStyle(
+                          color: AppTheme.textHint,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1.0),
+                    ),
+                  ),
+                );
+
+                if (customPlaylists.isEmpty) {
+                  items.add(
+                    const PopupMenuItem<dynamic>(
+                      enabled: false,
+                      child: Text('No hay playlists', style: TextStyle(color: AppTheme.textHint, fontSize: 12)),
+                    ),
+                  );
+                } else {
+                  for (final p in customPlaylists) {
+                    items.add(
+                      PopupMenuItem<dynamic>(
+                        value: p,
+                        child: Row(
+                          children: [
+                            const Icon(Icons.playlist_add_rounded, size: 14, color: AppTheme.textSecondary),
+                            const SizedBox(width: 8),
+                            Text(p.name, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                }
+                return items;
+              },
+            ),
+          ],
+        );
+  }
 }
 
 // ── Center: Playback Controls ─────────────────────────────────────────────────

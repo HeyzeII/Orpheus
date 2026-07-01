@@ -129,6 +129,12 @@ class LocalDatabase {
     return _isar.tracks.watchLazy();
   }
 
+  /// Returns a stream that emits whenever the playlists collection changes.
+  Stream<void> watchPlaylists() {
+    if (_isTestUninitialized) return const Stream.empty();
+    return _isar.playlists.watchLazy();
+  }
+
   /// Returns the [Track] whose [Track.trackId] matches [trackId], or `null`.
   Future<Track?> getTrackByTrackId(String trackId) async {
     if (_isTestUninitialized) return null;

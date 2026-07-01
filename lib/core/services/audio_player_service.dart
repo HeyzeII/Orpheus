@@ -281,6 +281,47 @@ class AudioPlayerService {
     }
   }
 
+  /// Inserts [track] immediately after the currently playing track.
+  ///
+  /// If the queue is empty, starts playing [track] immediately.
+  void playNext(Track track) {
+    if (_queue.isEmpty || _currentIndex < 0) {
+      _queue.add(track);
+      _currentIndex = 0;
+      _notifyState();
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        _playIndex(0);
+      }
+      return;
+    }
+    // Remove any existing instance first (prevents duplicates mid-queue)
+    final existingIdx = _queue.indexWhere((t) => t.trackId == track.trackId);
+    if (existingIdx >= 0 && existingIdx != _currentIndex + 1) {
+      _queue.removeAt(existingIdx);
+      if (existingIdx <= _currentIndex) _currentIndex--;
+    }
+    final insertAt = _currentIndex + 1;
+    _queue.insert(insertAt, track);
+    _notifyState();
+  }
+
+  /// Appends [track] to the end of the current queue.
+  ///
+  /// If the queue is empty, starts playing [track] immediately.
+  void addToQueue(Track track) {
+    if (_queue.isEmpty || _currentIndex < 0) {
+      _queue.add(track);
+      _currentIndex = 0;
+      _notifyState();
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        _playIndex(0);
+      }
+      return;
+    }
+    _queue.add(track);
+    _notifyState();
+  }
+
   // ── Persistence ────────────────────────────────────────────────────────────
 
   /// Captures and persists the current playback state to Isar.

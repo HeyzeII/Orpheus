@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
+import 'package:file_picker/file_picker.dart' as fp;
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
@@ -340,6 +342,100 @@ class _LibraryViewState extends State<LibraryView> {
         );
       },
     );
+  }
+
+  /// Express playlist creation from the track context menu.
+  /// Creates the playlist and immediately adds the given track to it.
+  Future<void> _createAndAddTrackToPlaylist(Track track) async {
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.bgSurface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: AppTheme.divider),
+        ),
+        title: const Text(
+          'Nueva Playlist',
+          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: AppTheme.textPrimary),
+          decoration: const InputDecoration(
+            labelText: 'Nombre de la playlist',
+            labelStyle: TextStyle(color: AppTheme.textSecondary),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: AppTheme.divider),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: AppTheme.accent),
+            ),
+          ),
+          onSubmitted: (_) => Navigator.pop(ctx, true),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar', style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accent,
+              foregroundColor: AppTheme.bgDeep,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Crear y Añadir', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && controller.text.trim().isNotEmpty) {
+      final playlist = Playlist()
+        ..playlistId = 'playlist_${DateTime.now().millisecondsSinceEpoch}'
+        ..name = controller.text.trim()
+        ..isDefault = false;
+      await LocalDatabase.instance.savePlaylist(playlist);
+      await LocalDatabase.instance.addTrackToPlaylist(
+        playlist: playlist,
+        trackId: track.trackId,
+      );
+      _refreshData();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('"${track.displayTitle}" añadido a "${playlist.name}"'),
+          backgroundColor: AppTheme.bgSurface,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// Opens a file picker to let the user select a custom cover for a [playlist].
+  Future<void> _pickPlaylistCover(Playlist playlist) async {
+    final result = await fp.FilePicker.platform.pickFiles(
+      type: fp.FileType.image,
+      allowedExtensions: ['jpg', 'jpeg', 'png'],
+      allowMultiple: false,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final sourcePath = result.files.first.path;
+    if (sourcePath == null) return;
+
+    final supportDir = await getApplicationSupportDirectory();
+    final coverDir = Directory('${supportDir.path}/cover_art');
+    if (!await coverDir.exists()) await coverDir.create(recursive: true);
+    final destPath = '${coverDir.path}/custom_playlist_${playlist.playlistId}.png';
+    await File(sourcePath).copy(destPath);
+
+    playlist.customCoverPath = destPath;
+    await LocalDatabase.instance.savePlaylist(playlist);
+    _refreshData();
+    if (mounted) _updatePlaylistColor(playlist);
   }
 
   // Delete playlist
@@ -901,47 +997,39 @@ class _LibraryViewState extends State<LibraryView> {
 
     final isLiked = playlist.playlistId == '__liked__';
 
+    // Determine the background image path for the blurred Tidal atmosphere:
+    // priority: playlist customCoverPath > first track with cover
+    String? bgImagePath = playlist.customCoverPath;
+    if (bgImagePath == null || bgImagePath.isEmpty || !File(bgImagePath).existsSync()) {
+      for (final t in playlistTracks) {
+        final cp = t.customMetadata.customCoverPath;
+        if (cp != null && cp.isNotEmpty && File(cp).existsSync()) {
+          bgImagePath = cp;
+          break;
+        }
+      }
+    }
+
     return Stack(
       children: [
-        // 🔮 Atmospheric Background Gradient
+        // ───────────────────────────────────────────────────────────────────
+        // 🎨 TIDAL-STYLE BLURRED IMAGE BACKGROUND
+        // ───────────────────────────────────────────────────────────────────
         Positioned.fill(
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  _playlistColor.withOpacity(0.22),
-                  const Color(0xFF141414),
-                ],
-                stops: const [0.0, 0.75],
-              ),
-            ),
-          ),
+          child: bgImagePath != null
+              ? _BlurredImageBackground(imagePath: bgImagePath)
+              : Container(color: const Color(0xFF141414)),
         ),
-        // 🔮 Glassmorphic Radial Light Source
-        Positioned(
-          top: -80,
-          left: -80,
-          child: Container(
-            width: 320,
-            height: 320,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: _playlistColor.withOpacity(0.12),
-            ),
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(sigmaX: 70, sigmaY: 70),
-              child: Container(color: Colors.transparent),
-            ),
-          ),
-        ),
-        // 🔮 Main Content Overlay
+
+        // ───────────────────────────────────────────────────────────────────
+        // 🔮 MAIN CONTENT
+        // ───────────────────────────────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.all(32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Back button
               Row(
                 children: [
                   IconButton(
@@ -953,23 +1041,20 @@ class _LibraryViewState extends State<LibraryView> {
                 ],
               ),
               const SizedBox(height: 24),
+
+              // Header row: cover + metadata + actions
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // Playlist Cover Widget
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: SizedBox(
-                      width: 180,
-                      height: 180,
-                      child: PlaylistCover(
-                        playlist: playlist,
-                        allTracks: _allTracks,
-                        size: 180,
-                      ),
-                    ),
+                  // ── Interactive PlaylistCover with hover "edit" overlay ──
+                  _PlaylistCoverPicker(
+                    playlist: playlist,
+                    allTracks: _allTracks,
+                    onPickCover: isLiked ? null : () => _pickPlaylistCover(playlist),
                   ),
                   const SizedBox(width: 28),
+
+                  // ── Metadata Column ──
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -999,7 +1084,8 @@ class _LibraryViewState extends State<LibraryView> {
                           style: const TextStyle(fontSize: 12, color: AppTheme.textHint),
                         ),
                         const SizedBox(height: 16),
-                        // Action buttons row (Shuffle Play / delete)
+
+                        // ── Action buttons row ──
                         Row(
                           children: [
                             ElevatedButton.icon(
@@ -1028,7 +1114,8 @@ class _LibraryViewState extends State<LibraryView> {
                                 ),
                                 onPressed: () => _deletePlaylist(playlist),
                                 icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                                label: const Text('Eliminar', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                label: const Text('Eliminar',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                               ),
                             ],
                           ],
@@ -1137,7 +1224,10 @@ class _LibraryViewState extends State<LibraryView> {
           customPlaylists: _playlists.where((p) => p.playlistId != '__liked__').toList(),
           playlistSource: playlistSource,
           onPlay: () => _playTracks(tracks, idx - 1),
+          onPlayNext: () => AudioPlayerService.instance.playNext(track),
+          onAddToQueue: () => AudioPlayerService.instance.addToQueue(track),
           onToggleLike: () => _toggleLike(track),
+          onCreatePlaylistWithTrack: () => _createAndAddTrackToPlaylist(track),
           onAddToPlaylist: (p) => _addTrackToPlaylist(track, p),
           onRemoveFromPlaylist: (p) => _removeTrackFromPlaylist(track, p),
           onDelete: () => _deleteTrack(track),
@@ -1164,7 +1254,10 @@ class _TrackRow extends StatefulWidget {
     required this.customPlaylists,
     this.playlistSource,
     required this.onPlay,
+    required this.onPlayNext,
+    required this.onAddToQueue,
     required this.onToggleLike,
+    required this.onCreatePlaylistWithTrack,
     required this.onAddToPlaylist,
     required this.onRemoveFromPlaylist,
     required this.onDelete,
@@ -1178,7 +1271,10 @@ class _TrackRow extends StatefulWidget {
   final List<Playlist> customPlaylists;
   final Playlist? playlistSource;
   final VoidCallback onPlay;
+  final VoidCallback onPlayNext;
+  final VoidCallback onAddToQueue;
   final VoidCallback onToggleLike;
+  final VoidCallback onCreatePlaylistWithTrack;
   final ValueChanged<Playlist> onAddToPlaylist;
   final ValueChanged<Playlist> onRemoveFromPlaylist;
   final VoidCallback onDelete;
@@ -1341,7 +1437,13 @@ class _TrackRowState extends State<_TrackRow> {
                         side: const BorderSide(color: AppTheme.divider),
                       ),
                       onSelected: (value) {
-                        if (value == 'edit') {
+                        if (value == 'play_next') {
+                          widget.onPlayNext();
+                        } else if (value == 'add_to_queue') {
+                          widget.onAddToQueue();
+                        } else if (value == 'new_playlist') {
+                          widget.onCreatePlaylistWithTrack();
+                        } else if (value == 'edit') {
                           widget.onEditMetadata();
                         } else if (value == 'delete') {
                           widget.onDelete();
@@ -1357,50 +1459,79 @@ class _TrackRowState extends State<_TrackRow> {
                       itemBuilder: (context) {
                         final items = <PopupMenuEntry<dynamic>>[];
 
-                        if (widget.customPlaylists.isEmpty) {
+                        items.add(
+                          const PopupMenuItem<dynamic>(
+                            value: 'play_next',
+                            child: Row(
+                              children: [
+                                Icon(Icons.playlist_play_rounded, size: 14, color: AppTheme.textPrimary),
+                                SizedBox(width: 8),
+                                Text('Reproducir siguiente', style: TextStyle(color: AppTheme.textPrimary, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                        );
+                        items.add(
+                          const PopupMenuItem<dynamic>(
+                            value: 'add_to_queue',
+                            child: Row(
+                              children: [
+                                Icon(Icons.queue_music_rounded, size: 14, color: AppTheme.textPrimary),
+                                SizedBox(width: 8),
+                                Text('Añadir a cola', style: TextStyle(color: AppTheme.textPrimary, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                        );
+                        items.add(const PopupMenuDivider(height: 1));
+
+                        // Show option to remove if looking at a custom playlist detail view
+                        if (widget.playlistSource != null && !widget.playlistSource!.isDefault) {
                           items.add(
-                            const PopupMenuItem<dynamic>(
-                              enabled: false,
-                              child: Text(
-                                'Crea una playlist primero',
-                                style: TextStyle(color: AppTheme.textHint, fontSize: 12),
+                            PopupMenuItem<dynamic>(
+                              value: widget.playlistSource,
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.remove_circle_outline_rounded,
+                                      size: 14, color: Colors.redAccent),
+                                  SizedBox(width: 8),
+                                  Text('Quitar de esta playlist',
+                                      style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+                                ],
                               ),
                             ),
                           );
-                        } else {
-                          // Show option to remove if looking at a custom playlist detail view
-                          if (widget.playlistSource != null && !widget.playlistSource!.isDefault) {
-                            items.add(
-                              PopupMenuItem<dynamic>(
-                                value: widget.playlistSource,
-                                child: const Row(
-                                  children: [
-                                    Icon(Icons.remove_circle_outline_rounded,
-                                        size: 14, color: Colors.redAccent),
-                                    SizedBox(width: 8),
-                                    Text('Quitar de esta playlist',
-                                        style: TextStyle(color: Colors.redAccent, fontSize: 12)),
-                                  ],
-                                ),
-                              ),
-                            );
-                            items.add(const PopupMenuDivider(height: 1));
-                          }
+                          items.add(const PopupMenuDivider(height: 1));
+                        }
 
-                          items.add(
-                            const PopupMenuItem<dynamic>(
-                              enabled: false,
-                              child: Text(
-                                'AGREGAR A PLAYLIST',
-                                style: TextStyle(
-                                    color: AppTheme.textHint,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1.0),
-                              ),
+                        items.add(
+                          const PopupMenuItem<dynamic>(
+                            enabled: false,
+                            child: Text(
+                              'AGREGAR A PLAYLIST',
+                              style: TextStyle(
+                                  color: AppTheme.textHint,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1.0),
                             ),
-                          );
+                          ),
+                        );
 
+                        items.add(
+                          const PopupMenuItem<dynamic>(
+                            value: 'new_playlist',
+                            child: Row(
+                              children: [
+                                Icon(Icons.add_rounded, size: 14, color: AppTheme.textPrimary),
+                                SizedBox(width: 8),
+                                Text('+ Nueva playlist...', style: TextStyle(color: AppTheme.textPrimary, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                        );
+
+                        if (widget.customPlaylists.isNotEmpty) {
                           for (final p in widget.customPlaylists) {
                             items.add(
                               PopupMenuItem<dynamic>(
@@ -1580,3 +1711,141 @@ class PlaylistCover extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TIDAL-STYLE BLURRED IMAGE BACKGROUND
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Fills its parent with a massively blurred version of [imagePath], overlaid
+/// with a dark vignette gradient to ensure foreground text legibility.
+class _BlurredImageBackground extends StatelessWidget {
+  const _BlurredImageBackground({required this.imagePath});
+  final String imagePath;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // 1. Over-scaled source image
+        Positioned.fill(
+          child: Transform.scale(
+            scale: 1.15, // slight scale-up so blur edges stay outside bounds
+            child: Image.file(
+              File(imagePath),
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+            ),
+          ),
+        ),
+        // 2. Gaussian blur filter
+        Positioned.fill(
+          child: BackdropFilter(
+            filter: ui.ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+            child: const SizedBox.expand(),
+          ),
+        ),
+        // 3. Dark overlay gradient — top 40% subtle tint, fades to near-black
+        Positioned.fill(
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0x88000000), // translucent top
+                  Color(0xCC141414), // mid
+                  Color(0xFF141414), // solid bottom
+                ],
+                stops: [0.0, 0.55, 1.0],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTERACTIVE PLAYLIST COVER PICKER
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Shows the [PlaylistCover] with a camera-overlay button on hover so the user
+/// can select a custom cover image via the system file picker.
+class _PlaylistCoverPicker extends StatefulWidget {
+  const _PlaylistCoverPicker({
+    required this.playlist,
+    required this.allTracks,
+    this.onPickCover,
+  });
+
+  final Playlist playlist;
+  final List<Track> allTracks;
+  final VoidCallback? onPickCover;
+
+  @override
+  State<_PlaylistCoverPicker> createState() => _PlaylistCoverPickerState();
+}
+
+class _PlaylistCoverPickerState extends State<_PlaylistCoverPicker> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      cursor: widget.onPickCover != null
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.basic,
+      child: GestureDetector(
+        onTap: widget.onPickCover,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: 180,
+            height: 180,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                PlaylistCover(
+                  playlist: widget.playlist,
+                  allTracks: widget.allTracks,
+                  size: 180,
+                ),
+                if (_hovered && widget.onPickCover != null)
+                  AnimatedOpacity(
+                    opacity: _hovered ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Container(
+                      color: Colors.black54,
+                      child: const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.camera_alt_rounded,
+                                color: Colors.white, size: 36),
+                            SizedBox(height: 6),
+                            Text(
+                              'Cambiar portada',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
