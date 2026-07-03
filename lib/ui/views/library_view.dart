@@ -418,7 +418,7 @@ class _LibraryViewState extends State<LibraryView> {
   /// Opens a file picker to let the user select a custom cover for a [playlist].
   Future<void> _pickPlaylistCover(Playlist playlist) async {
     final result = await fp.FilePicker.platform.pickFiles(
-      type: fp.FileType.image,
+      type: fp.FileType.custom,
       allowedExtensions: ['jpg', 'jpeg', 'png'],
       allowMultiple: false,
     );
@@ -711,29 +711,33 @@ class _LibraryViewState extends State<LibraryView> {
               final artistName = filtered[idx];
               final count = _allTracks.where((t) => t.displayArtist == artistName).length;
 
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                decoration: BoxDecoration(
-                  color: AppTheme.bgSurface,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.divider),
-                ),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: AppTheme.bgHover,
-                    child: const Icon(Icons.person_rounded, color: AppTheme.accent),
+              return Material(
+                color: AppTheme.bgSurface,
+                borderRadius: BorderRadius.circular(8),
+                clipBehavior: Clip.antiAlias,
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppTheme.divider),
                   ),
-                  title: Text(
-                    artistName,
-                    style: const TextStyle(
-                        color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: AppTheme.bgHover,
+                      child: const Icon(Icons.person_rounded, color: AppTheme.accent),
+                    ),
+                    title: Text(
+                      artistName,
+                      style: const TextStyle(
+                          color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                    subtitle: Text(
+                      '$count ${count == 1 ? 'canción' : 'canciones'}',
+                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textSecondary),
+                    onTap: () => setState(() => _selectedArtist = artistName),
                   ),
-                  subtitle: Text(
-                    '$count ${count == 1 ? 'canción' : 'canciones'}',
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                  ),
-                  trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textSecondary),
-                  onTap: () => setState(() => _selectedArtist = artistName),
                 ),
               );
             },
@@ -1016,9 +1020,11 @@ class _LibraryViewState extends State<LibraryView> {
         // 🎨 TIDAL-STYLE BLURRED IMAGE BACKGROUND
         // ───────────────────────────────────────────────────────────────────
         Positioned.fill(
-          child: bgImagePath != null
-              ? _BlurredImageBackground(imagePath: bgImagePath)
-              : Container(color: const Color(0xFF141414)),
+          child: ClipRect(
+            child: bgImagePath != null
+                ? _BlurredImageBackground(imagePath: bgImagePath)
+                : Container(color: const Color(0xFF141414)),
+          ),
         ),
 
         // ───────────────────────────────────────────────────────────────────
