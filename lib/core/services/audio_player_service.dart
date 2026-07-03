@@ -322,6 +322,16 @@ class AudioPlayerService {
     _notifyState();
   }
 
+  /// Clears all tracks from the queue except the currently playing one.
+  void clearQueue() {
+    if (_queue.isEmpty || _currentIndex < 0) return;
+    final current = _queue[_currentIndex];
+    _queue.clear();
+    _queue.add(current);
+    _currentIndex = 0;
+    _notifyState();
+  }
+
   // ── Persistence ────────────────────────────────────────────────────────────
 
   /// Captures and persists the current playback state to Isar.

@@ -70,5 +70,24 @@ void main() {
       expect(player.queue[0].trackId, 't1');
       expect(player.currentIndex, 0);
     });
+
+    test('clearQueue removes all tracks except the current one', () async {
+      await player.loadPlaylist([track1, track2, track3], initialIndex: 1);
+      expect(player.queue.length, 3);
+      expect(player.currentIndex, 1); // Playing t2
+
+      player.clearQueue();
+
+      expect(player.queue.length, 1);
+      expect(player.queue[0].trackId, 't2'); // Only current track remains
+      expect(player.currentIndex, 0);
+    });
+
+    test('clearQueue on empty queue does nothing', () async {
+      // queue is already empty from setUp
+      expect(player.queue.length, 0);
+      player.clearQueue(); // Should not throw
+      expect(player.queue.length, 0);
+    });
   });
 }

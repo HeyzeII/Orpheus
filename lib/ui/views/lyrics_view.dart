@@ -24,9 +24,14 @@ import '../theme/app_theme.dart';
 /// | Plain lyrics   | Static scrollable text (no timestamps)              |
 /// | Synced lyrics  | Auto-scrolling, highlighted, interactive lines      |
 class LyricsView extends StatefulWidget {
-  const LyricsView({super.key, required this.track});
+  const LyricsView({
+    super.key,
+    required this.track,
+    this.transparentBackground = false,
+  });
 
   final Track track;
+  final bool transparentBackground;
 
   @override
   State<LyricsView> createState() => _LyricsViewState();
@@ -99,13 +104,16 @@ class _LyricsViewState extends State<LyricsView> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF0D1117), AppTheme.bgDeep],
-          stops: [0.0, 1.0],
-        ),
+      decoration: BoxDecoration(
+        color: widget.transparentBackground ? Colors.transparent : null,
+        gradient: widget.transparentBackground
+            ? null
+            : const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF0D1117), AppTheme.bgDeep],
+                stops: [0.0, 1.0],
+              ),
       ),
       child: FutureBuilder<String?>(
         future: _lyricsFuture,

@@ -7,6 +7,7 @@ import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
 import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
+import '../views/expanded_player_view.dart';
 
 /// Fixed bottom player bar — 90px tall, three-section layout.
 ///
@@ -123,18 +124,49 @@ class _CoverArt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: SizedBox(
-        width: 55,
-        height: 55,
-        child: coverPath != null
-            ? Image.file(
-                File(coverPath!),
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => _placeholder(),
-              )
-            : _placeholder(),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () {
+          showGeneralDialog(
+            context: context,
+            barrierDismissible: true,
+            barrierLabel: 'Dismiss',
+            barrierColor: Colors.black.withOpacity(0.5),
+            transitionDuration: const Duration(milliseconds: 300),
+            pageBuilder: (context, animation, secondaryAnimation) {
+              return const ExpandedPlayerView();
+            },
+            transitionBuilder: (context, animation, secondaryAnimation, child) {
+              return SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 1),
+                  end: Offset.zero,
+                ).animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  ),
+                ),
+                child: child,
+              );
+            },
+          );
+        },
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: SizedBox(
+            width: 55,
+            height: 55,
+            child: coverPath != null
+                ? Image.file(
+                    File(coverPath!),
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => _placeholder(),
+                  )
+                : _placeholder(),
+          ),
+        ),
       ),
     );
   }
