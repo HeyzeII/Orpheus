@@ -10,6 +10,7 @@ import '../../core/models/models.dart';
 import '../../core/services/audio_player_service.dart';
 import '../dialogs/edit_metadata_dialog.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_toast.dart';
 
 enum LibraryTab { tracks, albums, artists, playlists }
 
@@ -185,12 +186,10 @@ class _LibraryViewState extends State<LibraryView> {
       trackId: track.trackId,
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('"${track.displayTitle}" agregado a "${playlist.name}"'),
-        backgroundColor: AppTheme.bgSurface,
-        duration: const Duration(seconds: 2),
-      ),
+    AppToast.showAddedToPlaylist(
+      context,
+      track: track,
+      playlist: playlist,
     );
     _refreshData();
   }
@@ -405,12 +404,10 @@ class _LibraryViewState extends State<LibraryView> {
       );
       _refreshData();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('"${track.displayTitle}" añadido a "${playlist.name}"'),
-          backgroundColor: AppTheme.bgSurface,
-          duration: const Duration(seconds: 2),
-        ),
+      AppToast.showAddedToPlaylist(
+        context,
+        track: track,
+        playlist: playlist,
       );
     }
   }

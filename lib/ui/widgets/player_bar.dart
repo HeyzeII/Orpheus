@@ -7,6 +7,7 @@ import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
 import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_toast.dart';
 import '../views/expanded_player_view.dart';
 
 /// Fixed bottom player bar — 90px tall, three-section layout.
@@ -257,12 +258,10 @@ class _TrackActionsState extends State<_TrackActions> {
                     trackId: widget.track.trackId,
                   ).then((_) {
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('"${widget.track.displayTitle}" añadido a "${value.name}"'),
-                          backgroundColor: AppTheme.bgSurface,
-                          duration: const Duration(seconds: 2),
-                        ),
+                      AppToast.showAddedToPlaylist(
+                        context,
+                        track: widget.track,
+                        playlist: value,
                       );
                     }
                   });

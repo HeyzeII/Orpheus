@@ -5,6 +5,7 @@ import '../../core/database/local_database.dart';
 import '../../core/services/album_art_fetcher_service.dart';
 import '../../core/services/audio_scanner.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_toast.dart';
 
 /// Settings View — Configuration panel for managing scan directories,
 /// running library scans, and resolving artist duplicate conflicts.
@@ -536,11 +537,10 @@ class _SettingsViewState extends State<SettingsView> {
     setState(() => _isScanning = false);
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Búsquedas fallidas (notFound) reseteadas. Re-intentando en segundo plano...'),
-        backgroundColor: AppTheme.bgSurface,
-      ),
+    AppToast.showText(
+      context,
+      'Búsquedas fallidas (notFound) reseteadas. Re-intentando en segundo plano...',
+      icon: Icons.check_circle_rounded,
     );
 
     // Trigger cover art fetching in the background to retry immediately
@@ -590,11 +590,10 @@ class _SettingsViewState extends State<SettingsView> {
     setState(() => _isScanning = false);
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Caché de letras limpiada con éxito.'),
-        backgroundColor: AppTheme.bgSurface,
-      ),
+    AppToast.showText(
+      context,
+      'Caché de letras limpiada con éxito.',
+      icon: Icons.check_circle_rounded,
     );
   }
 
@@ -647,11 +646,10 @@ class _SettingsViewState extends State<SettingsView> {
     setState(() => _isScanning = false);
 
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Aplicación restablecida por completo.'),
-        backgroundColor: AppTheme.bgSurface,
-      ),
+    AppToast.showText(
+      context,
+      'Aplicación restablecida por completo.',
+      icon: Icons.check_circle_rounded,
     );
   }
 
