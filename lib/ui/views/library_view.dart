@@ -163,19 +163,11 @@ class _LibraryViewState extends State<LibraryView> {
   // Favorite toggle
   Future<void> _toggleLike(Track track) async {
     final db = LocalDatabase.instance;
-    final likedPlaylist = await db.getPlaylistById('__liked__');
-    if (likedPlaylist == null) return;
-
-    if (_likedTrackIds.contains(track.trackId)) {
-      await db.removeTrackFromPlaylist(playlist: likedPlaylist, trackId: track.trackId);
-      setState(() {
-        _likedTrackIds.remove(track.trackId);
-      });
+    final likedList = _playlists.firstWhere((p) => p.playlistId == '__liked__');
+    if (db.likedTrackIdsNotifier.value.contains(track.trackId)) {
+      await db.removeTrackFromPlaylist(playlist: likedList, trackId: track.trackId);
     } else {
-      await db.addTrackToPlaylist(playlist: likedPlaylist, trackId: track.trackId);
-      setState(() {
-        _likedTrackIds.add(track.trackId);
-      });
+      await db.addTrackToPlaylist(playlist: likedList, trackId: track.trackId);
     }
   }
 
@@ -1414,20 +1406,26 @@ class _TrackRowState extends State<_TrackRow> {
                       const SizedBox(width: 8),
                     ],
                     // Like button (shows on hover or if liked)
-                    if (_hovered || widget.isLiked) ...[
-                      IconButton(
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        icon: Icon(
-                          widget.isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                          size: 16,
-                          color: widget.isLiked ? Colors.redAccent : AppTheme.textSecondary,
-                        ),
-                        onPressed: widget.onToggleLike,
-                      ),
-                    ] else ...[
-                      const SizedBox(width: 24),
-                    ],
+                    ValueListenableBuilder<Set<String>>(
+                      valueListenable: LocalDatabase.instance.likedTrackIdsNotifier,
+                      builder: (context, likedIds, _) {
+                        final isCurrentlyLiked = likedIds.contains(widget.track.trackId);
+                        if (_hovered || isCurrentlyLiked) {
+                          return IconButton(
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            icon: Icon(
+                              isCurrentlyLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                              size: 16,
+                              color: isCurrentlyLiked ? Colors.redAccent : AppTheme.textSecondary,
+                            ),
+                            onPressed: widget.onToggleLike,
+                          );
+                        } else {
+                          return const SizedBox(width: 24);
+                        }
+                      },
+                    ),
                     const SizedBox(width: 8),
                     // Menu actions
                     PopupMenuButton<dynamic>(
@@ -1528,7 +1526,7 @@ class _TrackRowState extends State<_TrackRow> {
                               children: [
                                 Icon(Icons.add_rounded, size: 14, color: AppTheme.textPrimary),
                                 SizedBox(width: 8),
-                                Text('+ Nueva playlist...', style: TextStyle(color: AppTheme.textPrimary, fontSize: 12)),
+                                Text('Nueva playlist...', style: TextStyle(color: AppTheme.textPrimary, fontSize: 12)),
                               ],
                             ),
                           ),

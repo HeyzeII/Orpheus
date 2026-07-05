@@ -206,6 +206,17 @@ class AudioPlayerService {
     _notifyState();
   }
 
+  /// Completely stops playback and resets the internal state, clearing the queue and current track.
+  Future<void> stopAndReset() async {
+    if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+      await _player.stop();
+    }
+    _queue.clear();
+    _currentIndex = -1;
+    _currentTrackController.add(null);
+    _notifyState();
+  }
+
   Future<void> seek(Duration position) async {
     if (Platform.environment.containsKey('FLUTTER_TEST')) return;
     await _player.seek(position);

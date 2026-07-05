@@ -216,28 +216,30 @@ class _TrackActionsState extends State<_TrackActions> {
   @override
   Widget build(BuildContext context) {
     final customPlaylists = _playlists.where((p) => !p.isDefault).toList();
-    final likedPlaylist = _playlists.firstWhere(
-      (p) => p.playlistId == '__liked__',
-      orElse: () => Playlist()..playlistId = '__liked__',
-    );
-    final isLiked = likedPlaylist.trackIds.contains(widget.track.trackId);
-
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        IconButton(
-          icon: Icon(
-            isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-            size: 18,
-            color: isLiked ? Colors.redAccent : AppTheme.textSecondary,
-          ),
-          onPressed: () async {
-            final db = LocalDatabase.instance;
-            if (isLiked) {
-              await db.removeTrackFromPlaylist(playlist: likedPlaylist, trackId: widget.track.trackId);
-            } else {
-              await db.addTrackToPlaylist(playlist: likedPlaylist, trackId: widget.track.trackId);
-            }
+        ValueListenableBuilder<Set<String>>(
+          valueListenable: LocalDatabase.instance.likedTrackIdsNotifier,
+          builder: (context, likedIds, _) {
+            final isLiked = likedIds.contains(widget.track.trackId);
+            return IconButton(
+              icon: Icon(
+                isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                size: 18,
+                color: isLiked ? Colors.redAccent : AppTheme.textSecondary,
+              ),
+              onPressed: () async {
+                final db = LocalDatabase.instance;
+                // Since this runs after init, we are guaranteed the __liked__ playlist exists.
+                final likedPlaylist = _playlists.firstWhere((p) => p.playlistId == '__liked__');
+                if (isLiked) {
+                  await db.removeTrackFromPlaylist(playlist: likedPlaylist, trackId: widget.track.trackId);
+                } else {
+                  await db.addTrackToPlaylist(playlist: likedPlaylist, trackId: widget.track.trackId);
+                }
+              },
+            );
           },
         ),
         PopupMenuButton<dynamic>(

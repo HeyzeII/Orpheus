@@ -1,5 +1,5 @@
 import 'dart:io';
-
+import 'package:flutter/foundation.dart';
 import 'package:isar/isar.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -31,6 +31,9 @@ class LocalDatabase {
   late Isar _isar;
 
   bool _initialized = false;
+
+  /// Reactive notifier for the user's liked tracks.
+  final likedTrackIdsNotifier = ValueNotifier<Set<String>>({});
 
   bool get _isTestUninitialized => !_initialized && Platform.environment.containsKey('FLUTTER_TEST');
 
@@ -89,6 +92,9 @@ class LocalDatabase {
             ..isDefault = true,
         );
       });
+      likedTrackIdsNotifier.value = {};
+    } else {
+      likedTrackIdsNotifier.value = liked.trackIds.toSet();
     }
   }
 
@@ -386,6 +392,12 @@ class LocalDatabase {
     updated.add(trackId);
     playlist.trackIds = updated;
     await savePlaylist(playlist);
+    
+    if (playlist.playlistId == '__liked__') {
+      final newSet = Set<String>.from(likedTrackIdsNotifier.value);
+      newSet.add(trackId);
+      likedTrackIdsNotifier.value = newSet;
+    }
   }
 
   /// Removes [trackId] from [playlist] if present.
@@ -398,6 +410,12 @@ class LocalDatabase {
     updated.remove(trackId);
     playlist.trackIds = updated;
     await savePlaylist(playlist);
+
+    if (playlist.playlistId == '__liked__') {
+      final newSet = Set<String>.from(likedTrackIdsNotifier.value);
+      newSet.remove(trackId);
+      likedTrackIdsNotifier.value = newSet;
+    }
   }
 
   /// Reorders the tracks in [playlist] by replacing [trackIds] entirely.
@@ -506,6 +524,7 @@ class LocalDatabase {
       await _isar.appConfigs.clear();
       await _isar.playbackStates.clear();
     });
+    likedTrackIdsNotifier.value = {};
     await _seedDefaultData();
   }
 

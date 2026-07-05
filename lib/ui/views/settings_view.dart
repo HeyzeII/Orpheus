@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/database/local_database.dart';
 import '../../core/services/album_art_fetcher_service.dart';
+import '../../core/services/audio_player_service.dart';
 import '../../core/services/audio_scanner.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_toast.dart';
@@ -639,7 +640,7 @@ class _SettingsViewState extends State<SettingsView> {
       _isScanning = true;
       _scanDirs.clear();
     });
-
+    await AudioPlayerService.instance.stopAndReset();
     await LocalDatabase.instance.clearDatabase();
     await _loadConfig();
 
