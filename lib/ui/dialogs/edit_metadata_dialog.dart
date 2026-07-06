@@ -131,76 +131,83 @@ class _EditMetadataDialogState extends State<EditMetadataDialog> {
 
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 60),
-      child: Container(
-        width: 520,
-        decoration: BoxDecoration(
-          color: const Color(0xFF141414),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.divider),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(200),
-              blurRadius: 40,
-              spreadRadius: 4,
-            ),
-          ],
+      insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height - 48,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Header ────────────────────────────────────────────────────
-            _buildHeader(coverPath, track),
-
-            // ── Divider ───────────────────────────────────────────────────
-            const Divider(height: 1, color: AppTheme.divider),
-
-            // ── Form fields ───────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildField(
-                    id: 'edit-title-field',
-                    label: 'Título',
-                    controller: _titleCtrl,
-                    icon: Icons.music_note_rounded,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildField(
-                    id: 'edit-artist-field',
-                    label: 'Artista',
-                    controller: _artistCtrl,
-                    icon: Icons.person_rounded,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildField(
-                    id: 'edit-album-field',
-                    label: 'Álbum',
-                    controller: _albumCtrl,
-                    icon: Icons.album_rounded,
-                  ),
-                  const SizedBox(height: 24),
-
-                  // ── Warning banner ─────────────────────────────────────
-                  _buildWarningBanner(),
-                  const SizedBox(height: 20),
-
-                  // ── Re-identification switch ───────────────────────────
-                  _buildReidentifySwitch(),
-                  const SizedBox(height: 28),
-                ],
+        child: Container(
+          width: 520,
+          decoration: BoxDecoration(
+            color: const Color(0xFF141414),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppTheme.divider),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(200),
+                blurRadius: 40,
+                spreadRadius: 4,
               ),
+            ],
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Header ────────────────────────────────────────────────────
+                _buildHeader(coverPath, track),
+
+                // ── Divider ───────────────────────────────────────────────────
+                const Divider(height: 1, color: AppTheme.divider),
+
+                // ── Form fields ───────────────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 24, 28, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildField(
+                        id: 'edit-title-field',
+                        label: 'Título',
+                        controller: _titleCtrl,
+                        icon: Icons.music_note_rounded,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildField(
+                        id: 'edit-artist-field',
+                        label: 'Artista',
+                        controller: _artistCtrl,
+                        icon: Icons.person_rounded,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildField(
+                        id: 'edit-album-field',
+                        label: 'Álbum',
+                        controller: _albumCtrl,
+                        icon: Icons.album_rounded,
+                      ),
+                      const SizedBox(height: 20),
+
+                      // ── Warning banner ─────────────────────────────────────
+                      _buildWarningBanner(),
+                      const SizedBox(height: 16),
+
+                      // ── Re-identification switch ───────────────────────────
+                      _buildReidentifySwitch(),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+
+                // ── Divider ───────────────────────────────────────────────────
+                const Divider(height: 1, color: AppTheme.divider),
+
+                // ── Action buttons ────────────────────────────────────────────
+                _buildActions(),
+              ],
             ),
-
-            // ── Divider ───────────────────────────────────────────────────
-            const Divider(height: 1, color: AppTheme.divider),
-
-            // ── Action buttons ────────────────────────────────────────────
-            _buildActions(),
-          ],
+          ),
         ),
       ),
     );

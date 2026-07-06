@@ -163,11 +163,12 @@ class _LibraryViewState extends State<LibraryView> {
   // Favorite toggle
   Future<void> _toggleLike(Track track) async {
     final db = LocalDatabase.instance;
-    final likedList = _playlists.firstWhere((p) => p.playlistId == '__liked__');
+    final likedPlaylist = await db.getPlaylistById('__liked__');
+    if (likedPlaylist == null) return;
     if (db.likedTrackIdsNotifier.value.contains(track.trackId)) {
-      await db.removeTrackFromPlaylist(playlist: likedList, trackId: track.trackId);
+      await db.removeTrackFromPlaylist(playlist: likedPlaylist, trackId: track.trackId);
     } else {
-      await db.addTrackToPlaylist(playlist: likedList, trackId: track.trackId);
+      await db.addTrackToPlaylist(playlist: likedPlaylist, trackId: track.trackId);
     }
   }
 
@@ -1330,6 +1331,7 @@ class _TrackRowState extends State<_TrackRow> {
                     Expanded(
                       child: Text(
                         widget.track.displayTitle,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: AppTheme.textPrimary,
@@ -1360,6 +1362,7 @@ class _TrackRowState extends State<_TrackRow> {
                 flex: 2,
                 child: Text(
                   widget.track.displayArtist,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                 ),
@@ -1369,6 +1372,7 @@ class _TrackRowState extends State<_TrackRow> {
                 flex: 2,
                 child: Text(
                   widget.track.displayAlbum,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                 ),

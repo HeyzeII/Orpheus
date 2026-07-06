@@ -231,8 +231,8 @@ class _TrackActionsState extends State<_TrackActions> {
               ),
               onPressed: () async {
                 final db = LocalDatabase.instance;
-                // Since this runs after init, we are guaranteed the __liked__ playlist exists.
-                final likedPlaylist = _playlists.firstWhere((p) => p.playlistId == '__liked__');
+                final likedPlaylist = await db.getPlaylistById('__liked__');
+                if (likedPlaylist == null) return;
                 if (isLiked) {
                   await db.removeTrackFromPlaylist(playlist: likedPlaylist, trackId: widget.track.trackId);
                 } else {
