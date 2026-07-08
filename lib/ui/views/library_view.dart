@@ -982,155 +982,162 @@ class _LibraryViewState extends State<LibraryView> {
   }
 
   // ── Playlist Details View ──────────────────────────────────────────────────
-  Widget _buildPlaylistDetails(Playlist playlist) {
-    // Resolve tracks in order
-    final playlistTracks = playlist.trackIds
-        .map((id) => _allTracks.firstWhere((t) => t.trackId == id, orElse: () => Track()))
-        .where((t) => t.trackId.isNotEmpty)
-        .toList();
+  Widget _buildPlaylistDetails(Playlist initialPlaylist) {
+    return StreamBuilder<Playlist?>(
+      stream: LocalDatabase.instance.watchPlaylistById(initialPlaylist.playlistId),
+      initialData: initialPlaylist,
+      builder: (context, snapshot) {
+        final playlist = snapshot.data ?? initialPlaylist;
+        // Resolve tracks in order
+        final playlistTracks = playlist.trackIds
+            .map((id) => _allTracks.firstWhere((t) => t.trackId == id, orElse: () => Track()))
+            .where((t) => t.trackId.isNotEmpty)
+            .toList();
 
-    final isLiked = playlist.playlistId == '__liked__';
+        final isLiked = playlist.playlistId == '__liked__';
 
-    // Determine the background image path for the blurred Tidal atmosphere:
-    // priority: playlist customCoverPath > first track with cover
-    String? bgImagePath = playlist.customCoverPath;
-    if (bgImagePath == null || bgImagePath.isEmpty || !File(bgImagePath).existsSync()) {
-      for (final t in playlistTracks) {
-        final cp = t.customMetadata.customCoverPath;
-        if (cp != null && cp.isNotEmpty && File(cp).existsSync()) {
-          bgImagePath = cp;
-          break;
+        // Determine the background image path for the blurred Tidal atmosphere:
+        // priority: playlist customCoverPath > first track with cover
+        String? bgImagePath = playlist.customCoverPath;
+        if (bgImagePath == null || bgImagePath.isEmpty || !File(bgImagePath).existsSync()) {
+          for (final t in playlistTracks) {
+            final cp = t.customMetadata.customCoverPath;
+            if (cp != null && cp.isNotEmpty && File(cp).existsSync()) {
+              bgImagePath = cp;
+              break;
+            }
+          }
         }
-      }
-    }
 
-    return Stack(
-      children: [
-        // ───────────────────────────────────────────────────────────────────
-        // 🎨 TIDAL-STYLE BLURRED IMAGE BACKGROUND
-        // ───────────────────────────────────────────────────────────────────
-        Positioned.fill(
-          child: ClipRect(
-            child: bgImagePath != null
-                ? _BlurredImageBackground(imagePath: bgImagePath)
-                : Container(color: const Color(0xFF141414)),
-          ),
-        ),
-
-        // ───────────────────────────────────────────────────────────────────
-        // 🔮 MAIN CONTENT
-        // ───────────────────────────────────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Back button
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                    onPressed: () => setState(() => _selectedPlaylist = null),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text('Volver a Playlists', style: TextStyle(color: AppTheme.textSecondary)),
-                ],
+        return Stack(
+          children: [
+            // ───────────────────────────────────────────────────────────────────
+            // 🎨 TIDAL-STYLE BLURRED IMAGE BACKGROUND
+            // ───────────────────────────────────────────────────────────────────
+            Positioned.fill(
+              child: ClipRect(
+                child: bgImagePath != null
+                    ? _BlurredImageBackground(imagePath: bgImagePath)
+                    : Container(color: const Color(0xFF141414)),
               ),
-              const SizedBox(height: 24),
+            ),
 
-              // Header row: cover + metadata + actions
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
+            // ───────────────────────────────────────────────────────────────────
+            // 🔮 MAIN CONTENT
+            // ───────────────────────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Interactive PlaylistCover with hover "edit" overlay ──
-                  _PlaylistCoverPicker(
-                    playlist: playlist,
-                    allTracks: _allTracks,
-                    onPickCover: isLiked ? null : () => _pickPlaylistCover(playlist),
+                  // Back button
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
+                        onPressed: () => setState(() => _selectedPlaylist = null),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text('Volver a Playlists', style: TextStyle(color: AppTheme.textSecondary)),
+                    ],
                   ),
-                  const SizedBox(width: 28),
+                  const SizedBox(height: 24),
 
-                  // ── Metadata Column ──
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('PLAYLIST',
-                            style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textSecondary,
-                                letterSpacing: 1.5)),
-                        const SizedBox(height: 6),
-                        Text(
-                          playlist.name,
-                          style: const TextStyle(
-                              fontSize: 36, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                        ),
-                        if (playlist.description != null && playlist.description!.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            playlist.description!,
-                            style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
-                          ),
-                        ],
-                        const SizedBox(height: 12),
-                        Text(
-                          '${playlistTracks.length} canciones',
-                          style: const TextStyle(fontSize: 12, color: AppTheme.textHint),
-                        ),
-                        const SizedBox(height: 16),
+                  // Header row: cover + metadata + actions
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      // ── Interactive PlaylistCover with hover "edit" overlay ──
+                      _PlaylistCoverPicker(
+                        playlist: playlist,
+                        allTracks: _allTracks,
+                        onPickCover: isLiked ? null : () => _pickPlaylistCover(playlist),
+                      ),
+                      const SizedBox(width: 28),
 
-                        // ── Action buttons row ──
-                        Row(
+                      // ── Metadata Column ──
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.accent,
-                                foregroundColor: AppTheme.bgDeep,
-                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                elevation: 0,
-                              ),
-                              onPressed: () => _shufflePlayTracks(playlistTracks),
-                              icon: const Icon(Icons.shuffle_rounded, size: 16, color: AppTheme.bgDeep),
-                              label: const Text(
-                                'Reproducción Aleatoria',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                              ),
+                            const Text('PLAYLIST',
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppTheme.textSecondary,
+                                    letterSpacing: 1.5)),
+                            const SizedBox(height: 6),
+                            Text(
+                              playlist.name,
+                              style: const TextStyle(
+                                  fontSize: 36, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
                             ),
-                            if (!isLiked) ...[
-                              const SizedBox(width: 16),
-                              OutlinedButton.icon(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.redAccent,
-                                  side: const BorderSide(color: Colors.redAccent, width: 1),
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                ),
-                                onPressed: () => _deletePlaylist(playlist),
-                                icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                                label: const Text('Eliminar',
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            if (playlist.description != null && playlist.description!.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                playlist.description!,
+                                style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
                               ),
                             ],
+                            const SizedBox(height: 12),
+                            Text(
+                              '${playlistTracks.length} canciones',
+                              style: const TextStyle(fontSize: 12, color: AppTheme.textHint),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // ── Action buttons row ──
+                            Row(
+                              children: [
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppTheme.accent,
+                                    foregroundColor: AppTheme.bgDeep,
+                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                    elevation: 0,
+                                  ),
+                                  onPressed: () => _shufflePlayTracks(playlistTracks),
+                                  icon: const Icon(Icons.shuffle_rounded, size: 16, color: AppTheme.bgDeep),
+                                  label: const Text(
+                                    'Reproducción Aleatoria',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
+                                ),
+                                if (!isLiked) ...[
+                                  const SizedBox(width: 16),
+                                  OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.redAccent,
+                                      side: const BorderSide(color: Colors.redAccent, width: 1),
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                    ),
+                                    onPressed: () => _deletePlaylist(playlist),
+                                    icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                                    label: const Text('Eliminar',
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                  ),
+                                ],
+                              ],
+                            ),
                           ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
+                  Expanded(
+                    child: playlistTracks.isEmpty
+                        ? _buildEmptyState('No hay canciones en esta playlist.')
+                        : _buildTrackTable(playlistTracks, playlistSource: playlist),
                   ),
                 ],
               ),
-              const SizedBox(height: 32),
-              Expanded(
-                child: playlistTracks.isEmpty
-                    ? _buildEmptyState('No hay canciones en esta playlist.')
-                    : _buildTrackTable(playlistTracks, playlistSource: playlist),
-              ),
-            ],
-          ),
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1326,7 +1333,7 @@ class _TrackRowState extends State<_TrackRow> {
                           fit: BoxFit.cover,
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                     ],
                     Expanded(
                       child: Text(
@@ -1341,16 +1348,21 @@ class _TrackRowState extends State<_TrackRow> {
                       ),
                     ),
                     if (widget.track.downloadSource != null) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppTheme.divider,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                        child: Text(
-                          widget.track.downloadSource!,
-                          style: const TextStyle(fontSize: 8, color: AppTheme.accent),
+                      const SizedBox(width: 4),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 60),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.divider,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: Text(
+                            widget.track.downloadSource!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 8, color: AppTheme.accent),
+                          ),
                         ),
                       ),
                     ],

@@ -141,6 +141,27 @@ class LocalDatabase {
     return _isar.playlists.watchLazy();
   }
 
+  /// Returns a stream that emits the playlist matching [playlistId] whenever it changes.
+  Stream<Playlist?> watchPlaylistById(String playlistId) {
+    if (_isTestUninitialized) {
+      if (playlistId == '__liked__') {
+        return Stream.value(
+          Playlist()
+            ..playlistId = '__liked__'
+            ..name = 'Liked Tracks'
+            ..description = 'Tracks you have marked as liked.'
+            ..isDefault = true,
+        );
+      }
+      return const Stream.empty();
+    }
+    return _isar.playlists
+        .where()
+        .playlistIdEqualTo(playlistId)
+        .watch(fireImmediately: true)
+        .map((list) => list.isEmpty ? null : list.first);
+  }
+
   /// Returns the [Track] whose [Track.trackId] matches [trackId], or `null`.
   Future<Track?> getTrackByTrackId(String trackId) async {
     if (_isTestUninitialized) return null;

@@ -58,6 +58,9 @@ class Track {
 
   /// Where this track was downloaded from (e.g. YouTube, etc.).
   String? downloadSource;
+  
+  /// Audio quality level (e.g. 'HI-FI', 'HQ', 'VIDEO', 'STREAM').
+  String audioQuality = 'HQ';
 
   /// Cached synced lyrics in LRC format fetched from LRCLIB.
   ///
