@@ -780,54 +780,61 @@ class _LibraryViewState extends State<LibraryView> {
                   itemBuilder: (context, idx) {
                     final playlist = _playlists[idx];
 
-                    return MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () => _selectPlaylist(playlist),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: AppTheme.bgSurface,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppTheme.divider),
-                          ),
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(6),
-                                  child: AspectRatio(
-                                    aspectRatio: 1,
-                                    child: PlaylistCover(
-                                      playlist: playlist,
-                                      allTracks: _allTracks,
-                                      size: 150,
+                    return StreamBuilder<Playlist?>(
+                      stream: LocalDatabase.instance.watchPlaylistById(playlist.playlistId),
+                      initialData: playlist,
+                      builder: (context, snapshot) {
+                        final livePlaylist = snapshot.data ?? playlist;
+
+                        return MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: () => _selectPlaylist(livePlaylist),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: AppTheme.bgSurface,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: AppTheme.divider),
+                              ),
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: AspectRatio(
+                                        aspectRatio: 1,
+                                        child: PlaylistCover(
+                                          playlist: livePlaylist,
+                                          allTracks: _allTracks,
+                                          size: 150,
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    livePlaylist.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        color: AppTheme.textPrimary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13),
+                                  ),
+                                  Text(
+                                    '${livePlaylist.trackIds.length} canciones',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 12),
-                              Text(
-                                playlist.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    color: AppTheme.textPrimary,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${playlist.trackIds.length} canciones',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
-                      ),
+                        );
+                      },
                     );
                   },
                 ),
