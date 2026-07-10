@@ -45,7 +45,7 @@ const PlaylistSchema = CollectionSchema(
     r'trackIds': PropertySchema(
       id: 5,
       name: r'trackIds',
-      type: IsarType.stringList,
+      type: IsarType.longList,
     )
   },
   estimateSize: _playlistEstimateSize,
@@ -96,13 +96,7 @@ int _playlistEstimateSize(
   }
   bytesCount += 3 + object.name.length * 3;
   bytesCount += 3 + object.playlistId.length * 3;
-  bytesCount += 3 + object.trackIds.length * 3;
-  {
-    for (var i = 0; i < object.trackIds.length; i++) {
-      final value = object.trackIds[i];
-      bytesCount += value.length * 3;
-    }
-  }
+  bytesCount += 3 + object.trackIds.length * 8;
   return bytesCount;
 }
 
@@ -117,7 +111,7 @@ void _playlistSerialize(
   writer.writeBool(offsets[2], object.isDefault);
   writer.writeString(offsets[3], object.name);
   writer.writeString(offsets[4], object.playlistId);
-  writer.writeStringList(offsets[5], object.trackIds);
+  writer.writeLongList(offsets[5], object.trackIds);
 }
 
 Playlist _playlistDeserialize(
@@ -133,7 +127,7 @@ Playlist _playlistDeserialize(
   object.isDefault = reader.readBool(offsets[2]);
   object.name = reader.readString(offsets[3]);
   object.playlistId = reader.readString(offsets[4]);
-  object.trackIds = reader.readStringList(offsets[5]) ?? [];
+  object.trackIds = reader.readLongList(offsets[5]) ?? [];
   return object;
 }
 
@@ -155,7 +149,7 @@ P _playlistDeserializeProp<P>(
     case 4:
       return (reader.readString(offset)) as P;
     case 5:
-      return (reader.readStringList(offset) ?? []) as P;
+      return (reader.readLongList(offset) ?? []) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
   }
@@ -977,58 +971,49 @@ extension PlaylistQueryFilter
   }
 
   QueryBuilder<Playlist, Playlist, QAfterFilterCondition>
-      trackIdsElementEqualTo(
-    String value, {
-    bool caseSensitive = true,
-  }) {
+      trackIdsElementEqualTo(int value) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.equalTo(
         property: r'trackIds',
         value: value,
-        caseSensitive: caseSensitive,
       ));
     });
   }
 
   QueryBuilder<Playlist, Playlist, QAfterFilterCondition>
       trackIdsElementGreaterThan(
-    String value, {
+    int value, {
     bool include = false,
-    bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.greaterThan(
         include: include,
         property: r'trackIds',
         value: value,
-        caseSensitive: caseSensitive,
       ));
     });
   }
 
   QueryBuilder<Playlist, Playlist, QAfterFilterCondition>
       trackIdsElementLessThan(
-    String value, {
+    int value, {
     bool include = false,
-    bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.lessThan(
         include: include,
         property: r'trackIds',
         value: value,
-        caseSensitive: caseSensitive,
       ));
     });
   }
 
   QueryBuilder<Playlist, Playlist, QAfterFilterCondition>
       trackIdsElementBetween(
-    String lower,
-    String upper, {
+    int lower,
+    int upper, {
     bool includeLower = true,
     bool includeUpper = true,
-    bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.between(
@@ -1037,77 +1022,6 @@ extension PlaylistQueryFilter
         includeLower: includeLower,
         upper: upper,
         includeUpper: includeUpper,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<Playlist, Playlist, QAfterFilterCondition>
-      trackIdsElementStartsWith(
-    String value, {
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.startsWith(
-        property: r'trackIds',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<Playlist, Playlist, QAfterFilterCondition>
-      trackIdsElementEndsWith(
-    String value, {
-    bool caseSensitive = true,
-  }) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.endsWith(
-        property: r'trackIds',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<Playlist, Playlist, QAfterFilterCondition>
-      trackIdsElementContains(String value, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.contains(
-        property: r'trackIds',
-        value: value,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<Playlist, Playlist, QAfterFilterCondition>
-      trackIdsElementMatches(String pattern, {bool caseSensitive = true}) {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.matches(
-        property: r'trackIds',
-        wildcard: pattern,
-        caseSensitive: caseSensitive,
-      ));
-    });
-  }
-
-  QueryBuilder<Playlist, Playlist, QAfterFilterCondition>
-      trackIdsElementIsEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.equalTo(
-        property: r'trackIds',
-        value: '',
-      ));
-    });
-  }
-
-  QueryBuilder<Playlist, Playlist, QAfterFilterCondition>
-      trackIdsElementIsNotEmpty() {
-    return QueryBuilder.apply(this, (query) {
-      return query.addFilterCondition(FilterCondition.greaterThan(
-        property: r'trackIds',
-        value: '',
       ));
     });
   }
@@ -1424,7 +1338,7 @@ extension PlaylistQueryProperty
     });
   }
 
-  QueryBuilder<Playlist, List<String>, QQueryOperations> trackIdsProperty() {
+  QueryBuilder<Playlist, List<int>, QQueryOperations> trackIdsProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'trackIds');
     });

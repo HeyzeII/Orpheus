@@ -31,9 +31,9 @@ class Playlist {
   /// Absolute path to a custom cover image, or `null` to use auto-generated art.
   String? customCoverPath;
 
-  /// Ordered list of [Track.trackId] references.
+  /// Ordered list of [Track.id] database references.
   ///
   /// - Preserves insertion order (the play order).
-  /// - A trackId may appear at most once (enforced by [LocalDatabase]).
-  List<String> trackIds = [];
+  /// - Allows duplicates for custom playlists.
+  List<int> trackIds = [];
 }

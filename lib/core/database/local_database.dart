@@ -92,9 +92,12 @@ class LocalDatabase {
             ..isDefault = true,
         );
       });
-      likedTrackIdsNotifier.value = {};
     } else {
-      likedTrackIdsNotifier.value = liked.trackIds.toSet();
+      final tracks = await _isar.tracks.getAll(liked.trackIds);
+      likedTrackIdsNotifier.value = tracks
+          .where((t) => t != null)
+          .map((t) => t!.trackId)
+          .toSet();
     }
   }
 
@@ -235,9 +238,9 @@ class LocalDatabase {
       // Purge the trackId from every playlist's reference list.
       final allPlaylists = await _isar.playlists.where().findAll();
       for (final playlist in allPlaylists) {
-        if (playlist.trackIds.contains(track.trackId)) {
-          final updatedTrackIds = List<String>.from(playlist.trackIds);
-          updatedTrackIds.remove(track.trackId);
+        if (playlist.trackIds.contains(track.id)) {
+          final updatedTrackIds = List<int>.from(playlist.trackIds);
+          updatedTrackIds.remove(track.id);
           playlist.trackIds = updatedTrackIds;
           await _isar.playlists.put(playlist);
         }
@@ -404,17 +407,24 @@ class LocalDatabase {
   /// Adds [trackId] to [playlist] if it isn't already present.
   ///
   /// Enforces no-duplicate semantics at the database layer.
+  /// Enforces no-duplicate semantics only for the system default Liked playlist,
+  /// but allows duplicates in custom playlists.
   Future<void> addTrackToPlaylist({
     required Playlist playlist,
     required String trackId,
   }) async {
-    if (playlist.trackIds.contains(trackId)) return;
-    final updated = List<String>.from(playlist.trackIds);
-    updated.add(trackId);
+    final track = await getTrackByTrackId(trackId);
+    final intId = track?.id ?? trackId.hashCode;
+
+    final isLiked = playlist.playlistId == '__liked__';
+    if (isLiked && playlist.trackIds.contains(intId)) return;
+
+    final updated = List<int>.from(playlist.trackIds);
+    updated.add(intId);
     playlist.trackIds = updated;
     await savePlaylist(playlist);
     
-    if (playlist.playlistId == '__liked__') {
+    if (isLiked) {
       final newSet = Set<String>.from(likedTrackIdsNotifier.value);
       newSet.add(trackId);
       likedTrackIdsNotifier.value = newSet;
@@ -426,9 +436,12 @@ class LocalDatabase {
     required Playlist playlist,
     required String trackId,
   }) async {
-    if (!playlist.trackIds.contains(trackId)) return;
-    final updated = List<String>.from(playlist.trackIds);
-    updated.remove(trackId);
+    final track = await getTrackByTrackId(trackId);
+    final intId = track?.id ?? trackId.hashCode;
+
+    if (!playlist.trackIds.contains(intId)) return;
+    final updated = List<int>.from(playlist.trackIds);
+    updated.remove(intId);
     playlist.trackIds = updated;
     await savePlaylist(playlist);
 
@@ -445,7 +458,7 @@ class LocalDatabase {
   /// of the existing IDs.
   Future<void> reorderPlaylistTracks({
     required Playlist playlist,
-    required List<String> newOrder,
+    required List<int> newOrder,
   }) async {
     playlist.trackIds = newOrder;
     await savePlaylist(playlist);

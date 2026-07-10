@@ -70,7 +70,11 @@ class _LibraryViewState extends State<LibraryView> {
     final playlists = await db.getAllPlaylists();
 
     final likedPlaylist = await db.getPlaylistById('__liked__');
-    final likedIds = likedPlaylist?.trackIds.toSet() ?? {};
+    final likedIds = likedPlaylist?.trackIds
+            .map((id) => tracks.firstWhere((t) => t.id == id, orElse: () => Track()).trackId)
+            .where((tid) => tid.isNotEmpty)
+            .toSet() ??
+        <String>{};
 
     if (!mounted) return;
     setState(() {
@@ -102,7 +106,7 @@ class _LibraryViewState extends State<LibraryView> {
   Future<void> _updatePlaylistColor(Playlist playlist) async {
     Color extracted = const Color(0xFF1E1E1E);
     final playlistTracks = playlist.trackIds
-        .map((id) => _allTracks.firstWhere((t) => t.trackId == id, orElse: () => Track()))
+        .map((id) => _allTracks.firstWhere((t) => t.id == id, orElse: () => Track()))
         .where((t) => t.trackId.isNotEmpty)
         .toList();
 
@@ -194,7 +198,7 @@ class _LibraryViewState extends State<LibraryView> {
       trackId: track.trackId,
     );
     setState(() {
-      playlist.trackIds.remove(track.trackId);
+      playlist.trackIds.remove(track.id);
     });
     _refreshData();
   }
@@ -997,7 +1001,7 @@ class _LibraryViewState extends State<LibraryView> {
         final playlist = snapshot.data ?? initialPlaylist;
         // Resolve tracks in order
         final playlistTracks = playlist.trackIds
-            .map((id) => _allTracks.firstWhere((t) => t.trackId == id, orElse: () => Track()))
+            .map((id) => _allTracks.firstWhere((t) => t.id == id, orElse: () => Track()))
             .where((t) => t.trackId.isNotEmpty)
             .toList();
 
@@ -1639,9 +1643,23 @@ class PlaylistCover extends StatelessWidget {
   Widget build(BuildContext context) {
     final isLiked = playlist.playlistId == '__liked__';
 
-    // Resolve tracks in order
+    // 1. Custom playlist cover (priority 1) with cache breaker
+    final customPath = playlist.customCoverPath;
+    if (customPath != null && customPath.isNotEmpty && File(customPath).existsSync()) {
+      final file = File(customPath);
+      final lastModified = file.lastModifiedSync().millisecondsSinceEpoch;
+      return Image.file(
+        file,
+        key: ValueKey('${customPath}_$lastModified'),
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+      );
+    }
+
+    // Resolve tracks in order using the database int ID
     final playlistTracks = playlist.trackIds
-        .map((id) => allTracks.firstWhere((t) => t.trackId == id, orElse: () => Track()))
+        .map((id) => allTracks.firstWhere((t) => t.id == id, orElse: () => Track()))
         .where((t) => t.trackId.isNotEmpty)
         .toList();
 
@@ -1649,12 +1667,15 @@ class PlaylistCover extends StatelessWidget {
       // 0 songs: a minimalist dark vinyl/disc placeholder with music icon or heart
       return _buildVinylPlaceholder(isLiked);
     } else if (playlistTracks.length < 4) {
-      // 1 to 3 songs: first song cover
+      // 1 to 3 songs: first song cover with cache breaker
       final firstTrack = playlistTracks.first;
       final coverPath = firstTrack.customMetadata.customCoverPath;
       if (coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync()) {
+        final file = File(coverPath);
+        final lastModified = file.lastModifiedSync().millisecondsSinceEpoch;
         return Image.file(
-          File(coverPath),
+          file,
+          key: ValueKey('${coverPath}_$lastModified'),
           width: size,
           height: size,
           fit: BoxFit.cover,
@@ -1675,8 +1696,11 @@ class PlaylistCover extends StatelessWidget {
           children: first4.map((track) {
             final coverPath = track.customMetadata.customCoverPath;
             if (coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync()) {
+              final file = File(coverPath);
+              final lastModified = file.lastModifiedSync().millisecondsSinceEpoch;
               return Image.file(
-                File(coverPath),
+                file,
+                key: ValueKey('${coverPath}_$lastModified'),
                 fit: BoxFit.cover,
               );
             } else {

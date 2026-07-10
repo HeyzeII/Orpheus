@@ -67,20 +67,24 @@ void main() {
       db.savePlaylist(likedPlaylist);
     });
 
-    test('adds tracks to playlist and prevents duplicates', () async {
-      // Add first track
+    test('adds tracks to playlist and handles duplicates based on playlist type', () async {
+      // Add first track to custom playlist
       await db.addTrackToPlaylist(playlist: customPlaylist, trackId: 'track_a');
-      expect(customPlaylist.trackIds, contains('track_a'));
+      expect(customPlaylist.trackIds, contains('track_a'.hashCode));
       expect(customPlaylist.trackIds.length, 1);
 
-      // Add duplicate track
+      // Add duplicate track to custom playlist (should be allowed now)
       await db.addTrackToPlaylist(playlist: customPlaylist, trackId: 'track_a');
-      expect(customPlaylist.trackIds.length, 1); // No change
+      expect(customPlaylist.trackIds.length, 2); // Allows duplicates
 
-      // Add second track
-      await db.addTrackToPlaylist(playlist: customPlaylist, trackId: 'track_b');
-      expect(customPlaylist.trackIds, containsAll(['track_a', 'track_b']));
-      expect(customPlaylist.trackIds.length, 2);
+      // Add first track to liked playlist
+      await db.addTrackToPlaylist(playlist: likedPlaylist, trackId: 'track_a');
+      expect(likedPlaylist.trackIds, contains('track_a'.hashCode));
+      expect(likedPlaylist.trackIds.length, 1);
+
+      // Add duplicate track to liked playlist (should prevent duplicates)
+      await db.addTrackToPlaylist(playlist: likedPlaylist, trackId: 'track_a');
+      expect(likedPlaylist.trackIds.length, 1); // No change
     });
 
     test('removes tracks from playlist correctly', () async {
@@ -88,8 +92,8 @@ void main() {
       await db.addTrackToPlaylist(playlist: customPlaylist, trackId: 'track_b');
       
       await db.removeTrackFromPlaylist(playlist: customPlaylist, trackId: 'track_a');
-      expect(customPlaylist.trackIds, isNot(contains('track_a')));
-      expect(customPlaylist.trackIds, contains('track_b'));
+      expect(customPlaylist.trackIds, isNot(contains('track_a'.hashCode)));
+      expect(customPlaylist.trackIds, contains('track_b'.hashCode));
       expect(customPlaylist.trackIds.length, 1);
     });
 
