@@ -1230,7 +1230,9 @@ class _LibraryViewState extends State<LibraryView> {
         final durationStr = _formatDuration(track.duration);
         final isLiked = _likedTrackIds.contains(track.trackId);
 
+        // Use position-based key so duplicate tracks in playlists never collide.
         return _TrackRow(
+          key: ValueKey('row_${idx}_${track.id}'),
           track: track,
           index: idx,
           durationStr: durationStr,
@@ -1261,6 +1263,7 @@ class _LibraryViewState extends State<LibraryView> {
 
 class _TrackRow extends StatefulWidget {
   const _TrackRow({
+    super.key,
     required this.track,
     required this.index,
     required this.durationStr,
@@ -1684,7 +1687,8 @@ class PlaylistCover extends StatelessWidget {
         return _buildTrackPlaceholder(isLiked);
       }
     } else {
-      // 4 or more songs: 2x2 grid collage of the first 4 tracks
+      // 4 or more songs: 2x2 grid collage of the first 4 tracks.
+      // Use indexed keys so duplicate tracks in the list get unique widget slots.
       final first4 = playlistTracks.take(4).toList();
       return SizedBox(
         width: size,
@@ -1693,14 +1697,16 @@ class PlaylistCover extends StatelessWidget {
           crossAxisCount: 2,
           padding: EdgeInsets.zero,
           physics: const NeverScrollableScrollPhysics(),
-          children: first4.map((track) {
+          children: first4.asMap().entries.map((entry) {
+            final cellIdx = entry.key;
+            final track = entry.value;
             final coverPath = track.customMetadata.customCoverPath;
             if (coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync()) {
               final file = File(coverPath);
               final lastModified = file.lastModifiedSync().millisecondsSinceEpoch;
               return Image.file(
                 file,
-                key: ValueKey('${coverPath}_$lastModified'),
+                key: ValueKey('collage_${cellIdx}_${track.id}_$lastModified'),
                 fit: BoxFit.cover,
               );
             } else {
