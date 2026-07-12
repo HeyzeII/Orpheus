@@ -432,6 +432,15 @@ class _LibraryViewState extends State<LibraryView> {
     if (mounted) _updatePlaylistColor(playlist);
   }
 
+  /// Clears the custom cover of [playlist], falling back to the auto-generated
+  /// collage (or track art) and recalculating the background color.
+  Future<void> _clearPlaylistCover(Playlist playlist) async {
+    playlist.customCoverPath = null;
+    await LocalDatabase.instance.savePlaylist(playlist);
+    _refreshData();
+    if (mounted) _updatePlaylistColor(playlist);
+  }
+
   // Delete playlist
   Future<void> _deletePlaylist(Playlist playlist) async {
     final confirm = await showDialog<bool>(
@@ -1063,6 +1072,9 @@ class _LibraryViewState extends State<LibraryView> {
                         playlist: playlist,
                         allTracks: _allTracks,
                         onPickCover: isLiked ? null : () => _pickPlaylistCover(playlist),
+                        onClearCover: (isLiked || playlist.customCoverPath == null)
+                            ? null
+                            : () => _clearPlaylistCover(playlist),
                       ),
                       const SizedBox(width: 28),
 
@@ -1203,54 +1215,96 @@ class _LibraryViewState extends State<LibraryView> {
   }
 
   Widget _buildTrackTable(List<Track> tracks, {Playlist? playlistSource}) {
-    return ListView.builder(
-      itemCount: tracks.length + 1,
-      itemBuilder: (context, idx) {
-        if (idx == 0) {
-          // Table Header
-          return Container(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: AppTheme.divider, width: 1)),
-            ),
-            child: const Row(
-              children: [
-                SizedBox(width: 40, child: Text('#', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
-                Expanded(flex: 3, child: Text('TÍTULO', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
-                Expanded(flex: 2, child: Text('ARTISTA', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
-                Expanded(flex: 2, child: Text('ÁLBUM', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
-                SizedBox(width: 70, child: Align(alignment: Alignment.centerRight, child: Text('DURACIÓN', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold)))),
-                SizedBox(width: 110), // actions column
-              ],
-            ),
-          );
-        }
-
-        final track = tracks[idx - 1];
-        final durationStr = _formatDuration(track.duration);
-        final isLiked = _likedTrackIds.contains(track.trackId);
-
-        // Use position-based key so duplicate tracks in playlists never collide.
-        return _TrackRow(
-          key: ValueKey('row_${idx}_${track.id}'),
-          track: track,
-          index: idx,
-          durationStr: durationStr,
-          isLiked: isLiked,
-          customPlaylists: _playlists.where((p) => p.playlistId != '__liked__').toList(),
-          playlistSource: playlistSource,
-          onPlay: () => _playTracks(tracks, idx - 1),
-          onPlayNext: () => AudioPlayerService.instance.playNext(track),
-          onAddToQueue: () => AudioPlayerService.instance.addToQueue(track),
-          onToggleLike: () => _toggleLike(track),
-          onCreatePlaylistWithTrack: () => _createAndAddTrackToPlaylist(track),
-          onAddToPlaylist: (p) => _addTrackToPlaylist(track, p),
-          onRemoveFromPlaylist: (p) => _removeTrackFromPlaylist(track, p),
-          onDelete: () => _deleteTrack(track),
-          onEditMetadata: () => _editTrackMetadata(track),
-        );
-      },
+    // Fixed header — always visible above the scrollable list.
+    const header = Padding(
+      padding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppTheme.divider, width: 1)),
+        ),
+        child: Row(
+          children: [
+            SizedBox(width: 40, child: Text('#', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
+            Expanded(flex: 3, child: Text('TÍTULO', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
+            Expanded(flex: 2, child: Text('ARTISTA', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
+            Expanded(flex: 2, child: Text('ÁLBUM', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
+            SizedBox(width: 70, child: Align(alignment: Alignment.centerRight, child: Text('DURACIÓN', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold)))),
+            SizedBox(width: 110),
+          ],
+        ),
+      ),
     );
+
+    Widget buildRow(int index) {
+      final track = tracks[index];
+      final durationStr = _formatDuration(track.duration);
+      final isLiked = _likedTrackIds.contains(track.trackId);
+      return _TrackRow(
+        key: ValueKey('row_${index}_${track.id}'),
+        track: track,
+        index: index + 1, // 1-based display number
+        durationStr: durationStr,
+        isLiked: isLiked,
+        customPlaylists: _playlists.where((p) => p.playlistId != '__liked__').toList(),
+        playlistSource: playlistSource,
+        onPlay: () => _playTracks(tracks, index),
+        onPlayNext: () => AudioPlayerService.instance.playNext(track),
+        onAddToQueue: () => AudioPlayerService.instance.addToQueue(track),
+        onToggleLike: () => _toggleLike(track),
+        onCreatePlaylistWithTrack: () => _createAndAddTrackToPlaylist(track),
+        onAddToPlaylist: (p) => _addTrackToPlaylist(track, p),
+        onRemoveFromPlaylist: (p) => _removeTrackFromPlaylist(track, p),
+        onDelete: () => _deleteTrack(track),
+        onEditMetadata: () => _editTrackMetadata(track),
+      );
+    }
+
+    // When viewing a playlist, allow drag-to-reorder.
+    if (playlistSource != null) {
+      return Column(
+        children: [
+          header,
+          Expanded(
+            child: ReorderableListView.builder(
+              itemCount: tracks.length,
+              onReorder: (oldIndex, newIndex) =>
+                  _onReorderTracks(playlistSource, oldIndex, newIndex),
+              proxyDecorator: (child, index, animation) => Material(
+                color: Colors.transparent,
+                child: child,
+              ),
+              itemBuilder: (context, index) => buildRow(index),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // Default: non-reorderable list (Tracks tab, Albums, Artists).
+    return Column(
+      children: [
+        header,
+        Expanded(
+          child: ListView.builder(
+            itemCount: tracks.length,
+            itemBuilder: (context, index) => buildRow(index),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Handles a drag-reorder gesture on the playlist track list.
+  void _onReorderTracks(Playlist playlist, int oldIndex, int newIndex) {
+    if (newIndex > oldIndex) newIndex -= 1;
+    final newOrder = List<int>.from(playlist.trackIds);
+    final moved = newOrder.removeAt(oldIndex);
+    newOrder.insert(newIndex, moved);
+    LocalDatabase.instance.reorderPlaylistTracks(
+      playlist: playlist,
+      newOrder: newOrder,
+    );
+    _refreshData();
   }
 
   String _formatDuration(int sec) {
@@ -1826,17 +1880,23 @@ class _BlurredImageBackground extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Shows the [PlaylistCover] with a camera-overlay button on hover so the user
-/// can select a custom cover image via the system file picker.
+/// can select or clear a custom cover image.
+///
+/// - If [onClearCover] is non-null (i.e. a custom cover exists), hovering shows
+///   a popup menu with "Cambiar imagen" and "Eliminar imagen".
+/// - Otherwise, tapping directly calls [onPickCover].
 class _PlaylistCoverPicker extends StatefulWidget {
   const _PlaylistCoverPicker({
     required this.playlist,
     required this.allTracks,
     this.onPickCover,
+    this.onClearCover,
   });
 
   final Playlist playlist;
   final List<Track> allTracks;
   final VoidCallback? onPickCover;
+  final VoidCallback? onClearCover;
 
   @override
   State<_PlaylistCoverPicker> createState() => _PlaylistCoverPickerState();
@@ -1845,16 +1905,66 @@ class _PlaylistCoverPicker extends StatefulWidget {
 class _PlaylistCoverPickerState extends State<_PlaylistCoverPicker> {
   bool _hovered = false;
 
+  bool get _hasCustomCover => widget.onClearCover != null;
+  bool get _canEdit => widget.onPickCover != null;
+
+  /// Shows the two-option popup menu anchored to the cover widget.
+  void _showCoverMenu(BuildContext context) async {
+    final RenderBox box = context.findRenderObject()! as RenderBox;
+    final Offset topLeft = box.localToGlobal(Offset.zero);
+    final RelativeRect position = RelativeRect.fromLTRB(
+      topLeft.dx,
+      topLeft.dy + box.size.height,
+      topLeft.dx + box.size.width,
+      0,
+    );
+    final choice = await showMenu<String>(
+      context: context,
+      position: position,
+      color: const Color(0xFF1E1E1E),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: AppTheme.divider),
+      ),
+      items: [
+        const PopupMenuItem(
+          value: 'change',
+          child: Row(
+            children: [
+              Icon(Icons.photo_rounded, size: 16, color: AppTheme.textSecondary),
+              SizedBox(width: 10),
+              Text('Cambiar imagen', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+            ],
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'clear',
+          child: Row(
+            children: [
+              Icon(Icons.hide_image_outlined, size: 16, color: Colors.redAccent),
+              SizedBox(width: 10),
+              Text('Eliminar imagen', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+            ],
+          ),
+        ),
+      ],
+    );
+    if (choice == 'change') widget.onPickCover?.call();
+    if (choice == 'clear') widget.onClearCover?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      cursor: widget.onPickCover != null
-          ? SystemMouseCursors.click
-          : SystemMouseCursors.basic,
+      cursor: _canEdit ? SystemMouseCursors.click : SystemMouseCursors.basic,
       child: GestureDetector(
-        onTap: widget.onPickCover,
+        onTap: _canEdit
+            ? (_hasCustomCover
+                ? () => _showCoverMenu(context)
+                : widget.onPickCover)
+            : null,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: SizedBox(
@@ -1868,22 +1978,22 @@ class _PlaylistCoverPickerState extends State<_PlaylistCoverPicker> {
                   allTracks: widget.allTracks,
                   size: 180,
                 ),
-                if (_hovered && widget.onPickCover != null)
+                if (_hovered && _canEdit)
                   AnimatedOpacity(
                     opacity: _hovered ? 1.0 : 0.0,
                     duration: const Duration(milliseconds: 200),
                     child: Container(
                       color: Colors.black54,
-                      child: const Center(
+                      child: Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.camera_alt_rounded,
+                            const Icon(Icons.camera_alt_rounded,
                                 color: Colors.white, size: 36),
-                            SizedBox(height: 6),
+                            const SizedBox(height: 6),
                             Text(
-                              'Cambiar portada',
-                              style: TextStyle(
+                              _hasCustomCover ? 'Editar portada' : 'Cambiar portada',
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
