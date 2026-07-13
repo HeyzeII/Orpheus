@@ -312,22 +312,45 @@ class LocalDatabase {
   }
 
 
-  /// Returns recently played tracks (sorted by totalPlays > 0, falling back to all tracks).
+  /// Scoring algorithm: playCount×10 + hasCover×50 + isLiked×30.
+  ///
+  /// Produces a rich ordering even on a fresh library with 0 plays:
+  /// tracks with cover art float to the top, then liked tracks.
+  int _computeTrackScore(Track t, Set<String> likedIds) {
+    int score = t.stats.totalPlays * 10;
+    if (t.customMetadata.customCoverPath != null &&
+        t.customMetadata.customCoverPath!.isNotEmpty) {
+      score += 50;
+    }
+    if (likedIds.contains(t.trackId)) score += 30;
+    return score;
+  }
+
+  /// Returns recently played tracks sorted by the scoring algorithm.
+  /// Falls back to score-sorted library when nothing has been played yet.
   Future<List<Track>> getRecentlyPlayedTracks({int limit = 6}) async {
     final tracks = await getAllTracks();
+    final likedIds = likedTrackIdsNotifier.value;
     final played = tracks.where((t) => t.stats.totalPlays > 0).toList();
     if (played.isEmpty) {
-      return tracks.take(limit).toList();
+      // Zero plays: sort entire library by score for a rich first impression.
+      final sorted = List<Track>.from(tracks)
+        ..sort((a, b) => _computeTrackScore(b, likedIds)
+            .compareTo(_computeTrackScore(a, likedIds)));
+      return sorted.take(limit).toList();
     }
-    played.sort((a, b) => b.stats.totalPlays.compareTo(a.stats.totalPlays));
+    played.sort((a, b) => _computeTrackScore(b, likedIds)
+        .compareTo(_computeTrackScore(a, likedIds)));
     return played.take(limit).toList();
   }
 
-  /// Returns the most played tracks.
+  /// Returns the most played tracks, ranked by the scoring algorithm.
   Future<List<Track>> getMostPlayedTracks({int limit = 6}) async {
     final tracks = await getAllTracks();
-    final sorted = List<Track>.from(tracks);
-    sorted.sort((a, b) => b.stats.totalPlays.compareTo(a.stats.totalPlays));
+    final likedIds = likedTrackIdsNotifier.value;
+    final sorted = List<Track>.from(tracks)
+      ..sort((a, b) => _computeTrackScore(b, likedIds)
+          .compareTo(_computeTrackScore(a, likedIds)));
     return sorted.take(limit).toList();
   }
 

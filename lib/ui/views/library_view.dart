@@ -1266,6 +1266,7 @@ class _LibraryViewState extends State<LibraryView> {
           header,
           Expanded(
             child: ReorderableListView.builder(
+              buildDefaultDragHandles: false,
               itemCount: tracks.length,
               onReorder: (oldIndex, newIndex) =>
                   _onReorderTracks(playlistSource, oldIndex, newIndex),
@@ -1273,7 +1274,11 @@ class _LibraryViewState extends State<LibraryView> {
                 color: Colors.transparent,
                 child: child,
               ),
-              itemBuilder: (context, index) => buildRow(index),
+              itemBuilder: (context, index) => ReorderableDelayedDragStartListener(
+                key: ValueKey('drag_handle_${tracks[index].id}_$index'),
+                index: index,
+                child: buildRow(index),
+              ),
             ),
           ),
         ],

@@ -50,12 +50,26 @@ class _HomeViewState extends State<HomeView> {
     final genres = await db.getUniqueGenres();
     final allTracks = await db.getAllTracks();
 
+    // Score-sort the full library for the "TU BIBLIOTECA" teaser:
+    // cover art (+50) > liked (+30) > plays (×10) > insertion order.
+    final likedIds = LocalDatabase.instance.likedTrackIdsNotifier.value;
+    int scoreOf(Track t) {
+      int s = t.stats.totalPlays * 10;
+      if (t.customMetadata.customCoverPath != null &&
+          t.customMetadata.customCoverPath!.isNotEmpty) s += 50;
+      if (likedIds.contains(t.trackId)) s += 30;
+      return s;
+    }
+
+    final sortedAll = List<Track>.from(allTracks)
+      ..sort((a, b) => scoreOf(b).compareTo(scoreOf(a)));
+
     if (!mounted) return;
     setState(() {
       _recentlyPlayed = recentlyPlayed;
       _mostPlayed = mostPlayed;
       _genres = genres;
-      _allTracks = allTracks;
+      _allTracks = sortedAll;
       _isLoading = false;
     });
   }
