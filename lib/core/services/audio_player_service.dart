@@ -8,6 +8,12 @@ import '../database/local_database.dart';
 import '../models/playback_state.dart';
 import '../models/track.dart';
 
+enum PlayerRepeatMode {
+  off,
+  playlist,
+  single,
+}
+
 /// Singleton service managing the native audio player engine, play queue,
 /// automated playback statistics tracking, and **persistent playback state**.
 ///
@@ -43,9 +49,10 @@ class AudioPlayerService {
   late final Player _player;
 
   final List<Track> _queue = [];
+  List<Track>? _originalQueue;
   int _currentIndex = -1;
   bool _shuffle = false;
-  bool _repeat = false;
+  PlayerRepeatMode _repeatMode = PlayerRepeatMode.off;
 
   int _consecutiveErrors = 0;
 
@@ -61,7 +68,8 @@ class AudioPlayerService {
   final _durationController = StreamController<Duration>.broadcast();
   final _volumeController = StreamController<double>.broadcast();
   final _shuffleController = StreamController<bool>.broadcast();
-  final _repeatController = StreamController<bool>.broadcast();
+  final _repeatController = StreamController<PlayerRepeatMode>.broadcast();
+  final _queueController = StreamController<List<Track>>.broadcast();
 
   final List<StreamSubscription> _subscriptions = [];
 
@@ -108,7 +116,7 @@ class AudioPlayerService {
           }
         }
 
-        if (_repeat) {
+        if (_repeatMode == PlayerRepeatMode.single) {
           await _player.seek(Duration.zero);
           await _player.play();
         } else {
@@ -140,7 +148,9 @@ class AudioPlayerService {
 
   bool get shuffleEnabled => _shuffle;
 
-  bool get repeatEnabled => _repeat;
+  bool get repeatEnabled => _repeatMode != PlayerRepeatMode.off;
+
+  PlayerRepeatMode get repeatMode => _repeatMode;
 
   List<Track> get queue => List.unmodifiable(_queue);
 
@@ -160,7 +170,9 @@ class AudioPlayerService {
 
   Stream<bool> get shuffleStream => _shuffleController.stream;
 
-  Stream<bool> get repeatStream => _repeatController.stream;
+  Stream<PlayerRepeatMode> get repeatStream => _repeatController.stream;
+
+  Stream<List<Track>> get queueStream => _queueController.stream;
 
   // ── Control API ────────────────────────────────────────────────────────────
 
@@ -169,6 +181,7 @@ class AudioPlayerService {
     _queue.clear();
     _queue.addAll(tracks);
     _consecutiveErrors = 0;
+    _originalQueue = null;
 
     if (_queue.isEmpty) {
       _currentIndex = -1;
@@ -179,6 +192,17 @@ class AudioPlayerService {
 
     var startIndex = initialIndex;
     if (startIndex < 0 || startIndex >= _queue.length) {
+      startIndex = 0;
+    }
+
+    if (_shuffle) {
+      _originalQueue = List<Track>.from(_queue);
+      final current = _queue[startIndex];
+      final remaining = List<Track>.from(_queue)..removeAt(startIndex);
+      remaining.shuffle(Random());
+      _queue.clear();
+      _queue.add(current);
+      _queue.addAll(remaining);
       startIndex = 0;
     }
 
@@ -212,6 +236,7 @@ class AudioPlayerService {
       await _player.stop();
     }
     _queue.clear();
+    _originalQueue = null;
     _currentIndex = -1;
     _currentTrackController.add(null);
     _notifyState();
@@ -236,32 +261,66 @@ class AudioPlayerService {
 
   void toggleShuffle() {
     _shuffle = !_shuffle;
+    if (_shuffle) {
+      _originalQueue = List<Track>.from(_queue);
+      if (_queue.isNotEmpty) {
+        final current = currentTrack;
+        final remaining = List<Track>.from(_queue);
+        if (current != null) {
+          remaining.removeWhere((t) => t.trackId == current.trackId);
+        }
+        remaining.shuffle(Random());
+        _queue.clear();
+        if (current != null) {
+          _queue.add(current);
+        }
+        _queue.addAll(remaining);
+        _currentIndex = current != null ? 0 : -1;
+      }
+    } else {
+      if (_originalQueue != null) {
+        final current = currentTrack;
+        _queue.clear();
+        _queue.addAll(_originalQueue!);
+        _originalQueue = null;
+        if (current != null) {
+          _currentIndex = _queue.indexWhere((t) => t.trackId == current.trackId);
+        }
+      }
+    }
     _shuffleController.add(_shuffle);
+    _notifyState();
   }
 
   void toggleRepeat() {
-    _repeat = !_repeat;
-    _repeatController.add(_repeat);
+    switch (_repeatMode) {
+      case PlayerRepeatMode.off:
+        _repeatMode = PlayerRepeatMode.playlist;
+        break;
+      case PlayerRepeatMode.playlist:
+        _repeatMode = PlayerRepeatMode.single;
+        break;
+      case PlayerRepeatMode.single:
+        _repeatMode = PlayerRepeatMode.off;
+        break;
+    }
+    _repeatController.add(_repeatMode);
+    _notifyState();
   }
 
   /// Advances to the next track in the queue, handling shuffle options.
   Future<void> next() async {
     if (_queue.isEmpty) return;
 
-    if (_shuffle) {
-      final nextIndex = Random().nextInt(_queue.length);
-      await _playIndex(nextIndex);
-    } else {
-      final nextIndex = _currentIndex + 1;
-      if (nextIndex >= _queue.length) {
-        if (_repeat) {
-          await _playIndex(0); // loop back
-        } else {
-          await stop();
-        }
+    final nextIndex = _currentIndex + 1;
+    if (nextIndex >= _queue.length) {
+      if (_repeatMode == PlayerRepeatMode.playlist) {
+        await _playIndex(0); // loop back
       } else {
-        await _playIndex(nextIndex);
+        await stop();
       }
+    } else {
+      await _playIndex(nextIndex);
     }
   }
 
@@ -275,20 +334,15 @@ class AudioPlayerService {
       return;
     }
 
-    if (_shuffle) {
-      final prevIndex = Random().nextInt(_queue.length);
-      await _playIndex(prevIndex);
-    } else {
-      final prevIndex = _currentIndex - 1;
-      if (prevIndex < 0) {
-        if (_repeat) {
-          await _playIndex(_queue.length - 1);
-        } else {
-          await seek(Duration.zero);
-        }
+    final prevIndex = _currentIndex - 1;
+    if (prevIndex < 0) {
+      if (_repeatMode == PlayerRepeatMode.playlist) {
+        await _playIndex(_queue.length - 1);
       } else {
-        await _playIndex(prevIndex);
+        await seek(Duration.zero);
       }
+    } else {
+      await _playIndex(prevIndex);
     }
   }
 
@@ -313,6 +367,20 @@ class AudioPlayerService {
     }
     final insertAt = _currentIndex + 1;
     _queue.insert(insertAt, track);
+
+    // Sync original queue if shuffle is ON
+    if (_originalQueue != null) {
+      final origIdx = _originalQueue!.indexWhere((t) => t.trackId == track.trackId);
+      if (origIdx >= 0) _originalQueue!.removeAt(origIdx);
+      final currentTrackId = currentTrack?.trackId;
+      final origCurrentIdx = _originalQueue!.indexWhere((t) => t.trackId == currentTrackId);
+      if (origCurrentIdx >= 0) {
+        _originalQueue!.insert(origCurrentIdx + 1, track);
+      } else {
+        _originalQueue!.add(track);
+      }
+    }
+
     _notifyState();
   }
 
@@ -330,6 +398,14 @@ class AudioPlayerService {
       return;
     }
     _queue.add(track);
+
+    // Sync original queue if shuffle is ON
+    if (_originalQueue != null) {
+      final origIdx = _originalQueue!.indexWhere((t) => t.trackId == track.trackId);
+      if (origIdx >= 0) _originalQueue!.removeAt(origIdx);
+      _originalQueue!.add(track);
+    }
+
     _notifyState();
   }
 
@@ -340,6 +416,7 @@ class AudioPlayerService {
     _queue.clear();
     _queue.add(current);
     _currentIndex = 0;
+    _originalQueue = null;
     _notifyState();
   }
 
@@ -452,7 +529,7 @@ class AudioPlayerService {
     }
 
     if (index < 0 || index >= _queue.length) {
-      if (_repeat) {
+      if (_repeatMode != PlayerRepeatMode.off) {
         _currentIndex = 0;
       } else {
         await stop();
@@ -510,7 +587,8 @@ class AudioPlayerService {
     _durationController.add(duration);
     _volumeController.add(volume);
     _shuffleController.add(_shuffle);
-    _repeatController.add(_repeat);
+    _repeatController.add(_repeatMode);
+    _queueController.add(queue);
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
@@ -529,5 +607,6 @@ class AudioPlayerService {
     await _volumeController.close();
     await _shuffleController.close();
     await _repeatController.close();
+    await _queueController.close();
   }
 }

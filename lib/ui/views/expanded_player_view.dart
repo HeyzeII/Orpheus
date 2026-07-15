@@ -334,12 +334,18 @@ class _ExpandedPlaybackControls extends StatelessWidget {
           onPressed: player.next,
         ),
         const SizedBox(width: 24),
-        StreamBuilder<bool>(
+        StreamBuilder<PlayerRepeatMode>(
           stream: player.repeatStream,
           builder: (_, snap) {
-            final on = snap.data ?? player.repeatEnabled;
+            final mode = snap.data ?? player.repeatMode;
+            final on = mode != PlayerRepeatMode.off;
+            final isSingle = mode == PlayerRepeatMode.single;
             return IconButton(
-              icon: Icon(Icons.repeat_rounded, color: on ? AppTheme.accent : Colors.white54, size: 28),
+              icon: Icon(
+                isSingle ? Icons.repeat_one_rounded : Icons.repeat_rounded,
+                color: on ? AppTheme.accent : Colors.white54,
+                size: 28,
+              ),
               onPressed: player.toggleRepeat,
             );
           },
@@ -427,11 +433,12 @@ class _QueueTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final player = AudioPlayerService.instance;
-    // We listen to the current track stream to rebuild the queue UI when tracks change.
-    return StreamBuilder<Track?>(
-      stream: player.currentTrackStream,
-      builder: (context, _) {
-        final queue = player.queue;
+    // Listen to queueStream to rebuild when queue contents, order (shuffle/reorder), or current track changes.
+    return StreamBuilder<List<Track>>(
+      stream: player.queueStream,
+      initialData: player.queue,
+      builder: (context, snap) {
+        final queue = snap.data ?? player.queue;
         final currentIndex = player.currentIndex;
 
         if (queue.isEmpty) {

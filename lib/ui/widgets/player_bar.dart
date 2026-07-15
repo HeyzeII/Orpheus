@@ -404,15 +404,17 @@ class _PlaybackControls extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               // Repeat
-              StreamBuilder<bool>(
+              StreamBuilder<PlayerRepeatMode>(
                 stream: player.repeatStream,
                 builder: (_, snap) {
-                  final on = snap.data ?? player.repeatEnabled;
+                  final mode = snap.data ?? player.repeatMode;
+                  final on = mode != PlayerRepeatMode.off;
+                  final isSingle = mode == PlayerRepeatMode.single;
                   return _IconBtn(
-                    icon: Icons.repeat_rounded,
+                    icon: isSingle ? Icons.repeat_one_rounded : Icons.repeat_rounded,
                     active: on,
                     onTap: player.toggleRepeat,
-                    tooltip: 'Repetir',
+                    tooltip: isSingle ? 'Repetir una' : (on ? 'Repetir todo' : 'Repetir'),
                   );
                 },
               ),

@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart' as fp;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/database/local_database.dart';
@@ -31,6 +33,9 @@ class _LibraryViewState extends State<LibraryView> {
   List<String> _uniqueArtists = [];
   List<Playlist> _playlists = [];
   Set<String> _likedTrackIds = {};
+
+  // Dynamic cover cache-busting versions
+  final Map<String, int> _coverVersions = {};
 
   // UI state
   String _searchQuery = '';
@@ -410,6 +415,11 @@ class _LibraryViewState extends State<LibraryView> {
   }
 
   /// Opens a file picker to let the user select a custom cover for a [playlist].
+  ///
+  /// After selection the image is:
+  ///   1. Presented in a visual crop dialog for 1:1 framing.
+  ///   2. Saved to the app-support cover_art directory.
+  ///   3. Flutter's image cache is cleared and coverVersion is bumped to render immediately.
   Future<void> _pickPlaylistCover(Playlist playlist) async {
     final result = await fp.FilePicker.platform.pickFiles(
       type: fp.FileType.custom,
@@ -420,11 +430,25 @@ class _LibraryViewState extends State<LibraryView> {
     final sourcePath = result.files.first.path;
     if (sourcePath == null) return;
 
+    // ── 1. Present Visual Crop Dialog ──────────────────────────────────────
+    if (!mounted) return;
+    final Uint8List? croppedBytes = await showDialog<Uint8List>(
+      context: context,
+      builder: (context) => _ImageCropDialog(imagePath: sourcePath),
+    );
+    if (croppedBytes == null) return;
+
+    // ── 2. Save to app-support directory ─────────────────────────────────
     final supportDir = await getApplicationSupportDirectory();
     final coverDir = Directory('${supportDir.path}/cover_art');
     if (!await coverDir.exists()) await coverDir.create(recursive: true);
     final destPath = '${coverDir.path}/custom_playlist_${playlist.playlistId}.png';
-    await File(sourcePath).copy(destPath);
+    await File(destPath).writeAsBytes(croppedBytes);
+
+    // ── 3. Clear Flutter image cache and update cache buster version ──────
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    _coverVersions[playlist.playlistId] = DateTime.now().millisecondsSinceEpoch;
 
     playlist.customCoverPath = destPath;
     await LocalDatabase.instance.savePlaylist(playlist);
@@ -436,6 +460,10 @@ class _LibraryViewState extends State<LibraryView> {
   /// collage (or track art) and recalculating the background color.
   Future<void> _clearPlaylistCover(Playlist playlist) async {
     playlist.customCoverPath = null;
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    _coverVersions[playlist.playlistId] = DateTime.now().millisecondsSinceEpoch;
+
     await LocalDatabase.instance.savePlaylist(playlist);
     _refreshData();
     if (mounted) _updatePlaylistColor(playlist);
@@ -822,6 +850,7 @@ class _LibraryViewState extends State<LibraryView> {
                                           playlist: livePlaylist,
                                           allTracks: _allTracks,
                                           size: 150,
+                                          coverVersion: _coverVersions[livePlaylist.playlistId],
                                         ),
                                       ),
                                     ),
@@ -1075,6 +1104,7 @@ class _LibraryViewState extends State<LibraryView> {
                         onClearCover: (isLiked || playlist.customCoverPath == null)
                             ? null
                             : () => _clearPlaylistCover(playlist),
+                        coverVersion: _coverVersions[playlist.playlistId],
                       ),
                       const SizedBox(width: 28),
 
@@ -1274,7 +1304,7 @@ class _LibraryViewState extends State<LibraryView> {
                 color: Colors.transparent,
                 child: child,
               ),
-              itemBuilder: (context, index) => ReorderableDelayedDragStartListener(
+              itemBuilder: (context, index) => ReorderableDragStartListener(
                 key: ValueKey('drag_handle_${tracks[index].id}_$index'),
                 index: index,
                 child: buildRow(index),
@@ -1693,12 +1723,14 @@ class PlaylistCover extends StatelessWidget {
   final Playlist playlist;
   final List<Track> allTracks;
   final double size;
+  final int? coverVersion;
 
   const PlaylistCover({
     super.key,
     required this.playlist,
     required this.allTracks,
     required this.size,
+    this.coverVersion,
   });
 
   @override
@@ -1710,9 +1742,10 @@ class PlaylistCover extends StatelessWidget {
     if (customPath != null && customPath.isNotEmpty && File(customPath).existsSync()) {
       final file = File(customPath);
       final lastModified = file.lastModifiedSync().millisecondsSinceEpoch;
+      final version = coverVersion ?? lastModified;
       return Image.file(
         file,
-        key: ValueKey('${customPath}_$lastModified'),
+        key: ValueKey('${customPath}_$version'),
         width: size,
         height: size,
         fit: BoxFit.cover,
@@ -1896,12 +1929,14 @@ class _PlaylistCoverPicker extends StatefulWidget {
     required this.allTracks,
     this.onPickCover,
     this.onClearCover,
+    this.coverVersion,
   });
 
   final Playlist playlist;
   final List<Track> allTracks;
   final VoidCallback? onPickCover;
   final VoidCallback? onClearCover;
+  final int? coverVersion;
 
   @override
   State<_PlaylistCoverPicker> createState() => _PlaylistCoverPickerState();
@@ -1982,6 +2017,7 @@ class _PlaylistCoverPickerState extends State<_PlaylistCoverPicker> {
                   playlist: widget.playlist,
                   allTracks: widget.allTracks,
                   size: 180,
+                  coverVersion: widget.coverVersion,
                 ),
                 if (_hovered && _canEdit)
                   AnimatedOpacity(
@@ -2018,3 +2054,197 @@ class _PlaylistCoverPickerState extends State<_PlaylistCoverPicker> {
   }
 }
 
+// ── Visual Square Crop Dialog ─────────────────────────────────────────────────
+
+/// A dialog that displays [imagePath] inside an [InteractiveViewer], letting
+/// the user pan and zoom to frame a 1:1 crop area. A square accent border
+/// shows exactly what will be captured.
+///
+/// Returns a [Uint8List] (PNG) of the cropped area on "Recortar", or `null`
+/// on cancel.
+class _ImageCropDialog extends StatefulWidget {
+  const _ImageCropDialog({required this.imagePath});
+
+  final String imagePath;
+
+  @override
+  State<_ImageCropDialog> createState() => _ImageCropDialogState();
+}
+
+class _ImageCropDialogState extends State<_ImageCropDialog> {
+  final _repaintKey = GlobalKey();
+  final _transformController = TransformationController();
+
+  static const double _previewSize = 420.0;
+  bool _processing = false;
+
+  Future<Uint8List?> _captureCrop() async {
+    try {
+      final boundary = _repaintKey.currentContext!.findRenderObject()
+          as RenderRepaintBoundary;
+      final uiImage = await boundary.toImage(pixelRatio: 1.0);
+      final byteData =
+          await uiImage.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _transformController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(32),
+      child: Container(
+        width: _previewSize + 48,
+        decoration: BoxDecoration(
+          color: const Color(0xFF121212),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 20, 24, 4),
+              child: Row(
+                children: [
+                  Icon(Icons.crop_square_rounded,
+                      color: AppTheme.accent, size: 22),
+                  SizedBox(width: 10),
+                  Text(
+                    'Encuadrar portada',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 0, 24, 12),
+              child: Text(
+                'Usa scroll o pellizco para zoom; arrastra para encuadrar.',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 11,
+                  color: AppTheme.textHint,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: SizedBox(
+                  width: _previewSize,
+                  height: _previewSize,
+                  child: Stack(
+                    children: [
+                      RepaintBoundary(
+                        key: _repaintKey,
+                        child: InteractiveViewer(
+                          transformationController: _transformController,
+                          minScale: 0.5,
+                          maxScale: 5.0,
+                          constrained: false,
+                          child: Image.file(
+                            File(widget.imagePath),
+                            width: _previewSize,
+                            height: _previewSize,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      IgnorePointer(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: AppTheme.accent.withOpacity(0.8),
+                              width: 2,
+                            ),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.white24),
+                        foregroundColor: AppTheme.textSecondary,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onPressed: () => Navigator.of(context).pop(null),
+                      child: const Text('Cancelar',
+                          style: TextStyle(fontFamily: 'Inter')),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppTheme.accent,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onPressed: _processing
+                          ? null
+                          : () async {
+                              setState(() => _processing = true);
+                              final bytes = await _captureCrop();
+                              if (mounted) {
+                                Navigator.of(context).pop(bytes);
+                              }
+                            },
+                      icon: _processing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.crop_rounded, size: 18),
+                      label: Text(
+                        _processing ? 'Procesando…' : 'Recortar',
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
