@@ -498,11 +498,18 @@ class _QueueTab extends StatelessWidget {
                       await player.loadPlaylist(queue, initialIndex: index);
                     },
                     borderRadius: BorderRadius.circular(8),
-                    child: Container(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
                       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
                       decoration: BoxDecoration(
-                        color: isCurrent ? Colors.white.withOpacity(0.1) : Colors.transparent,
+                        color: isCurrent ? AppTheme.accent.withOpacity(0.08) : Colors.transparent,
                         borderRadius: BorderRadius.circular(8),
+                        border: Border(
+                          left: BorderSide(
+                            color: isCurrent ? AppTheme.accent : Colors.transparent,
+                            width: 3,
+                          ),
+                        ),
                       ),
                       child: Row(
                         children: [
@@ -533,6 +540,14 @@ class _QueueTab extends StatelessWidget {
                                     color: isCurrent ? AppTheme.accent : Colors.white,
                                     fontSize: 14,
                                     fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w500,
+                                    shadows: isCurrent
+                                        ? [
+                                            Shadow(
+                                              color: AppTheme.accent.withOpacity(0.5),
+                                              blurRadius: 8,
+                                            ),
+                                          ]
+                                        : null,
                                   ),
                                 ),
                                 const SizedBox(height: 2),

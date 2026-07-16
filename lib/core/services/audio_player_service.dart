@@ -178,6 +178,26 @@ class AudioPlayerService {
 
   /// Replaces the current queue with [tracks] and starts playing at [initialIndex].
   Future<void> loadPlaylist(List<Track> tracks, {int initialIndex = 0}) async {
+    // Check if the tracks list is exactly the same as our current _queue (same trackId and same order)
+    bool isCurrentQueue = false;
+    if (tracks.length == _queue.length) {
+      isCurrentQueue = true;
+      for (int i = 0; i < tracks.length; i++) {
+        if (tracks[i].trackId != _queue[i].trackId) {
+          isCurrentQueue = false;
+          break;
+        }
+      }
+    }
+
+    if (isCurrentQueue) {
+      if (_queue.isNotEmpty) {
+        final targetIdx = initialIndex.clamp(0, _queue.length - 1);
+        await _playIndex(targetIdx);
+      }
+      return;
+    }
+
     _queue.clear();
     _queue.addAll(tracks);
     _consecutiveErrors = 0;

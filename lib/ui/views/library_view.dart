@@ -2078,11 +2078,27 @@ class _ImageCropDialogState extends State<_ImageCropDialog> {
   static const double _previewSize = 420.0;
   bool _processing = false;
 
+  late final Future<ui.Image> _imageLoaderFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _imageLoaderFuture = _loadImage();
+  }
+
+  Future<ui.Image> _loadImage() async {
+    final bytes = await File(widget.imagePath).readAsBytes();
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    return frame.image;
+  }
+
   Future<Uint8List?> _captureCrop() async {
     try {
       final boundary = _repaintKey.currentContext!.findRenderObject()
           as RenderRepaintBoundary;
-      final uiImage = await boundary.toImage(pixelRatio: 1.0);
+      // Capture at 2.0x pixel ratio for sharp cover art results
+      final uiImage = await boundary.toImage(pixelRatio: 2.0);
       final byteData =
           await uiImage.toByteData(format: ui.ImageByteFormat.png);
       return byteData?.buffer.asUint8List();
@@ -2109,140 +2125,172 @@ class _ImageCropDialogState extends State<_ImageCropDialog> {
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white12),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(24, 20, 24, 4),
-              child: Row(
-                children: [
-                  Icon(Icons.crop_square_rounded,
-                      color: AppTheme.accent, size: 22),
-                  SizedBox(width: 10),
-                  Text(
-                    'Encuadrar portada',
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
-                    ),
+        child: FutureBuilder<ui.Image>(
+          future: _imageLoaderFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done || !snapshot.hasData) {
+              return const SizedBox(
+                height: _previewSize + 100,
+                child: Center(
+                  child: CircularProgressIndicator(
+                    color: AppTheme.accent,
                   ),
-                ],
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(24, 0, 24, 12),
-              child: Text(
-                'Usa scroll o pellizco para zoom; arrastra para encuadrar.',
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 11,
-                  color: AppTheme.textHint,
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: SizedBox(
-                  width: _previewSize,
-                  height: _previewSize,
-                  child: Stack(
+              );
+            }
+
+            final img = snapshot.data!;
+            final double imageAspectRatio = img.width / img.height;
+            double childWidth = _previewSize;
+            double childHeight = _previewSize;
+
+            if (imageAspectRatio >= 1.0) {
+              // Landscape: fit height to previewSize, let width overflow
+              childWidth = _previewSize * imageAspectRatio;
+              childHeight = _previewSize;
+            } else {
+              // Portrait: fit width to previewSize, let height overflow
+              childWidth = _previewSize;
+              childHeight = _previewSize / imageAspectRatio;
+            }
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(24, 20, 24, 4),
+                  child: Row(
                     children: [
-                      RepaintBoundary(
-                        key: _repaintKey,
-                        child: InteractiveViewer(
-                          transformationController: _transformController,
-                          minScale: 0.5,
-                          maxScale: 5.0,
-                          constrained: false,
-                          child: Image.file(
-                            File(widget.imagePath),
-                            width: _previewSize,
-                            height: _previewSize,
-                            fit: BoxFit.cover,
-                          ),
+                      Icon(Icons.crop_square_rounded,
+                          color: AppTheme.accent, size: 22),
+                      SizedBox(width: 10),
+                      Text(
+                        'Encuadrar portada',
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textPrimary,
                         ),
                       ),
-                      IgnorePointer(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: AppTheme.accent.withOpacity(0.8),
-                              width: 2,
+                    ],
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(24, 0, 24, 12),
+                  child: Text(
+                    'Usa scroll o pellizco para zoom; arrastra para encuadrar.',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 11,
+                      color: AppTheme.textHint,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: SizedBox(
+                      width: _previewSize,
+                      height: _previewSize,
+                      child: Stack(
+                        children: [
+                          RepaintBoundary(
+                            key: _repaintKey,
+                            child: InteractiveViewer(
+                              transformationController: _transformController,
+                              minScale: 1.0,
+                              maxScale: 5.0,
+                              constrained: false,
+                              boundaryMargin: EdgeInsets.zero,
+                              child: Image.file(
+                                File(widget.imagePath),
+                                width: childWidth,
+                                height: childHeight,
+                                fit: BoxFit.fill,
+                              ),
                             ),
-                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          IgnorePointer(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: AppTheme.accent.withOpacity(0.8),
+                                  width: 2,
+                                ),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Colors.white24),
+                            foregroundColor: AppTheme.textSecondary,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          onPressed: () => Navigator.of(context).pop(null),
+                          child: const Text('Cancelar',
+                              style: TextStyle(fontFamily: 'Inter')),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppTheme.accent,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          onPressed: _processing
+                              ? null
+                              : () async {
+                                  setState(() => _processing = true);
+                                  final bytes = await _captureCrop();
+                                  if (mounted) {
+                                    Navigator.of(context).pop(bytes);
+                                  }
+                                },
+                          icon: _processing
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.crop_rounded, size: 18),
+                          label: Text(
+                            _processing ? 'Procesando…' : 'Recortar',
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Colors.white24),
-                        foregroundColor: AppTheme.textSecondary,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      onPressed: () => Navigator.of(context).pop(null),
-                      child: const Text('Cancelar',
-                          style: TextStyle(fontFamily: 'Inter')),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppTheme.accent,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      onPressed: _processing
-                          ? null
-                          : () async {
-                              setState(() => _processing = true);
-                              final bytes = await _captureCrop();
-                              if (mounted) {
-                                Navigator.of(context).pop(bytes);
-                              }
-                            },
-                      icon: _processing
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.crop_rounded, size: 18),
-                      label: Text(
-                        _processing ? 'Procesando…' : 'Recortar',
-                        style: const TextStyle(
-                          fontFamily: 'Inter',
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
