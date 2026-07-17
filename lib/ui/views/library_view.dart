@@ -110,16 +110,22 @@ class _LibraryViewState extends State<LibraryView> {
 
   Future<void> _updatePlaylistColor(Playlist playlist) async {
     Color extracted = const Color(0xFF1E1E1E);
-    final playlistTracks = playlist.trackIds
-        .map((id) => _allTracks.firstWhere((t) => t.id == id, orElse: () => Track()))
-        .where((t) => t.trackId.isNotEmpty)
-        .toList();
+    final customPath = playlist.customCoverPath;
 
-    if (playlistTracks.isNotEmpty) {
-      final firstTrack = playlistTracks.first;
-      final coverPath = firstTrack.customMetadata.customCoverPath;
-      if (coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync()) {
-        extracted = await _extractAverageColor(coverPath);
+    if (customPath != null && customPath.isNotEmpty && File(customPath).existsSync()) {
+      extracted = await _extractAverageColor(customPath);
+    } else {
+      final playlistTracks = playlist.trackIds
+          .map((id) => _allTracks.firstWhere((t) => t.id == id, orElse: () => Track()))
+          .where((t) => t.trackId.isNotEmpty)
+          .toList();
+
+      if (playlistTracks.isNotEmpty) {
+        final firstTrack = playlistTracks.first;
+        final coverPath = firstTrack.customMetadata.customCoverPath;
+        if (coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync()) {
+          extracted = await _extractAverageColor(coverPath);
+        }
       }
     }
 
@@ -418,8 +424,9 @@ class _LibraryViewState extends State<LibraryView> {
   ///
   /// After selection the image is:
   ///   1. Presented in a visual crop dialog for 1:1 framing.
-  ///   2. Saved to the app-support cover_art directory.
-  ///   3. Flutter's image cache is cleared and coverVersion is bumped to render immediately.
+  ///   2. Saved to the app-support cover_art directory with a dynamic timestamped filename.
+  ///   3. Any existing custom cover file is deleted to avoid accumulating files on disk.
+  ///   4. Flutter's image cache is cleared and coverVersion is bumped to render immediately.
   Future<void> _pickPlaylistCover(Playlist playlist) async {
     final result = await fp.FilePicker.platform.pickFiles(
       type: fp.FileType.custom,
@@ -438,17 +445,29 @@ class _LibraryViewState extends State<LibraryView> {
     );
     if (croppedBytes == null) return;
 
-    // ── 2. Save to app-support directory ─────────────────────────────────
+    // ── 2. Determine paths & delete previous custom cover if exists ─────────
     final supportDir = await getApplicationSupportDirectory();
     final coverDir = Directory('${supportDir.path}/cover_art');
     if (!await coverDir.exists()) await coverDir.create(recursive: true);
-    final destPath = '${coverDir.path}/custom_playlist_${playlist.playlistId}.png';
+
+    final oldPath = playlist.customCoverPath;
+    if (oldPath != null && oldPath.isNotEmpty) {
+      final oldFile = File(oldPath);
+      if (await oldFile.exists()) {
+        try {
+          await oldFile.delete();
+        } catch (_) {}
+      }
+    }
+
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final destPath = '${coverDir.path}/custom_playlist_${playlist.playlistId}_$timestamp.png';
     await File(destPath).writeAsBytes(croppedBytes);
 
     // ── 3. Clear Flutter image cache and update cache buster version ──────
     PaintingBinding.instance.imageCache.clear();
     PaintingBinding.instance.imageCache.clearLiveImages();
-    _coverVersions[playlist.playlistId] = DateTime.now().millisecondsSinceEpoch;
+    _coverVersions[playlist.playlistId] = timestamp;
 
     playlist.customCoverPath = destPath;
     await LocalDatabase.instance.savePlaylist(playlist);
@@ -459,6 +478,16 @@ class _LibraryViewState extends State<LibraryView> {
   /// Clears the custom cover of [playlist], falling back to the auto-generated
   /// collage (or track art) and recalculating the background color.
   Future<void> _clearPlaylistCover(Playlist playlist) async {
+    final oldPath = playlist.customCoverPath;
+    if (oldPath != null && oldPath.isNotEmpty) {
+      final oldFile = File(oldPath);
+      if (await oldFile.exists()) {
+        try {
+          await oldFile.delete();
+        } catch (_) {}
+      }
+    }
+
     playlist.customCoverPath = null;
     PaintingBinding.instance.imageCache.clear();
     PaintingBinding.instance.imageCache.clearLiveImages();

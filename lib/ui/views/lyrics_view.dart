@@ -49,7 +49,6 @@ class _LyricsViewState extends State<LyricsView> {
 
   final _scrollController = ScrollController();
   bool _userScrolling = false;
-  static const _lineHeight = 56.0; // px — each lyric row
 
   @override
   void initState() {
@@ -76,27 +75,6 @@ class _LyricsViewState extends State<LyricsView> {
   void _onLinesReady(List<LyricLine> lines) {
     if (!mounted) return;
     setState(() => _lines = lines);
-  }
-
-  // ── Scroll ────────────────────────────────────────────────────────────────
-
-  void _scrollToActive(int index) {
-    if (!_scrollController.hasClients || _userScrolling) return;
-    if (index < 0) return;
-
-    final viewportHeight = _scrollController.position.viewportDimension;
-    // Target offset puts the active line in the centre of the viewport.
-    final targetOffset = (index * _lineHeight) - (viewportHeight / 2) + (_lineHeight / 2);
-    final clamped = targetOffset.clamp(
-      _scrollController.position.minScrollExtent,
-      _scrollController.position.maxScrollExtent,
-    );
-
-    _scrollController.animateTo(
-      clamped,
-      duration: const Duration(milliseconds: 400),
-      curve: Curves.easeInOut,
-    );
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -163,7 +141,6 @@ class _LyricsViewState extends State<LyricsView> {
               onActiveLine: (idx) {
                 if (idx != _activeIndex) {
                   setState(() => _activeIndex = idx);
-                  _scrollToActive(idx);
                 }
               },
             );
@@ -209,18 +186,43 @@ class _SyncedLyricsBody extends StatefulWidget {
 }
 
 class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
+  int _activeIndex = -1;
+  final List<GlobalKey> _lineKeys = [];
+
+  void _scrollToActive(int index) {
+    if (index < 0 || index >= _lineKeys.length) return;
+    final key = _lineKeys[index];
+    final context = key.currentContext;
+    if (context != null) {
+      Scrollable.ensureVisible(
+        context,
+        alignment: 0.5,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_lineKeys.length != widget.lines.length) {
+      _lineKeys.clear();
+      _lineKeys.addAll(List.generate(widget.lines.length, (_) => GlobalKey()));
+    }
+
     return StreamBuilder<Duration>(
       stream: widget.player.positionStream,
       builder: (context, snap) {
         final position = snap.data ?? Duration.zero;
         final activeIdx = LrcParser.activeLineIndex(widget.lines, position);
 
-        // Notify parent — it will scroll and update active index state.
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          widget.onActiveLine(activeIdx);
-        });
+        if (activeIdx != _activeIndex) {
+          _activeIndex = activeIdx;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            widget.onActiveLine(activeIdx);
+            _scrollToActive(activeIdx);
+          });
+        }
 
         return NotificationListener<ScrollNotification>(
           onNotification: (n) {
@@ -234,15 +236,15 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
           },
           child: ListView.builder(
             controller: widget.scrollController,
-            padding: const EdgeInsets.symmetric(vertical: 80, horizontal: 48),
+            padding: const EdgeInsets.symmetric(vertical: 240, horizontal: 32),
             itemCount: widget.lines.length,
-            itemExtent: _LyricsViewState._lineHeight,
             itemBuilder: (context, i) {
               final line = widget.lines[i];
               final isActive = i == activeIdx;
               final isPast = i < activeIdx;
 
               return _LyricLineItem(
+                key: _lineKeys[i],
                 line: line,
                 isActive: isActive,
                 isPast: isPast,
@@ -264,6 +266,7 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
 
 class _LyricLineItem extends StatelessWidget {
   const _LyricLineItem({
+    super.key,
     required this.line,
     required this.isActive,
     required this.isPast,
@@ -281,6 +284,7 @@ class _LyricLineItem extends StatelessWidget {
     final FontWeight fontWeight;
     final double fontSize;
     final double opacity;
+    final double lineHeight = isActive ? 1.4 : 1.35;
 
     if (isActive) {
       textColor = AppTheme.accent;
@@ -303,32 +307,35 @@ class _LyricLineItem extends StatelessWidget {
       onTap: onTap,
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-          alignment: Alignment.centerLeft,
-          child: AnimatedOpacity(
-            opacity: opacity,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: AnimatedContainer(
             duration: const Duration(milliseconds: 300),
-            child: AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeOut,
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: fontSize,
-                fontWeight: fontWeight,
-                color: textColor,
-                height: 1.35,
-                shadows: isActive
-                    ? [
-                        Shadow(
-                          color: AppTheme.accent.withAlpha(0x66),
-                          blurRadius: 12,
-                        ),
-                      ]
-                    : null,
+            curve: Curves.easeOut,
+            alignment: Alignment.centerLeft,
+            child: AnimatedOpacity(
+              opacity: opacity,
+              duration: const Duration(milliseconds: 300),
+              child: AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOut,
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: fontSize,
+                  fontWeight: fontWeight,
+                  color: textColor,
+                  height: lineHeight,
+                  shadows: isActive
+                      ? [
+                          Shadow(
+                            color: AppTheme.accent.withAlpha(0x66),
+                            blurRadius: 12,
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Text(line.text),
               ),
-              child: Text(line.text, maxLines: 2, overflow: TextOverflow.ellipsis),
             ),
           ),
         ),
