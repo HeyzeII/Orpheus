@@ -839,71 +839,86 @@ class _LibraryViewState extends State<LibraryView> {
         Expanded(
           child: _playlists.isEmpty
               ? _buildEmptyState('No tienes playlists creadas.')
-              : GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 5,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                    childAspectRatio: 0.8,
-                  ),
-                  itemCount: _playlists.length,
-                  itemBuilder: (context, idx) {
-                    final playlist = _playlists[idx];
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Adapt grid columns based on available width
+                    final width = constraints.maxWidth;
+                    final int cols = width >= 1200
+                        ? 6
+                        : width >= 900
+                            ? 5
+                            : width >= 650
+                                ? 4
+                                : width >= 420
+                                    ? 3
+                                    : 2;
+                    return GridView.builder(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: cols,
+                        crossAxisSpacing: 16,
+                        mainAxisSpacing: 16,
+                        childAspectRatio: 0.78,
+                      ),
+                      itemCount: _playlists.length,
+                      itemBuilder: (context, idx) {
+                        final playlist = _playlists[idx];
 
-                    return StreamBuilder<Playlist?>(
-                      stream: LocalDatabase.instance.watchPlaylistById(playlist.playlistId),
-                      initialData: playlist,
-                      builder: (context, snapshot) {
-                        final livePlaylist = snapshot.data ?? playlist;
+                        return StreamBuilder<Playlist?>(
+                          stream: LocalDatabase.instance.watchPlaylistById(playlist.playlistId),
+                          initialData: playlist,
+                          builder: (context, snapshot) {
+                            final livePlaylist = snapshot.data ?? playlist;
 
-                        return MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            onTap: () => _selectPlaylist(livePlaylist),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: AppTheme.bgSurface,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: AppTheme.divider),
-                              ),
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(6),
-                                      child: AspectRatio(
-                                        aspectRatio: 1,
-                                        child: PlaylistCover(
-                                          playlist: livePlaylist,
-                                          allTracks: _allTracks,
-                                          size: 150,
-                                          coverVersion: _coverVersions[livePlaylist.playlistId],
+                            return MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                onTap: () => _selectPlaylist(livePlaylist),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.bgSurface,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: AppTheme.divider),
+                                  ),
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(6),
+                                          child: AspectRatio(
+                                            aspectRatio: 1,
+                                            child: PlaylistCover(
+                                              playlist: livePlaylist,
+                                              allTracks: _allTracks,
+                                              size: 180,
+                                              coverVersion: _coverVersions[livePlaylist.playlistId],
+                                            ),
+                                          ),
                                         ),
                                       ),
-                                    ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        livePlaylist.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                            color: AppTheme.textPrimary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13),
+                                      ),
+                                      Text(
+                                        '${livePlaylist.trackIds.length} canciones',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    livePlaylist.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        color: AppTheme.textPrimary,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13),
-                                  ),
-                                  Text(
-                                    '${livePlaylist.trackIds.length} canciones',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
-                                  ),
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
+                            );
+                          },
                         );
                       },
                     );
@@ -1168,14 +1183,16 @@ class _LibraryViewState extends State<LibraryView> {
                             ),
                             const SizedBox(height: 16),
 
-                            // ── Action buttons row ──
-                            Row(
+                            // ── Action buttons row (Wrap prevents overflow on narrow windows) ──
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 8,
                               children: [
                                 ElevatedButton.icon(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: AppTheme.accent,
                                     foregroundColor: AppTheme.bgDeep,
-                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                                     elevation: 0,
                                   ),
@@ -1186,13 +1203,12 @@ class _LibraryViewState extends State<LibraryView> {
                                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                                   ),
                                 ),
-                                if (!isLiked) ...[
-                                  const SizedBox(width: 16),
+                                if (!isLiked)
                                   OutlinedButton.icon(
                                     style: OutlinedButton.styleFrom(
                                       foregroundColor: Colors.redAccent,
                                       side: const BorderSide(color: Colors.redAccent, width: 1),
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                                     ),
                                     onPressed: () => _deletePlaylist(playlist),
@@ -1200,7 +1216,6 @@ class _LibraryViewState extends State<LibraryView> {
                                     label: const Text('Eliminar',
                                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                                   ),
-                                ],
                               ],
                             ),
                           ],
@@ -2144,182 +2159,191 @@ class _ImageCropDialogState extends State<_ImageCropDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final screenSize = MediaQuery.sizeOf(context);
+    // Preview square: 60% of the shortest screen dimension, clamped [260, 500]
+    final previewSize = (screenSize.shortestSide * 0.6).clamp(260.0, 500.0);
+
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.all(32),
-      child: Container(
-        width: _previewSize + 48,
-        decoration: BoxDecoration(
-          color: const Color(0xFF121212),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white12),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: previewSize + 48,
+          maxHeight: screenSize.height * 0.9,
         ),
-        child: FutureBuilder<ui.Image>(
-          future: _imageLoaderFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done || !snapshot.hasData) {
-              return const SizedBox(
-                height: _previewSize + 100,
-                child: Center(
-                  child: CircularProgressIndicator(
-                    color: AppTheme.accent,
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF121212),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: FutureBuilder<ui.Image>(
+            future: _imageLoaderFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done || !snapshot.hasData) {
+                return SizedBox(
+                  height: previewSize + 100,
+                  child: const Center(
+                    child: CircularProgressIndicator(color: AppTheme.accent),
                   ),
-                ),
-              );
-            }
+                );
+              }
 
-            final img = snapshot.data!;
-            final double imageAspectRatio = img.width / img.height;
-            double childWidth = _previewSize;
-            double childHeight = _previewSize;
+              final img = snapshot.data!;
+              final double imageAspectRatio = img.width / img.height;
+              double childWidth = previewSize;
+              double childHeight = previewSize;
 
-            if (imageAspectRatio >= 1.0) {
-              // Landscape: fit height to previewSize, let width overflow
-              childWidth = _previewSize * imageAspectRatio;
-              childHeight = _previewSize;
-            } else {
-              // Portrait: fit width to previewSize, let height overflow
-              childWidth = _previewSize;
-              childHeight = _previewSize / imageAspectRatio;
-            }
+              if (imageAspectRatio >= 1.0) {
+                childWidth = previewSize * imageAspectRatio;
+                childHeight = previewSize;
+              } else {
+                childWidth = previewSize;
+                childHeight = previewSize / imageAspectRatio;
+              }
 
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(24, 20, 24, 4),
-                  child: Row(
-                    children: [
-                      Icon(Icons.crop_square_rounded,
-                          color: AppTheme.accent, size: 22),
-                      SizedBox(width: 10),
-                      Text(
-                        'Encuadrar portada',
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.textPrimary,
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ── Header ───────────────────────────────────────────────
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(24, 20, 24, 4),
+                    child: Row(
+                      children: [
+                        Icon(Icons.crop_square_rounded, color: AppTheme.accent, size: 22),
+                        SizedBox(width: 10),
+                        Text(
+                          'Encuadrar portada',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textPrimary,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(24, 0, 24, 12),
-                  child: Text(
-                    'Usa scroll o pellizco para zoom; arrastra para encuadrar.',
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 11,
-                      color: AppTheme.textHint,
+                      ],
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: SizedBox(
-                      width: _previewSize,
-                      height: _previewSize,
-                      child: Stack(
-                        children: [
-                          RepaintBoundary(
-                            key: _repaintKey,
-                            child: InteractiveViewer(
-                              transformationController: _transformController,
-                              minScale: 1.0,
-                              maxScale: 5.0,
-                              constrained: false,
-                              boundaryMargin: EdgeInsets.zero,
-                              child: Image.file(
-                                File(widget.imagePath),
-                                width: childWidth,
-                                height: childHeight,
-                                fit: BoxFit.fill,
-                              ),
-                            ),
-                          ),
-                          IgnorePointer(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: AppTheme.accent.withOpacity(0.8),
-                                  width: 2,
-                                ),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                          ),
-                        ],
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(24, 0, 24, 12),
+                    child: Text(
+                      'Usa scroll o pellizco para zoom; arrastra para encuadrar.',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 11,
+                        color: AppTheme.textHint,
                       ),
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Colors.white24),
-                            foregroundColor: AppTheme.textSecondary,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          onPressed: () => Navigator.of(context).pop(null),
-                          child: const Text('Cancelar',
-                              style: TextStyle(fontFamily: 'Inter')),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppTheme.accent,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          onPressed: _processing
-                              ? null
-                              : () async {
-                                  setState(() => _processing = true);
-                                  final bytes = await _captureCrop();
-                                  if (mounted) {
-                                    Navigator.of(context).pop(bytes);
-                                  }
-                                },
-                          icon: _processing
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
+
+                  // ── Interactive preview — Flexible so it shrinks on short screens ──
+                  Flexible(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: Stack(
+                            children: [
+                              RepaintBoundary(
+                                key: _repaintKey,
+                                child: InteractiveViewer(
+                                  transformationController: _transformController,
+                                  minScale: 1.0,
+                                  maxScale: 5.0,
+                                  constrained: false,
+                                  boundaryMargin: EdgeInsets.zero,
+                                  child: Image.file(
+                                    File(widget.imagePath),
+                                    width: childWidth,
+                                    height: childHeight,
+                                    fit: BoxFit.fill,
                                   ),
-                                )
-                              : const Icon(Icons.crop_rounded, size: 18),
-                          label: Text(
-                            _processing ? 'Procesando…' : 'Recortar',
-                            style: const TextStyle(
-                              fontFamily: 'Inter',
-                              fontWeight: FontWeight.w600,
-                            ),
+                                ),
+                              ),
+                              IgnorePointer(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: AppTheme.accent.withOpacity(0.8),
+                                      width: 2,
+                                    ),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ],
-            );
-          },
+
+                  // ── Actions ───────────────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Colors.white24),
+                              foregroundColor: AppTheme.textSecondary,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            onPressed: () => Navigator.of(context).pop(null),
+                            child: const Text('Cancelar', style: TextStyle(fontFamily: 'Inter')),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppTheme.accent,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            onPressed: _processing
+                                ? null
+                                : () async {
+                                    setState(() => _processing = true);
+                                    final bytes = await _captureCrop();
+                                    if (mounted) {
+                                      Navigator.of(context).pop(bytes);
+                                    }
+                                  },
+                            icon: _processing
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.crop_rounded, size: 18),
+                            label: Text(
+                              _processing ? 'Procesando…' : 'Recortar',
+                              style: const TextStyle(
+                                fontFamily: 'Inter',
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
