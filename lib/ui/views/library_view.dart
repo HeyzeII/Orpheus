@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
 import '../../core/services/audio_player_service.dart';
+import '../../core/services/permission_service.dart';
 import '../dialogs/edit_metadata_dialog.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_toast.dart';
@@ -428,6 +429,19 @@ class _LibraryViewState extends State<LibraryView> {
   ///   3. Any existing custom cover file is deleted to avoid accumulating files on disk.
   ///   4. Flutter's image cache is cleared and coverVersion is bumped to render immediately.
   Future<void> _pickPlaylistCover(Playlist playlist) async {
+    final granted = await PermissionService.requestImagePermission();
+    if (!granted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Se requieren permisos de almacenamiento/fotos para seleccionar carátulas.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+      return;
+    }
+
     final result = await fp.FilePicker.platform.pickFiles(
       type: fp.FileType.custom,
       allowedExtensions: ['jpg', 'jpeg', 'png'],
@@ -1136,93 +1150,44 @@ class _LibraryViewState extends State<LibraryView> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Header row: cover + metadata + actions
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      // ── Interactive PlaylistCover with hover "edit" overlay ──
-                      _PlaylistCoverPicker(
-                        playlist: playlist,
-                        allTracks: _allTracks,
-                        onPickCover: isLiked ? null : () => _pickPlaylistCover(playlist),
-                        onClearCover: (isLiked || playlist.customCoverPath == null)
-                            ? null
-                            : () => _clearPlaylistCover(playlist),
-                        coverVersion: _coverVersions[playlist.playlistId],
-                      ),
-                      const SizedBox(width: 28),
-
-                      // ── Metadata Column ──
-                      Expanded(
-                        child: Column(
+                  // Header row: cover + metadata + actions (Responsive Column/Row layout)
+                  MediaQuery.sizeOf(context).width < 600
+                      ? Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('PLAYLIST',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.textSecondary,
-                                    letterSpacing: 1.5)),
-                            const SizedBox(height: 6),
-                            Text(
-                              playlist.name,
-                              style: const TextStyle(
-                                  fontSize: 36, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                            ),
-                            if (playlist.description != null && playlist.description!.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                playlist.description!,
-                                style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+                            Center(
+                              child: _PlaylistCoverPicker(
+                                playlist: playlist,
+                                allTracks: _allTracks,
+                                onPickCover: isLiked ? null : () => _pickPlaylistCover(playlist),
+                                onClearCover: (isLiked || playlist.customCoverPath == null)
+                                    ? null
+                                    : () => _clearPlaylistCover(playlist),
+                                coverVersion: _coverVersions[playlist.playlistId],
                               ),
-                            ],
-                            const SizedBox(height: 12),
-                            Text(
-                              '${playlistTracks.length} canciones',
-                              style: const TextStyle(fontSize: 12, color: AppTheme.textHint),
                             ),
-                            const SizedBox(height: 16),
-
-                            // ── Action buttons row (Wrap prevents overflow on narrow windows) ──
-                            Wrap(
-                              spacing: 12,
-                              runSpacing: 8,
-                              children: [
-                                ElevatedButton.icon(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppTheme.accent,
-                                    foregroundColor: AppTheme.bgDeep,
-                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    elevation: 0,
-                                  ),
-                                  onPressed: () => _shufflePlayTracks(playlistTracks),
-                                  icon: const Icon(Icons.shuffle_rounded, size: 16, color: AppTheme.bgDeep),
-                                  label: const Text(
-                                    'Reproducción Aleatoria',
-                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                  ),
-                                ),
-                                if (!isLiked)
-                                  OutlinedButton.icon(
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.redAccent,
-                                      side: const BorderSide(color: Colors.redAccent, width: 1),
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    ),
-                                    onPressed: () => _deletePlaylist(playlist),
-                                    icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                                    label: const Text('Eliminar',
-                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                                  ),
-                              ],
+                            const SizedBox(height: 20),
+                            _buildPlaylistHeaderMetadata(playlist, playlistTracks, isLiked, true),
+                          ],
+                        )
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            _PlaylistCoverPicker(
+                              playlist: playlist,
+                              allTracks: _allTracks,
+                              onPickCover: isLiked ? null : () => _pickPlaylistCover(playlist),
+                              onClearCover: (isLiked || playlist.customCoverPath == null)
+                                  ? null
+                                  : () => _clearPlaylistCover(playlist),
+                              coverVersion: _coverVersions[playlist.playlistId],
+                            ),
+                            const SizedBox(width: 28),
+                            Expanded(
+                              child: _buildPlaylistHeaderMetadata(playlist, playlistTracks, isLiked, false),
                             ),
                           ],
                         ),
-                      ),
-                    ],
-                  ),
                   const SizedBox(height: 32),
                   Expanded(
                     child: playlistTracks.isEmpty
@@ -1235,6 +1200,77 @@ class _LibraryViewState extends State<LibraryView> {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildPlaylistHeaderMetadata(Playlist playlist, List<Track> playlistTracks, bool isLiked, bool isMobile) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('PLAYLIST',
+            style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textSecondary,
+                letterSpacing: 1.5)),
+        const SizedBox(height: 6),
+        Text(
+          playlist.name,
+          style: TextStyle(
+              fontSize: isMobile ? 26 : 36,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary),
+        ),
+        if (playlist.description != null && playlist.description!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            playlist.description!,
+            style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+          ),
+        ],
+        const SizedBox(height: 12),
+        Text(
+          '${playlistTracks.length} canciones',
+          style: const TextStyle(fontSize: 12, color: AppTheme.textHint),
+        ),
+        const SizedBox(height: 16),
+
+        // ── Action buttons row (Wrap prevents overflow on narrow windows) ──
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          children: [
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accent,
+                foregroundColor: AppTheme.bgDeep,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                elevation: 0,
+              ),
+              onPressed: () => _shufflePlayTracks(playlistTracks),
+              icon: const Icon(Icons.shuffle_rounded, size: 16, color: AppTheme.bgDeep),
+              label: const Text(
+                'Reproducción Aleatoria',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ),
+            if (!isLiked)
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.redAccent,
+                  side: const BorderSide(color: Colors.redAccent, width: 1),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                ),
+                onPressed: () => _deletePlaylist(playlist),
+                icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                label: const Text('Eliminar',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -1289,21 +1325,25 @@ class _LibraryViewState extends State<LibraryView> {
   }
 
   Widget _buildTrackTable(List<Track> tracks, {Playlist? playlistSource}) {
+    final double screenWidth = MediaQuery.sizeOf(context).width;
+    final bool isMobile = screenWidth < 600;
+
     // Fixed header — always visible above the scrollable list.
-    const header = Padding(
-      padding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+    final header = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       child: DecoratedBox(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: AppTheme.divider, width: 1)),
         ),
         child: Row(
           children: [
-            SizedBox(width: 40, child: Text('#', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
-            Expanded(flex: 3, child: Text('TÍTULO', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
-            Expanded(flex: 2, child: Text('ARTISTA', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
-            Expanded(flex: 2, child: Text('ÁLBUM', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
-            SizedBox(width: 70, child: Align(alignment: Alignment.centerRight, child: Text('DURACIÓN', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold)))),
-            SizedBox(width: 110),
+            const SizedBox(width: 40, child: Text('#', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
+            const Expanded(flex: 3, child: Text('TÍTULO', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
+            const Expanded(flex: 2, child: Text('ARTISTA', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
+            if (!isMobile)
+              const Expanded(flex: 2, child: Text('ÁLBUM', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
+            const SizedBox(width: 70, child: Align(alignment: Alignment.centerRight, child: Text('DURACIÓN', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold)))),
+            const SizedBox(width: 110),
           ],
         ),
       ),
@@ -1527,15 +1567,16 @@ class _TrackRowState extends State<_TrackRow> {
                 ),
               ),
               // Album
-              Expanded(
-                flex: 2,
-                child: Text(
-                  widget.track.displayAlbum,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+              if (MediaQuery.sizeOf(context).width >= 600)
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    widget.track.displayAlbum,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                  ),
                 ),
-              ),
               // Duration
               SizedBox(
                 width: 70,

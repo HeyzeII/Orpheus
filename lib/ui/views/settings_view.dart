@@ -5,6 +5,7 @@ import '../../core/database/local_database.dart';
 import '../../core/services/album_art_fetcher_service.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/audio_scanner.dart';
+import '../../core/services/permission_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_toast.dart';
 
@@ -41,6 +42,19 @@ class _SettingsViewState extends State<SettingsView> {
   }
 
   Future<void> _addDirectory() async {
+    final granted = await PermissionService.requestStoragePermission();
+    if (!granted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Se requieren permisos de almacenamiento para escanear música.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+      return;
+    }
+
     final path = await FilePicker.platform.getDirectoryPath();
     if (path != null) {
       await LocalDatabase.instance.addScanDirectory(path);
