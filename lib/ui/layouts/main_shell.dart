@@ -17,14 +17,14 @@ import '../widgets/sidebar.dart';
 /// - [Sidebar] on the left (fixed 240px, drives navigation state).
 /// - Dynamic main content area in the center.
 /// - [PlayerBar] at the bottom (fixed 90px, full width).
-class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+class DesktopNavigationShell extends StatefulWidget {
+  const DesktopNavigationShell({super.key});
 
   @override
-  State<MainShell> createState() => _MainShellState();
+  State<DesktopNavigationShell> createState() => _DesktopNavigationShellState();
 }
 
-class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
+class _DesktopNavigationShellState extends State<DesktopNavigationShell> with WidgetsBindingObserver {
   NavDestination _selected = NavDestination.home;
   bool _showLyrics = false;
 
@@ -211,6 +211,112 @@ class _NoTrackLyricsPlaceholder extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Adaptive master selector breakpoint widget.
+class MainLayout extends StatelessWidget {
+  const MainLayout({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+    if (isMobile) {
+      return const MobileNavigationShell();
+    } else {
+      return const DesktopNavigationShell();
+    }
+  }
+}
+
+/// Navigation shell layout for mobile (Android).
+class MobileNavigationShell extends StatefulWidget {
+  const MobileNavigationShell({super.key});
+
+  @override
+  State<MobileNavigationShell> createState() => _MobileNavigationShellState();
+}
+
+class _MobileNavigationShellState extends State<MobileNavigationShell> with WidgetsBindingObserver {
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      AudioPlayerService.instance.savePlaybackStateNow();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.bgDeep,
+      body: Stack(
+        children: [
+          IndexedStack(
+            index: _currentIndex,
+            children: const [
+              HomeView(),
+              _PlaceholderView(label: 'Explorar'),
+              LibraryView(),
+              SettingsView(),
+            ],
+          ),
+          // Reserved for future MobileMiniPlayer (Paso 2)
+          Positioned(
+            bottom: kBottomNavigationBarHeight + 8,
+            left: 8,
+            right: 8,
+            child: const SizedBox.shrink(),
+          ),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        type: BottomNavigationBarType.fixed,
+        backgroundColor: AppTheme.bgDeep,
+        selectedItemColor: AppTheme.accent,
+        unselectedItemColor: AppTheme.textSecondary,
+        selectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+        unselectedLabelStyle: const TextStyle(fontSize: 11),
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_rounded),
+            label: 'Inicio',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.explore_rounded),
+            label: 'Explorar',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.library_music_rounded),
+            label: 'Tu Biblioteca',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings_rounded),
+            label: 'Ajustes',
+          ),
+        ],
       ),
     );
   }

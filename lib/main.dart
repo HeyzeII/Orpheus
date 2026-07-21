@@ -31,8 +31,8 @@ Future<void> main() async {
 
 /// Root application widget.
 ///
-/// Applies the premium [AppTheme] and renders [MainShell] as the root
-/// layout for all desktop navigation.
+/// Applies the premium [AppTheme] and renders [MainLayout] as the root
+/// layout selector for adaptive desktop/mobile shells.
 class OrpheusApp extends StatelessWidget {
   const OrpheusApp({super.key});
 
@@ -42,7 +42,7 @@ class OrpheusApp extends StatelessWidget {
       title: 'Orpheus',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.build(),
-      home: const MainShell(),
+      home: const MainLayout(),
     );
   }
 }
