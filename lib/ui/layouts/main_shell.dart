@@ -7,6 +7,7 @@ import '../views/home_view.dart';
 import '../views/library_view.dart';
 import '../views/lyrics_view.dart';
 import '../views/settings_view.dart';
+import '../widgets/mobile_mini_player.dart';
 import '../widgets/player_bar.dart';
 import '../widgets/sidebar.dart';
 
@@ -277,12 +278,12 @@ class _MobileNavigationShellState extends State<MobileNavigationShell> with Widg
               SettingsView(),
             ],
           ),
-          // Reserved for future MobileMiniPlayer (Paso 2)
+          // MobileMiniPlayer — hovers above the bottom nav bar.
           Positioned(
             bottom: kBottomNavigationBarHeight + 8,
             left: 8,
             right: 8,
-            child: const SizedBox.shrink(),
+            child: const MobileMiniPlayer(),
           ),
         ],
       ),

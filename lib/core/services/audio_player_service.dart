@@ -591,7 +591,20 @@ class AudioPlayerService {
         overrideTrackId: track.trackId,
         overridePositionMs: 0,
       );
-      await _player.open(Media(Uri.file(track.filePath).toString()), play: true);
+      await _player.open(
+        Media(
+          Uri.file(track.filePath).toString(),
+          extras: {
+            'title': track.displayTitle,
+            'artist': track.displayArtist,
+            'album': track.displayAlbum,
+            if (track.customMetadata.customCoverPath != null &&
+                track.customMetadata.customCoverPath!.isNotEmpty)
+              'artUri': Uri.file(track.customMetadata.customCoverPath!).toString(),
+          },
+        ),
+        play: true,
+      );
       _notifyState();
     } catch (e) {
       Future.delayed(const Duration(milliseconds: 100), () {
