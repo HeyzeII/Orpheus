@@ -11,15 +11,15 @@ import '../views/expanded_player_view.dart';
 /// the [BottomNavigationBar].
 ///
 /// - Returns [SizedBox.shrink] when no track is loaded.
-/// - When a track is active it renders an 64px card with cover art,
-///   title/artist, play-pause and skip-next controls, and a thin
-///   cyan progress bar along the bottom edge.
-/// - Tapping anywhere on the card opens [ExpandedPlayerView] via the same
-///   bottom-sheet slide-up animation used by the desktop [PlayerBar].
+/// - When a track is active it renders a clean 64px Tidal-style card with
+///   cover art, title/artist, play-pause, skip-next, and a subtle 1.5px
+///   progress stripe along the bottom edge.
+/// - Tapping the card opens [ExpandedPlayerView] via the same slide-up
+///   animation used by the desktop [PlayerBar].
 class MobileMiniPlayer extends StatelessWidget {
   const MobileMiniPlayer({super.key});
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
+  // ── Navigation ────────────────────────────────────────────────────────────
 
   void _openExpandedPlayer(BuildContext context) {
     showGeneralDialog(
@@ -27,43 +27,41 @@ class MobileMiniPlayer extends StatelessWidget {
       barrierDismissible: true,
       barrierLabel: 'Dismiss',
       barrierColor: Colors.black.withAlpha(128),
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (context, animation, secondaryAnimation) =>
-          const ExpandedPlayerView(),
-      transitionBuilder: (context, animation, secondaryAnimation, child) =>
-          SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 1),
-              end: Offset.zero,
-            ).animate(CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-            )),
-            child: child,
-          ),
+      transitionDuration: const Duration(milliseconds: 320),
+      pageBuilder: (ctx, _, __) => const ExpandedPlayerView(),
+      transitionBuilder: (ctx, animation, _, child) => SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 1),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        )),
+        child: child,
+      ),
     );
   }
 
-  Widget _buildCoverArt(Track track) {
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  Widget _coverArt(Track track) {
     final path = track.customMetadata.customCoverPath;
-    if (path != null && path.isNotEmpty && File(path).existsSync()) {
-      return Image.file(
-        File(path),
+    final hasArt = path != null && path.isNotEmpty && File(path).existsSync();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: SizedBox(
         width: 44,
         height: 44,
-        fit: BoxFit.cover,
-        cacheWidth: 88,   // 2× for density
-        cacheHeight: 88,
-      );
-    }
-    return Container(
-      width: 44,
-      height: 44,
-      color: AppTheme.bgHover,
-      child: const Icon(
-        Icons.music_note_rounded,
-        color: AppTheme.textSecondary,
-        size: 22,
+        child: hasArt
+            ? Image.file(File(path!), fit: BoxFit.cover, cacheWidth: 88)
+            : const ColoredBox(
+                color: AppTheme.bgHover,
+                child: Icon(
+                  Icons.music_note_rounded,
+                  color: AppTheme.textHint,
+                  size: 20,
+                ),
+              ),
       ),
     );
   }
@@ -77,129 +75,107 @@ class MobileMiniPlayer extends StatelessWidget {
     return StreamBuilder<Track?>(
       stream: svc.currentTrackStream,
       initialData: svc.currentTrack,
-      builder: (context, trackSnap) {
-        final track = trackSnap.data;
-        if (track == null || track.trackId.isEmpty) {
-          return const SizedBox.shrink();
-        }
+      builder: (context, snap) {
+        final track = snap.data;
+        if (track == null || track.trackId.isEmpty) return const SizedBox.shrink();
 
         return GestureDetector(
           onTap: () => _openExpandedPlayer(context),
           child: Container(
-            height: 66,
+            height: 64,
             decoration: BoxDecoration(
-              color: AppTheme.bgSurface.withAlpha(242),  // ~95% opacity
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppTheme.divider, width: 1),
+              // Clean matte dark card — same tone as the library rows.
+              color: const Color(0xFF181818),
+              borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withAlpha(102),   // ~40% opacity
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
+                  color: Colors.black.withAlpha(140),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
                 ),
               ],
             ),
-            child: Stack(
-              clipBehavior: Clip.hardEdge,
-              children: [
-                // ── Main row: cover + title/artist + controls ─────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 4, 10),
-                  child: Row(
-                    children: [
-                      // Cover art
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: _buildCoverArt(track),
-                      ),
-                      const SizedBox(width: 12),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Stack(
+                children: [
+                  // ── Main row ──────────────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 4, 4),
+                    child: Row(
+                      children: [
+                        _coverArt(track),
+                        const SizedBox(width: 12),
 
-                      // Title & artist
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              track.displayTitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppTheme.textPrimary,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                        // Title & artist
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                track.displayTitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppTheme.textPrimary,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.1,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              track.displayArtist,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 11,
+                              const SizedBox(height: 2),
+                              Text(
+                                track.displayArtist,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppTheme.textSecondary,
+                                  fontSize: 11,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
 
-                      // Play / Pause button
-                      StreamBuilder<bool>(
-                        stream: svc.isPlayingStream,
-                        initialData: svc.isPlaying,
-                        builder: (context, playSnap) {
-                          final playing = playSnap.data ?? false;
-                          return IconButton(
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(
-                              minWidth: 40,
-                              minHeight: 40,
-                            ),
-                            icon: Icon(
-                              playing
+                        // Play / Pause
+                        StreamBuilder<bool>(
+                          stream: svc.isPlayingStream,
+                          initialData: svc.isPlaying,
+                          builder: (context, playSnap) {
+                            final playing = playSnap.data ?? false;
+                            return _IconBtn(
+                              icon: playing
                                   ? Icons.pause_rounded
                                   : Icons.play_arrow_rounded,
                               color: AppTheme.accent,
                               size: 28,
-                            ),
-                            onPressed: () {
-                              if (playing) {
-                                svc.pause();
-                              } else {
-                                svc.play();
-                              }
-                            },
-                          );
-                        },
-                      ),
-
-                      // Skip-next button
-                      IconButton(
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(
-                          minWidth: 36,
-                          minHeight: 36,
+                              onPressed: () =>
+                                  playing ? svc.pause() : svc.play(),
+                            );
+                          },
                         ),
-                        icon: const Icon(
-                          Icons.skip_next_rounded,
-                          color: AppTheme.textPrimary,
+
+                        // Skip next
+                        _IconBtn(
+                          icon: Icons.skip_next_rounded,
+                          color: AppTheme.textSecondary,
                           size: 24,
+                          onPressed: () => svc.next(),
                         ),
-                        onPressed: () => svc.next(),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
 
-                // ── Cyan progress bar along the bottom edge ──────────────
-                Positioned(
-                  left: 12,
-                  right: 12,
-                  bottom: 0,
-                  child: _ProgressBar(svc: svc),
-                ),
-              ],
+                  // ── Progress stripe (1.5 px, bottom of card) ─────────────
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: _ProgressStripe(svc: svc),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -208,10 +184,36 @@ class MobileMiniPlayer extends StatelessWidget {
   }
 }
 
-/// Thin 2 px progress bar that updates independently of the main card,
-/// avoiding unnecessary rebuilds of the full widget tree.
-class _ProgressBar extends StatelessWidget {
-  const _ProgressBar({required this.svc});
+// ── Private helpers ───────────────────────────────────────────────────────────
+
+/// Small icon button with tight constraints for the mini-player.
+class _IconBtn extends StatelessWidget {
+  const _IconBtn({
+    required this.icon,
+    required this.color,
+    required this.size,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final Color color;
+  final double size;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+        padding: EdgeInsets.zero,
+        constraints: BoxConstraints.tight(const Size(40, 40)),
+        icon: Icon(icon, color: color, size: size),
+        onPressed: onPressed,
+      );
+}
+
+/// 1.5 px solid-colour progress stripe.
+/// Extracted into its own widget so the two nested StreamBuilders only
+/// rebuild this thin element, not the whole mini-player card.
+class _ProgressStripe extends StatelessWidget {
+  const _ProgressStripe({required this.svc});
 
   final AudioPlayerService svc;
 
@@ -227,40 +229,24 @@ class _ProgressBar extends StatelessWidget {
           builder: (context, durSnap) {
             final pos = posSnap.data ?? Duration.zero;
             final dur = durSnap.data ?? Duration.zero;
-            final progress = dur.inMilliseconds > 0
+            final frac = dur.inMilliseconds > 0
                 ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
                 : 0.0;
-            return LayoutBuilder(
-              builder: (context, constraints) {
-                return Stack(
-                  children: [
-                    // Background track
-                    Container(
-                      height: 2,
-                      decoration: const BoxDecoration(
-                        color: AppTheme.divider,
-                        borderRadius: BorderRadius.only(
-                          bottomLeft: Radius.circular(16),
-                          bottomRight: Radius.circular(16),
-                        ),
-                      ),
-                    ),
-                    // Filled portion
-                    Container(
-                      height: 2,
-                      width: constraints.maxWidth * progress,
-                      decoration: BoxDecoration(
-                        color: AppTheme.accent,
-                        borderRadius: const BorderRadius.only(
-                          bottomLeft: Radius.circular(16),
-                          bottomRight: Radius.circular(16),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            );
+
+            return LayoutBuilder(builder: (context, c) {
+              return SizedBox(
+                height: 1.5,
+                child: Stack(children: [
+                  // Background (barely visible, same card tone)
+                  Container(color: AppTheme.divider),
+                  // Filled portion
+                  Container(
+                    width: c.maxWidth * frac,
+                    color: AppTheme.accent.withAlpha(200),
+                  ),
+                ]),
+              );
+            });
           },
         );
       },

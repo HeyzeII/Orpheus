@@ -79,7 +79,14 @@ class AudioPlayerService {
     if (Platform.environment.containsKey('FLUTTER_TEST')) {
       return;
     }
-    _player = Player();
+    _player = Player(
+      configuration: const PlayerConfiguration(
+        // Enables the native Android MediaSession notification (lock-screen
+        // controls, notification panel) through media_kit's platform layer.
+        title: 'Orpheus',
+        pitch: false,    // disable pitch control — not needed for audio-only
+      ),
+    );
 
     // ── Pipe native media_kit streams to our broadcast streams ────────────────
 
