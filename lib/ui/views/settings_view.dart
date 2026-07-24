@@ -371,13 +371,21 @@ class _SettingsViewState extends State<SettingsView> {
               ),
               const SizedBox(height: 12),
             ],
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            // 2×2 KPI grid — clean, spacious, readable on both desktop and mobile.
+            GridView(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                childAspectRatio: 2.4,
+              ),
               children: [
-                _buildStatTile('Procesados', _scannedCount),
-                _buildStatTile('Agregados', _addedCount),
-                _buildStatTile('Actualizados', _updatedCount),
-                _buildStatTile('Ignorados/Error', _skippedCount),
+                _buildKpiCard('Procesados', _scannedCount, Icons.folder_open_rounded),
+                _buildKpiCard('Agregados', _addedCount, Icons.add_circle_outline_rounded),
+                _buildKpiCard('Actualizados', _updatedCount, Icons.sync_rounded),
+                _buildKpiCard('Ignorados / Error', _skippedCount, Icons.block_rounded, isError: true),
               ],
             ),
             if (_currentScanningFile.isNotEmpty) ...[
@@ -400,24 +408,43 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
-  Widget _buildStatTile(String label, int value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label.toUpperCase(),
-          style: const TextStyle(fontSize: 9, color: AppTheme.textSecondary, letterSpacing: 1.0),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value.toString(),
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.textPrimary,
+  Widget _buildKpiCard(String label, int value, IconData icon, {bool isError = false}) {
+    final numColor = isError && value > 0 ? Colors.redAccent : AppTheme.accent;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.bgSurface,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: numColor, size: 22),
+          const SizedBox(width: 12),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                value.toString(),
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: numColor,
+                  fontFamily: 'Inter',
+                ),
+              ),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AppTheme.textSecondary,
+                  fontFamily: 'Inter',
+                ),
+              ),
+            ],
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

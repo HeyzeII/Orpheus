@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/models/track.dart';
 import '../../core/services/audio_player_service.dart';
@@ -265,59 +266,69 @@ class _MobileNavigationShellState extends State<MobileNavigationShell> with Widg
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.bgDeep,
-      body: Stack(
-        children: [
-          IndexedStack(
-            index: _currentIndex,
-            children: const [
-              HomeView(),
-              _PlaceholderView(label: 'Explorar'),
-              LibraryView(),
-              SettingsView(),
-            ],
-          ),
-          // MobileMiniPlayer — hovers above the bottom nav bar.
-          Positioned(
-            bottom: kBottomNavigationBarHeight + 8,
-            left: 8,
-            right: 8,
-            child: const MobileMiniPlayer(),
-          ),
-        ],
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        type: BottomNavigationBarType.fixed,
+    const overlayStyle = SystemUiOverlayStyle(
+      // Transparent status bar so the app content bleeds to the top edge.
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
+      // Dark nav bar matching the app background — hides the grey Android pill.
+      systemNavigationBarColor: Color(0xFF121212),
+      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarDividerColor: Colors.transparent,
+    );
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: overlayStyle,
+      child: Scaffold(
         backgroundColor: AppTheme.bgDeep,
-        selectedItemColor: AppTheme.accent,
-        unselectedItemColor: AppTheme.textSecondary,
-        selectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-        unselectedLabelStyle: const TextStyle(fontSize: 11),
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_rounded),
-            label: 'Inicio',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.explore_rounded),
-            label: 'Explorar',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.library_music_rounded),
-            label: 'Tu Biblioteca',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_rounded),
-            label: 'Ajustes',
-          ),
-        ],
+        body: Stack(
+          children: [
+            IndexedStack(
+              index: _currentIndex,
+              children: const [
+                HomeView(),
+                _PlaceholderView(label: 'Explorar'),
+                LibraryView(),
+                SettingsView(),
+              ],
+            ),
+            // MobileMiniPlayer — hovers above the bottom nav bar.
+            Positioned(
+              bottom: kBottomNavigationBarHeight + 8,
+              left: 8,
+              right: 8,
+              child: const MobileMiniPlayer(),
+            ),
+          ],
+        ),
+        bottomNavigationBar: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          type: BottomNavigationBarType.fixed,
+          backgroundColor: AppTheme.bgDeep,
+          selectedItemColor: AppTheme.accent,
+          unselectedItemColor: AppTheme.textSecondary,
+          selectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+          unselectedLabelStyle: const TextStyle(fontSize: 11),
+          onTap: (index) => setState(() => _currentIndex = index),
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_rounded),
+              label: 'Inicio',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.explore_rounded),
+              label: 'Explorar',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.library_music_rounded),
+              label: 'Tu Biblioteca',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.settings_rounded),
+              label: 'Ajustes',
+            ),
+          ],
+        ),
       ),
     );
   }
