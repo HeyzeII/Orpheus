@@ -1,14 +1,17 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/models/track.dart';
 import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
+import '../views/expanded_player_view.dart';
 import '../views/home_view.dart';
 import '../views/library_view.dart';
 import '../views/lyrics_view.dart';
 import '../views/settings_view.dart';
-import '../widgets/mobile_mini_player.dart';
 import '../widgets/player_bar.dart';
 import '../widgets/sidebar.dart';
 
@@ -234,6 +237,12 @@ class MainLayout extends StatelessWidget {
 }
 
 /// Navigation shell layout for mobile (Android).
+///
+/// Key design decisions:
+/// - No [Scaffold.bottomNavigationBar]: navigation + mini-player are merged into
+///   a single frosted-glass floating panel positioned at the bottom of a [Stack].
+/// - [PopScope] intercepts the Android back button when the [ExpandedPlayerView]
+///   is open; pressing back minimises the player instead of closing the app.
 class MobileNavigationShell extends StatefulWidget {
   const MobileNavigationShell({super.key});
 
@@ -241,8 +250,10 @@ class MobileNavigationShell extends StatefulWidget {
   State<MobileNavigationShell> createState() => _MobileNavigationShellState();
 }
 
-class _MobileNavigationShellState extends State<MobileNavigationShell> with WidgetsBindingObserver {
+class _MobileNavigationShellState extends State<MobileNavigationShell>
+    with WidgetsBindingObserver {
   int _currentIndex = 0;
+  bool _expandedPlayerOpen = false;
 
   @override
   void initState() {
@@ -264,68 +275,294 @@ class _MobileNavigationShellState extends State<MobileNavigationShell> with Widg
     }
   }
 
+  // ── Expanded player ───────────────────────────────────────────────────────
+
+  Future<void> _openExpandedPlayer() async {
+    setState(() => _expandedPlayerOpen = true);
+    await showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      barrierColor: Colors.black.withAlpha(128),
+      transitionDuration: const Duration(milliseconds: 320),
+      pageBuilder: (ctx, _, __) => const ExpandedPlayerView(),
+      transitionBuilder: (ctx, animation, _, child) => SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 1),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        )),
+        child: child,
+      ),
+    );
+    if (mounted) setState(() => _expandedPlayerOpen = false);
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     const overlayStyle = SystemUiOverlayStyle(
-      // Transparent status bar so the app content bleeds to the top edge.
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
       statusBarBrightness: Brightness.dark,
-      // Dark nav bar matching the app background — hides the grey Android pill.
-      systemNavigationBarColor: Color(0xFF121212),
+      systemNavigationBarColor: Color(0xFF0D0D0D),
       systemNavigationBarIconBrightness: Brightness.light,
       systemNavigationBarDividerColor: Colors.transparent,
     );
 
+    // Height of the unified bottom panel (mini-player tile + nav bar row)
+    const double miniH = 64;   // mini-player area
+    const double navH  = 60;   // nav icons area
+    const double panelH = miniH + navH;
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlayStyle,
-      child: Scaffold(
-        backgroundColor: AppTheme.bgDeep,
-        body: Stack(
-          children: [
-            IndexedStack(
-              index: _currentIndex,
-              children: const [
-                HomeView(),
-                _PlaceholderView(label: 'Explorar'),
-                LibraryView(),
-                SettingsView(),
+      child: PopScope(
+        // If the expanded player is open, intercept back and let our code
+        // close it; otherwise allow the default system pop.
+        canPop: !_expandedPlayerOpen,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && _expandedPlayerOpen) {
+            Navigator.of(context).pop(); // close the expanded player dialog
+          }
+        },
+        child: Scaffold(
+          backgroundColor: AppTheme.bgDeep,
+          // ── Content scrolls freely beneath the floating panel ──────────
+          body: Stack(
+            children: [
+              // Main page views — padded so content ends above the panel.
+              Positioned.fill(
+                child: IndexedStack(
+                  index: _currentIndex,
+                  children: const [
+                    HomeView(),
+                    _PlaceholderView(label: 'Explorar'),
+                    LibraryView(),
+                    SettingsView(),
+                  ],
+                ),
+              ),
+
+              // ── Unified frosted-glass bottom panel ────────────────────
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: _UnifiedBottomPanel(
+                  panelHeight: panelH,
+                  miniPlayerHeight: miniH,
+                  navBarHeight: navH,
+                  currentIndex: _currentIndex,
+                  onNavTap: (i) => setState(() => _currentIndex = i),
+                  onMiniPlayerTap: _openExpandedPlayer,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The unified frosted-glass panel: mini-player (when active) on top,
+/// navigation icons below — both sharing the same blurred/gradient surface.
+class _UnifiedBottomPanel extends StatelessWidget {
+  const _UnifiedBottomPanel({
+    required this.panelHeight,
+    required this.miniPlayerHeight,
+    required this.navBarHeight,
+    required this.currentIndex,
+    required this.onNavTap,
+    required this.onMiniPlayerTap,
+  });
+
+  final double panelHeight;
+  final double miniPlayerHeight;
+  final double navBarHeight;
+  final int currentIndex;
+  final ValueChanged<int> onNavTap;
+  final VoidCallback onMiniPlayerTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          height: panelHeight + bottomInset,
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0xCC0D0D0D),   // ~80% opacity at top
+                Color(0xF50D0D0D),   // ~96% opacity at bottom
               ],
             ),
-            // MobileMiniPlayer — hovers above the bottom nav bar.
-            Positioned(
-              bottom: kBottomNavigationBarHeight + 8,
-              left: 8,
-              right: 8,
-              child: const MobileMiniPlayer(),
-            ),
-          ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Mini-player strip (only when a track is loaded) ─────
+              StreamBuilder<Track?>(
+                stream: AudioPlayerService.instance.currentTrackStream,
+                initialData: AudioPlayerService.instance.currentTrack,
+                builder: (context, snap) {
+                  final track = snap.data;
+                  if (track == null || track.trackId.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return _MiniPlayerStrip(
+                    track: track,
+                    height: miniPlayerHeight,
+                    onTap: onMiniPlayerTap,
+                  );
+                },
+              ),
+
+              // ── Nav icons row ───────────────────────────────────────
+              SizedBox(
+                height: navBarHeight,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _NavBtn(icon: Icons.home_rounded,           label: 'Inicio',       index: 0, current: currentIndex, onTap: onNavTap),
+                    _NavBtn(icon: Icons.explore_rounded,        label: 'Explorar',     index: 1, current: currentIndex, onTap: onNavTap),
+                    _NavBtn(icon: Icons.library_music_rounded,  label: 'Biblioteca',   index: 2, current: currentIndex, onTap: onNavTap),
+                    _NavBtn(icon: Icons.settings_rounded,       label: 'Ajustes',      index: 3, current: currentIndex, onTap: onNavTap),
+                  ],
+                ),
+              ),
+
+              // System nav bar inset spacer
+              SizedBox(height: bottomInset),
+            ],
+          ),
         ),
-        bottomNavigationBar: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: AppTheme.bgDeep,
-          selectedItemColor: AppTheme.accent,
-          unselectedItemColor: AppTheme.textSecondary,
-          selectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-          unselectedLabelStyle: const TextStyle(fontSize: 11),
-          onTap: (index) => setState(() => _currentIndex = index),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_rounded),
-              label: 'Inicio',
+      ),
+    );
+  }
+}
+
+/// Compact mini-player strip — no individual card background, fits into the
+/// blurred panel surface without double-layering colours.
+class _MiniPlayerStrip extends StatelessWidget {
+  const _MiniPlayerStrip({
+    required this.track,
+    required this.height,
+    required this.onTap,
+  });
+
+  final Track track;
+  final double height;
+  final VoidCallback onTap;
+
+  Widget _coverArt() {
+    final path = track.customMetadata.customCoverPath;
+    final hasArt = path != null && path.isNotEmpty && File(path).existsSync();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: SizedBox(
+        width: 40,
+        height: 40,
+        child: hasArt
+            ? Image.file(File(path!), fit: BoxFit.cover, cacheWidth: 80)
+            : const ColoredBox(
+                color: AppTheme.bgHover,
+                child: Icon(Icons.music_note_rounded,
+                    color: AppTheme.textHint, size: 18),
+              ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final svc = AudioPlayerService.instance;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        height: height,
+        child: Stack(
+          children: [
+            // Row content
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  _coverArt(),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          track.displayTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          track.displayArtist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Play/Pause
+                  StreamBuilder<bool>(
+                    stream: svc.isPlayingStream,
+                    initialData: svc.isPlaying,
+                    builder: (context, snap) {
+                      final playing = snap.data ?? false;
+                      return IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+                        icon: Icon(
+                          playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                          color: AppTheme.accent,
+                          size: 28,
+                        ),
+                        onPressed: () => playing ? svc.pause() : svc.play(),
+                      );
+                    },
+                  ),
+                  // Skip next
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(width: 36, height: 40),
+                    icon: const Icon(Icons.skip_next_rounded,
+                        color: AppTheme.textSecondary, size: 24),
+                    onPressed: () => svc.next(),
+                  ),
+                ],
+              ),
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.explore_rounded),
-              label: 'Explorar',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.library_music_rounded),
-              label: 'Tu Biblioteca',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.settings_rounded),
-              label: 'Ajustes',
+            // Progress stripe — 1.5 px at bottom edge of the strip
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 0,
+              child: _MiniProgressStripe(svc: svc),
             ),
           ],
         ),
@@ -333,3 +570,87 @@ class _MobileNavigationShellState extends State<MobileNavigationShell> with Widg
     );
   }
 }
+
+class _MiniProgressStripe extends StatelessWidget {
+  const _MiniProgressStripe({required this.svc});
+  final AudioPlayerService svc;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<Duration>(
+      stream: svc.positionStream,
+      initialData: svc.position,
+      builder: (_, posSnap) => StreamBuilder<Duration>(
+        stream: svc.durationStream,
+        initialData: svc.duration,
+        builder: (_, durSnap) {
+          final pos = posSnap.data ?? Duration.zero;
+          final dur = durSnap.data ?? Duration.zero;
+          final frac = dur.inMilliseconds > 0
+              ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
+              : 0.0;
+          return LayoutBuilder(builder: (_, c) {
+            return SizedBox(
+              height: 1.5,
+              child: Stack(children: [
+                Container(color: AppTheme.divider),
+                Container(
+                    width: c.maxWidth * frac,
+                    color: AppTheme.accent.withAlpha(200)),
+              ]),
+            );
+          });
+        },
+      ),
+    );
+  }
+}
+
+/// Single navigation icon + label button inside the unified bottom panel.
+class _NavBtn extends StatelessWidget {
+  const _NavBtn({
+    required this.icon,
+    required this.label,
+    required this.index,
+    required this.current,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final int index;
+  final int current;
+  final ValueChanged<int> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = index == current;
+    return GestureDetector(
+      onTap: () => onTap(index),
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 72,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon,
+                color: active ? AppTheme.accent : AppTheme.textSecondary,
+                size: 24),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: active ? FontWeight.bold : FontWeight.normal,
+                color: active ? AppTheme.accent : AppTheme.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+

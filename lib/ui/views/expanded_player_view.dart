@@ -117,8 +117,7 @@ class _DesktopHorizontalLayout extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MOBILE: Full-screen vertical Tidal-style layout
-// ─────────────────────────────────────────────────────────────────────────────
+enum _MobileOverlayMode { artwork, lyrics, queue }
 
 class _MobileVerticalLayout extends StatefulWidget {
   const _MobileVerticalLayout({required this.track});
@@ -128,20 +127,17 @@ class _MobileVerticalLayout extends StatefulWidget {
   State<_MobileVerticalLayout> createState() => _MobileVerticalLayoutState();
 }
 
-class _MobileVerticalLayoutState extends State<_MobileVerticalLayout>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
+  _MobileOverlayMode _mode = _MobileOverlayMode.artwork;
 
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+  void _toggleMode(_MobileOverlayMode target) {
+    setState(() {
+      if (_mode == target) {
+        _mode = _MobileOverlayMode.artwork;
+      } else {
+        _mode = target;
+      }
+    });
   }
 
   @override
@@ -158,137 +154,165 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout>
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.light,
       ),
-      child: Column(
-        children: [
-          SizedBox(height: topPad + 12),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, topPad + 8, 16, bottomPad + 12),
+        child: Column(
+          children: [
+            // ── Top Bar: Minimize handle + Action buttons (Letras / Cola) ──
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                      size: 32, color: Colors.white70),
+                  onPressed: () => Navigator.of(context).pop(),
+                  tooltip: 'Minimizar',
+                ),
+                // Action Buttons: Letras & Cola
+                Row(
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        Icons.lyrics_rounded,
+                        color: _mode == _MobileOverlayMode.lyrics
+                            ? AppTheme.accent
+                            : Colors.white54,
+                        size: 24,
+                      ),
+                      onPressed: () => _toggleMode(_MobileOverlayMode.lyrics),
+                      tooltip: 'Letras',
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        Icons.queue_music_rounded,
+                        color: _mode == _MobileOverlayMode.queue
+                            ? AppTheme.accent
+                            : Colors.white54,
+                        size: 24,
+                      ),
+                      onPressed: () => _toggleMode(_MobileOverlayMode.queue),
+                      tooltip: 'Cola de reproducción',
+                    ),
+                  ],
+                ),
+              ],
+            ),
 
-          // ── Collapse button (centered, top) ────────────────────────────
-          GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white38,
-                borderRadius: BorderRadius.circular(2),
+            const SizedBox(height: 8),
+
+            // ── Central Area: AnimatedSwitcher between Artwork / Lyrics / Queue ──
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                child: switch (_mode) {
+                  _MobileOverlayMode.artwork => Center(
+                      key: const ValueKey('mobile_art'),
+                      child: AspectRatio(
+                        aspectRatio: 1,
+                        child: Container(
+                          constraints: const BoxConstraints(
+                            maxWidth: 320,
+                            maxHeight: 320,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.5),
+                                blurRadius: 36,
+                                offset: const Offset(0, 14),
+                              ),
+                            ],
+                            image: hasArt
+                                ? DecorationImage(
+                                    image: FileImage(File(coverPath!)),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
+                            color: hasArt ? null : const Color(0xFF282828),
+                          ),
+                          child: hasArt
+                              ? null
+                              : const Center(
+                                  child: Icon(Icons.music_note_rounded,
+                                      size: 72, color: Colors.white24),
+                                ),
+                        ),
+                      ),
+                    ),
+                  _MobileOverlayMode.lyrics => Container(
+                      key: const ValueKey('mobile_lyrics'),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.35),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: LyricsView(
+                            track: track, transparentBackground: true),
+                      ),
+                    ),
+                  _MobileOverlayMode.queue => Container(
+                      key: const ValueKey('mobile_queue'),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.4),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const _QueueTab(),
+                    ),
+                },
               ),
             ),
-          ),
 
-          const SizedBox(height: 24),
+            const SizedBox(height: 16),
 
-          // ── Album cover (square, 280×280) ──────────────────────────────
-          Center(
-            child: Container(
-              width: 280,
-              height: 280,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.5),
-                    blurRadius: 40,
-                    offset: const Offset(0, 16),
+            // ── Track Title & Artist ──────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    track.displayTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    track.displayArtist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w400,
+                      color: Colors.white.withOpacity(0.65),
+                    ),
                   ),
                 ],
-                image: hasArt
-                    ? DecorationImage(
-                        image: FileImage(File(coverPath!)),
-                        fit: BoxFit.cover,
-                      )
-                    : null,
-                color: hasArt ? null : const Color(0xFF282828),
               ),
-              child: hasArt
-                  ? null
-                  : const Center(
-                      child: Icon(Icons.music_note_rounded,
-                          size: 72, color: Colors.white24),
-                    ),
             ),
-          ),
 
-          const SizedBox(height: 28),
+            const SizedBox(height: 12),
 
-          // ── Title & Artist ────────────────────────────────────────────
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  track.displayTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  track.displayArtist,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w400,
-                    color: Colors.white.withOpacity(0.65),
-                  ),
-                ),
-              ],
-            ),
-          ),
+            // ── Progress Slider ───────────────────────────────────────────
+            const _ExpandedProgressBar(),
 
-          const SizedBox(height: 20),
+            const SizedBox(height: 12),
 
-          // ── Progress slider ───────────────────────────────────────────
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: _ExpandedProgressBar(),
-          ),
-
-          const SizedBox(height: 16),
-
-          // ── Playback controls ─────────────────────────────────────────
-          const _ExpandedPlaybackControls(),
-
-          const SizedBox(height: 12),
-
-          // ── Tab bar: Letras / Cola ────────────────────────────────────
-          TabBar(
-            controller: _tabController,
-            isScrollable: false,
-            indicatorColor: AppTheme.accent,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white38,
-            labelStyle: const TextStyle(
-                fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w600),
-            unselectedLabelStyle: const TextStyle(
-                fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w400),
-            dividerColor: Colors.white12,
-            tabs: const [Tab(text: 'Letras'), Tab(text: 'Cola')],
-          ),
-
-          // ── Tab content ───────────────────────────────────────────────
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(0)),
-                  child: LyricsView(track: track, transparentBackground: true),
-                ),
-                const _QueueTab(),
-              ],
-            ),
-          ),
-
-          SizedBox(height: bottomPad),
-        ],
+            // ── Playback Controls ─────────────────────────────────────────
+            const _ExpandedPlaybackControls(),
+          ],
+        ),
       ),
     );
   }

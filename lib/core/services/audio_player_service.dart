@@ -344,7 +344,11 @@ class AudioPlayerService {
       if (_repeatMode == PlayerRepeatMode.playlist) {
         await _playIndex(0); // loop back
       } else {
-        await stop();
+        // End of queue: stay on the last track, rewound to the beginning,
+        // so the mini-player and expanded view remain visible.
+        await _player.seek(Duration.zero);
+        await _player.pause();
+        _notifyState();
       }
     } else {
       await _playIndex(nextIndex);
