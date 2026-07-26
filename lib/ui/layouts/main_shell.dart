@@ -330,8 +330,9 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
           }
         },
         child: Scaffold(
+          extendBody: true,
           backgroundColor: AppTheme.bgDeep,
-          // ── Content scrolls freely beneath the floating panel ──────────
+          // ── Content scrolls freely beneath the floating glass pill ──────────
           body: Stack(
             children: [
               // Main page views — padded so content ends above the panel.
@@ -347,11 +348,11 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
                 ),
               ),
 
-              // ── Unified frosted-glass bottom panel ────────────────────
+              // ── Unified Glassmorphic Floating Pill Panel ────────────────────
               Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
+                bottom: 12,
+                left: 12,
+                right: 12,
                 child: _UnifiedBottomPanel(
                   panelHeight: panelH,
                   miniPlayerHeight: miniH,
@@ -369,8 +370,8 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
   }
 }
 
-/// The unified frosted-glass panel: mini-player (when active) on top,
-/// navigation icons below — both sharing the same blurred/gradient surface.
+/// The unified glassmorphic pill panel: mini-player on top, navigation icons below,
+/// both housed inside a single rounded pill capsule with BackdropFilter blur.
 class _UnifiedBottomPanel extends StatelessWidget {
   const _UnifiedBottomPanel({
     required this.panelHeight,
@@ -390,23 +391,25 @@ class _UnifiedBottomPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).padding.bottom;
-
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      borderRadius: BorderRadius.circular(32),
       child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Container(
-          height: panelHeight + bottomInset,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Color(0xCC0D0D0D),   // ~80% opacity at top
-                Color(0xF50D0D0D),   // ~96% opacity at bottom
-              ],
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(32),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.12),
+              width: 1,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.4),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -442,8 +445,8 @@ class _UnifiedBottomPanel extends StatelessWidget {
                 ),
               ),
 
-              // System nav bar inset spacer
-              SizedBox(height: bottomInset),
+              // System nav bar inset spacer if needed
+              SizedBox(height: MediaQuery.of(context).padding.bottom > 0 ? 4 : 0),
             ],
           ),
         ),

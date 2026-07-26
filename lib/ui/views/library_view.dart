@@ -1555,8 +1555,90 @@ class _LibraryViewState extends State<LibraryView> {
     );
   }
 
+  void _showAddToPlaylistModal(BuildContext context, Track track) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.bgSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final availablePlaylists = _playlists.where((p) => p.playlistId != '__liked__').toList();
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Añadir a playlist',
+                      style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: AppTheme.textSecondary, size: 20),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: AppTheme.accent.withAlpha(40),
+                    child: const Icon(Icons.add_rounded, color: AppTheme.accent),
+                  ),
+                  title: const Text(
+                    'Nueva playlist',
+                    style: TextStyle(color: AppTheme.accent, fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _createAndAddTrackToPlaylist(track);
+                  },
+                ),
+                const Divider(color: AppTheme.divider),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: availablePlaylists.length,
+                    itemBuilder: (context, idx) {
+                      final p = availablePlaylists[idx];
+                      return ListTile(
+                        leading: const Icon(Icons.playlist_add_check_rounded, color: AppTheme.textSecondary),
+                        title: Text(
+                          p.name,
+                          style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
+                        ),
+                        subtitle: Text(
+                          '${p.trackIds.length} canciones',
+                          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                        ),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _addTrackToPlaylist(track, p);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   /// Mobile-optimised songs list: clean ListTile rows with rounded cover art,
-  /// title, artist, and a 3-dot context menu. No dense table columns.
+  /// title, artist, and a 5-option PopupMenuButton.
   Widget _buildMobileSongsList(List<Track> tracks) {
     return ListView.separated(
       padding: const EdgeInsets.only(bottom: 16),
@@ -1623,19 +1705,33 @@ class _LibraryViewState extends State<LibraryView> {
                     style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
               ),
               const PopupMenuItem(
-                value: 'edit',
-                child: Text('Editar información',
+                value: 'add_playlist',
+                child: Text('Añadir a playlist',
+                    style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+              ),
+              const PopupMenuItem(
+                value: 'go_album',
+                child: Text('Ir al álbum',
+                    style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+              ),
+              const PopupMenuItem(
+                value: 'go_artist',
+                child: Text('Ir al artista',
                     style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
               ),
             ],
-            onSelected: (action) async {
+            onSelected: (action) {
               switch (action) {
                 case 'play_next':
                   AudioPlayerService.instance.playNext(track);
                 case 'add_queue':
                   AudioPlayerService.instance.addToQueue(track);
-                case 'edit':
-                  await _editTrackMetadata(track);
+                case 'add_playlist':
+                  _showAddToPlaylistModal(context, track);
+                case 'go_album':
+                  setState(() => _selectedAlbum = track.displayAlbum);
+                case 'go_artist':
+                  setState(() => _selectedArtist = track.displayArtist);
               }
             },
           ),

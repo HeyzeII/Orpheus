@@ -21,36 +21,44 @@ class ExpandedPlayerView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: StreamBuilder<Track?>(
-        stream: AudioPlayerService.instance.currentTrackStream,
-        initialData: AudioPlayerService.instance.currentTrack,
-        builder: (context, snap) {
-          final track = snap.data;
-          final isMobile = MediaQuery.sizeOf(context).width < 600;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: StreamBuilder<Track?>(
+          stream: AudioPlayerService.instance.currentTrackStream,
+          initialData: AudioPlayerService.instance.currentTrack,
+          builder: (context, snap) {
+            final track = snap.data;
+            final isMobile = MediaQuery.sizeOf(context).width < 600;
 
-          return Stack(
-            children: [
-              // 1. Dynamic blurred background (shared between both layouts)
-              if (track != null) _BlurredImageBackground(track: track),
+            return Stack(
+              children: [
+                // 1. Dynamic blurred background (shared between both layouts)
+                if (track != null) _BlurredImageBackground(track: track),
 
-              // 2. Layout switch
-              if (track != null)
-                isMobile
-                    ? _MobileVerticalLayout(track: track)
-                    : _DesktopHorizontalLayout(track: track),
+                // 2. Layout switch
+                if (track != null)
+                  isMobile
+                      ? _MobileVerticalLayout(track: track)
+                      : _DesktopHorizontalLayout(track: track),
 
-              // 3. Collapse button — top-right on desktop, top-center on mobile
-              if (!isMobile)
-                Positioned(
-                  top: 40,
-                  right: 40,
-                  child: _CollapseButton(alignment: 'right'),
-                ),
-            ],
-          );
-        },
+                // 3. Collapse button — top-right on desktop, top-center on mobile
+                if (!isMobile)
+                  Positioned(
+                    top: 40,
+                    right: 40,
+                    child: const _CollapseButton(alignment: 'right'),
+                  ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -78,15 +86,15 @@ class _BlurredImageBackground extends StatelessWidget {
         else
           const ColoredBox(color: Color(0xFF141414)),
         BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 90.0, sigmaY: 90.0),
+          filter: ui.ImageFilter.blur(sigmaX: 50.0, sigmaY: 50.0),
           child: Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  const Color(0xFF141414).withOpacity(0.5),
-                  const Color(0xFF141414).withOpacity(0.88),
+                  const Color(0xFF141414).withOpacity(0.55),
+                  const Color(0xFF141414).withOpacity(0.92),
                 ],
               ),
             ),
@@ -140,6 +148,16 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
     });
   }
 
+  void _handleSwipe(DragEndDetails details) {
+    if (details.primaryVelocity != null) {
+      if (details.primaryVelocity! < -200) {
+        AudioPlayerService.instance.next();
+      } else if (details.primaryVelocity! > 200) {
+        AudioPlayerService.instance.previous();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final track = widget.track;
@@ -148,6 +166,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
         coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
     final topPad = MediaQuery.of(context).padding.top;
     final bottomPad = MediaQuery.of(context).padding.bottom;
+    final isLyricsOrQueue = _mode != _MobileOverlayMode.artwork;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
@@ -155,7 +174,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
         statusBarIconBrightness: Brightness.light,
       ),
       child: Padding(
-        padding: EdgeInsets.fromLTRB(16, topPad + 8, 16, bottomPad + 12),
+        padding: EdgeInsets.fromLTRB(16, topPad + 4, 16, bottomPad + 8),
         child: Column(
           children: [
             // ── Top Bar: Minimize handle + Action buttons (Letras / Cola) ──
@@ -168,7 +187,6 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                   onPressed: () => Navigator.of(context).pop(),
                   tooltip: 'Minimizar',
                 ),
-                // Action Buttons: Letras & Cola
                 Row(
                   children: [
                     IconButton(
@@ -198,76 +216,78 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
               ],
             ),
 
-            const SizedBox(height: 8),
-
-            // ── Central Area: AnimatedSwitcher between Artwork / Lyrics / Queue ──
-            Expanded(
-              child: AnimatedSwitcher(
+            // ── Animated Cover Art Container (resizes smoothly to compact thumbnail when lyrics/queue mode is active) ──
+            GestureDetector(
+              onHorizontalDragEnd: _handleSwipe,
+              onTap: isLyricsOrQueue ? () => setState(() => _mode = _MobileOverlayMode.artwork) : null,
+              child: AnimatedContainer(
                 duration: const Duration(milliseconds: 300),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                child: switch (_mode) {
-                  _MobileOverlayMode.artwork => Center(
-                      key: const ValueKey('mobile_art'),
-                      child: AspectRatio(
-                        aspectRatio: 1,
-                        child: Container(
-                          constraints: const BoxConstraints(
-                            maxWidth: 320,
-                            maxHeight: 320,
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.5),
-                                blurRadius: 36,
-                                offset: const Offset(0, 14),
-                              ),
-                            ],
-                            image: hasArt
-                                ? DecorationImage(
-                                    image: FileImage(File(coverPath!)),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                            color: hasArt ? null : const Color(0xFF282828),
-                          ),
-                          child: hasArt
-                              ? null
-                              : const Center(
-                                  child: Icon(Icons.music_note_rounded,
-                                      size: 72, color: Colors.white24),
-                                ),
-                        ),
-                      ),
+                curve: Curves.easeOut,
+                width: isLyricsOrQueue ? 110 : 280,
+                height: isLyricsOrQueue ? 110 : 280,
+                margin: EdgeInsets.only(
+                  top: isLyricsOrQueue ? 4 : 16,
+                  bottom: isLyricsOrQueue ? 8 : 16,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.5),
+                      blurRadius: isLyricsOrQueue ? 16 : 36,
+                      offset: const Offset(0, 10),
                     ),
-                  _MobileOverlayMode.lyrics => Container(
-                      key: const ValueKey('mobile_lyrics'),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.35),
-                        borderRadius: BorderRadius.circular(16),
+                  ],
+                  image: hasArt
+                      ? DecorationImage(
+                          image: FileImage(File(coverPath!)),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                  color: hasArt ? null : const Color(0xFF282828),
+                ),
+                child: hasArt
+                    ? null
+                    : Center(
+                        child: Icon(Icons.music_note_rounded,
+                            size: isLyricsOrQueue ? 36 : 72, color: Colors.white24),
                       ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: LyricsView(
-                            track: track, transparentBackground: true),
-                      ),
-                    ),
-                  _MobileOverlayMode.queue => Container(
-                      key: const ValueKey('mobile_queue'),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.4),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: const _QueueTab(),
-                    ),
-                },
               ),
             ),
 
-            const SizedBox(height: 16),
+            // ── Expanded space for Lyrics or Queue ──
+            if (isLyricsOrQueue)
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  child: _mode == _MobileOverlayMode.lyrics
+                      ? Container(
+                          key: const ValueKey('mobile_lyrics_pane'),
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.35),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: LyricsView(
+                                track: track, transparentBackground: true),
+                          ),
+                        )
+                      : Container(
+                          key: const ValueKey('mobile_queue_pane'),
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.4),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const _QueueTab(),
+                        ),
+                ),
+              )
+            else
+              const Spacer(),
 
             // ── Track Title & Artist ──────────────────────────────────────
             Padding(
@@ -360,29 +380,40 @@ class _ExpandedArtisticCore extends StatelessWidget {
             child: Center(
               child: AspectRatio(
                 aspectRatio: 1,
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.4),
-                        blurRadius: 40,
-                        offset: const Offset(0, 20),
-                      ),
-                    ],
-                    image: coverPath != null && File(coverPath).existsSync()
-                        ? DecorationImage(
-                            image: FileImage(File(coverPath)),
-                            fit: BoxFit.cover,
+                child: GestureDetector(
+                  onHorizontalDragEnd: (details) {
+                    if (details.primaryVelocity != null) {
+                      if (details.primaryVelocity! < -200) {
+                        AudioPlayerService.instance.next();
+                      } else if (details.primaryVelocity! > 200) {
+                        AudioPlayerService.instance.previous();
+                      }
+                    }
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.4),
+                          blurRadius: 40,
+                          offset: const Offset(0, 20),
+                        ),
+                      ],
+                      image: coverPath != null && File(coverPath).existsSync()
+                          ? DecorationImage(
+                              image: FileImage(File(coverPath)),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
+                    ),
+                    child: coverPath == null || !File(coverPath).existsSync()
+                        ? const Center(
+                            child: Icon(Icons.music_note_rounded,
+                                size: 80, color: Colors.white24),
                           )
                         : null,
                   ),
-                  child: coverPath == null || !File(coverPath).existsSync()
-                      ? const Center(
-                          child: Icon(Icons.music_note_rounded,
-                              size: 80, color: Colors.white24),
-                        )
-                      : null,
                 ),
               ),
             ),
