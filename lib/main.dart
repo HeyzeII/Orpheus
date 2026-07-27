@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:metadata_god/metadata_god.dart';
 
@@ -17,6 +18,19 @@ import 'ui/theme/app_theme.dart';
 /// 4. [LocalDatabase.instance.initialize] — opens Isar and seeds default data.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Enable native Android edge-to-edge mode & transparent system bars
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarDividerColor: Colors.transparent,
+    ),
+  );
+
   MediaKit.ensureInitialized();
   await MetadataGod.initialize();
   await LocalDatabase.instance.initialize();

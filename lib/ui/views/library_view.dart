@@ -1403,39 +1403,10 @@ class _LibraryViewState extends State<LibraryView> {
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
                           ),
-                          trailing: PopupMenuButton<String>(
+                          trailing: IconButton(
                             icon: const Icon(Icons.more_vert_rounded,
                                 color: AppTheme.textSecondary, size: 20),
-                            color: AppTheme.bgSurface,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            itemBuilder: (_) => [
-                              const PopupMenuItem(
-                                value: 'play_next',
-                                child: Text('Reproducir a continuación',
-                                    style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
-                              ),
-                              const PopupMenuItem(
-                                value: 'add_queue',
-                                child: Text('Añadir a la cola',
-                                    style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
-                              ),
-                              if (!isLiked)
-                                const PopupMenuItem(
-                                  value: 'remove_playlist',
-                                  child: Text('Quitar de esta playlist',
-                                      style: TextStyle(color: Colors.redAccent, fontSize: 13)),
-                                ),
-                            ],
-                            onSelected: (action) async {
-                              switch (action) {
-                                case 'play_next':
-                                  AudioPlayerService.instance.playNext(track);
-                                case 'add_queue':
-                                  AudioPlayerService.instance.addToQueue(track);
-                                case 'remove_playlist':
-                                  await _removeTrackFromPlaylist(track, playlist);
-                              }
-                            },
+                            onPressed: () => _showTrackOptionsModal(context, track),
                           ),
                         );
                       },
@@ -1555,6 +1526,132 @@ class _LibraryViewState extends State<LibraryView> {
     );
   }
 
+  void _showTrackOptionsModal(BuildContext context, Track track) {
+    final coverPath = track.customMetadata.customCoverPath;
+    final hasArt = coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.bgSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header: Cover + Title + Artist
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: hasArt
+                              ? Image.file(File(coverPath!), fit: BoxFit.cover, cacheWidth: 96)
+                              : const ColoredBox(
+                                  color: AppTheme.bgHover,
+                                  child: Icon(Icons.music_note_rounded,
+                                      color: AppTheme.textHint, size: 24),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              track.displayTitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              track.displayArtist,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Divider(color: AppTheme.divider, height: 1),
+                const SizedBox(height: 4),
+
+                // Options List
+                ListTile(
+                  leading: const Icon(Icons.playlist_play_rounded, color: AppTheme.textPrimary),
+                  title: const Text('Reproducir a continuación',
+                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    AudioPlayerService.instance.playNext(track);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.queue_music_rounded, color: AppTheme.textPrimary),
+                  title: const Text('Añadir a la cola',
+                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    AudioPlayerService.instance.addToQueue(track);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.playlist_add_rounded, color: AppTheme.textPrimary),
+                  title: const Text('Añadir a playlist',
+                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showAddToPlaylistModal(context, track);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.album_rounded, color: AppTheme.textPrimary),
+                  title: const Text('Ir al álbum',
+                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    setState(() => _selectedAlbum = track.displayAlbum);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.person_rounded, color: AppTheme.textPrimary),
+                  title: const Text('Ir al artista',
+                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    setState(() => _selectedArtist = track.displayArtist);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _showAddToPlaylistModal(BuildContext context, Track track) {
     showModalBottomSheet(
       context: context,
@@ -1638,7 +1735,7 @@ class _LibraryViewState extends State<LibraryView> {
   }
 
   /// Mobile-optimised songs list: clean ListTile rows with rounded cover art,
-  /// title, artist, and a 5-option PopupMenuButton.
+  /// title, artist, and an IconButton opening the BottomSheet menu.
   Widget _buildMobileSongsList(List<Track> tracks) {
     return ListView.separated(
       padding: const EdgeInsets.only(bottom: 16),
@@ -1688,52 +1785,10 @@ class _LibraryViewState extends State<LibraryView> {
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
           ),
-          trailing: PopupMenuButton<String>(
+          trailing: IconButton(
             icon: const Icon(Icons.more_vert_rounded,
                 color: AppTheme.textSecondary, size: 20),
-            color: AppTheme.bgSurface,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            itemBuilder: (_) => [
-              const PopupMenuItem(
-                value: 'play_next',
-                child: Text('Reproducir a continuación',
-                    style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
-              ),
-              const PopupMenuItem(
-                value: 'add_queue',
-                child: Text('Añadir a la cola',
-                    style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
-              ),
-              const PopupMenuItem(
-                value: 'add_playlist',
-                child: Text('Añadir a playlist',
-                    style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
-              ),
-              const PopupMenuItem(
-                value: 'go_album',
-                child: Text('Ir al álbum',
-                    style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
-              ),
-              const PopupMenuItem(
-                value: 'go_artist',
-                child: Text('Ir al artista',
-                    style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
-              ),
-            ],
-            onSelected: (action) {
-              switch (action) {
-                case 'play_next':
-                  AudioPlayerService.instance.playNext(track);
-                case 'add_queue':
-                  AudioPlayerService.instance.addToQueue(track);
-                case 'add_playlist':
-                  _showAddToPlaylistModal(context, track);
-                case 'go_album':
-                  setState(() => _selectedAlbum = track.displayAlbum);
-                case 'go_artist':
-                  setState(() => _selectedArtist = track.displayArtist);
-              }
-            },
+            onPressed: () => _showTrackOptionsModal(context, track),
           ),
         );
       },

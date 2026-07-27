@@ -216,42 +216,47 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
               ],
             ),
 
-            // ── Animated Cover Art Container (resizes smoothly to compact thumbnail when lyrics/queue mode is active) ──
-            GestureDetector(
-              onHorizontalDragEnd: _handleSwipe,
-              onTap: isLyricsOrQueue ? () => setState(() => _mode = _MobileOverlayMode.artwork) : null,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-                width: isLyricsOrQueue ? 110 : 280,
-                height: isLyricsOrQueue ? 110 : 280,
-                margin: EdgeInsets.only(
-                  top: isLyricsOrQueue ? 4 : 16,
-                  bottom: isLyricsOrQueue ? 8 : 16,
-                ),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.5),
-                      blurRadius: isLyricsOrQueue ? 16 : 36,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                  image: hasArt
-                      ? DecorationImage(
-                          image: FileImage(File(coverPath!)),
-                          fit: BoxFit.cover,
-                        )
-                      : null,
-                  color: hasArt ? null : const Color(0xFF282828),
-                ),
-                child: hasArt
-                    ? null
-                    : Center(
-                        child: Icon(Icons.music_note_rounded,
-                            size: isLyricsOrQueue ? 36 : 72, color: Colors.white24),
+            // ── Animated Cover Art Container (aligns top-left & resizes smoothly when lyrics/queue mode is active) ──
+            AnimatedAlign(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+              alignment: isLyricsOrQueue ? Alignment.topLeft : Alignment.topCenter,
+              child: GestureDetector(
+                onHorizontalDragEnd: _handleSwipe,
+                onTap: isLyricsOrQueue ? () => setState(() => _mode = _MobileOverlayMode.artwork) : null,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOut,
+                  width: isLyricsOrQueue ? 72 : 280,
+                  height: isLyricsOrQueue ? 72 : 280,
+                  margin: EdgeInsets.only(
+                    top: isLyricsOrQueue ? 0 : 16,
+                    bottom: isLyricsOrQueue ? 4 : 16,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.5),
+                        blurRadius: isLyricsOrQueue ? 12 : 36,
+                        offset: const Offset(0, 8),
                       ),
+                    ],
+                    image: hasArt
+                        ? DecorationImage(
+                            image: FileImage(File(coverPath!)),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
+                    color: hasArt ? null : const Color(0xFF282828),
+                  ),
+                  child: hasArt
+                      ? null
+                      : Center(
+                          child: Icon(Icons.music_note_rounded,
+                              size: isLyricsOrQueue ? 28 : 72, color: Colors.white24),
+                        ),
+                ),
               ),
             ),
 
@@ -263,9 +268,9 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                   child: _mode == _MobileOverlayMode.lyrics
                       ? Container(
                           key: const ValueKey('mobile_lyrics_pane'),
-                          margin: const EdgeInsets.only(bottom: 8),
+                          margin: EdgeInsets.zero,
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.35),
+                            color: Colors.black.withOpacity(0.3),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: ClipRRect(
@@ -276,10 +281,10 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                         )
                       : Container(
                           key: const ValueKey('mobile_queue_pane'),
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(12),
+                          margin: EdgeInsets.zero,
+                          padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.4),
+                            color: Colors.black.withOpacity(0.35),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: const _QueueTab(),
@@ -699,10 +704,29 @@ class _ExpandedUtilityPanelState extends State<_ExpandedUtilityPanel>
   }
 }
 
-// ── Queue Tab ─────────────────────────────────────────────────────────────────
+// ── Queue Tab (Tidal Style) ───────────────────────────────────────────────────
 
 class _QueueTab extends StatelessWidget {
   const _QueueTab();
+
+  Widget _buildCover(Track track, {double size = 42}) {
+    final coverPath = track.customMetadata.customCoverPath;
+    final hasArt = coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: hasArt
+            ? Image.file(File(coverPath!), fit: BoxFit.cover, cacheWidth: (size * 2).toInt())
+            : const ColoredBox(
+                color: AppTheme.bgHover,
+                child: Icon(Icons.music_note_rounded, color: AppTheme.textHint, size: 20),
+              ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -713,137 +737,134 @@ class _QueueTab extends StatelessWidget {
       builder: (context, snap) {
         final queue = snap.data ?? player.queue;
         final currentIndex = player.currentIndex;
+        final currentTrack = player.currentTrack;
 
-        if (queue.isEmpty) {
+        if (queue.isEmpty && currentTrack == null) {
           return const Center(
             child: Text('La cola está vacía',
-                style: TextStyle(color: Colors.white54, fontSize: 16)),
+                style: TextStyle(color: Colors.white54, fontSize: 15)),
           );
         }
 
+        final upcomingTracks = currentIndex >= 0 && currentIndex < queue.length - 1
+            ? queue.sublist(currentIndex + 1)
+            : (currentIndex < 0 ? queue : <Track>[]);
+
         return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
+            // 1. REPRODUCIENDO ACTUALMENTE
+            if (currentTrack != null) ...[
+              const Padding(
+                padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
+                child: Text(
+                  'REPRODUCIENDO ACTUALMENTE',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textHint,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                leading: _buildCover(currentTrack),
+                title: Text(
+                  currentTrack.displayTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppTheme.accent,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                subtitle: Text(
+                  currentTrack.displayArtist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                ),
+                trailing: const Icon(Icons.volume_up_rounded, color: AppTheme.accent, size: 22),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Divider(color: AppTheme.divider, height: 1),
+              ),
+            ],
+
+            // 2. A CONTINUACIÓN:
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'A continuación',
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white.withOpacity(0.9),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
+                  child: Text(
+                    'A CONTINUACIÓN:',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textHint,
+                      letterSpacing: 1.2,
+                    ),
                   ),
                 ),
-                TextButton.icon(
-                  onPressed: player.clearQueue,
-                  icon: const Icon(Icons.clear_all_rounded,
-                      size: 18, color: Colors.white70),
-                  label: const Text('Limpiar',
-                      style: TextStyle(
-                          color: Colors.white70, fontFamily: 'Inter')),
-                  style: TextButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    minimumSize: Size.zero,
+                if (queue.isNotEmpty)
+                  TextButton.icon(
+                    onPressed: player.clearQueue,
+                    icon: const Icon(Icons.clear_all_rounded, size: 16, color: Colors.white70),
+                    label: const Text('Limpiar',
+                        style: TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'Inter')),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: Size.zero,
+                    ),
                   ),
-                ),
               ],
             ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: ListView.builder(
-                itemCount: queue.length,
-                itemBuilder: (context, index) {
-                  final track = queue[index];
-                  final isCurrent = index == currentIndex;
 
-                  return InkWell(
-                    onDoubleTap: () async =>
-                        player.loadPlaylist(queue, initialIndex: index),
-                    borderRadius: BorderRadius.circular(8),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 12, horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: isCurrent
-                            ? AppTheme.accent.withOpacity(0.08)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border(
-                          left: BorderSide(
-                            color: isCurrent
-                                ? AppTheme.accent
-                                : Colors.transparent,
-                            width: 3,
-                          ),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 30,
-                            child: isCurrent
-                                ? const Icon(Icons.volume_up_rounded,
-                                    color: AppTheme.accent, size: 18)
-                                : Text(
-                                    '${index + 1}',
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.4),
-                                      fontSize: 13,
-                                      fontFamily: 'Inter',
-                                    ),
-                                  ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  track.displayTitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: isCurrent
-                                        ? AppTheme.accent
-                                        : Colors.white,
-                                    fontSize: 14,
-                                    fontWeight: isCurrent
-                                        ? FontWeight.w600
-                                        : FontWeight.w500,
-                                    shadows: isCurrent
-                                        ? [
-                                            Shadow(
-                                              color: AppTheme.accent
-                                                  .withOpacity(0.5),
-                                              blurRadius: 8,
-                                            ),
-                                          ]
-                                        : null,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  track.displayArtist,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.5),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
+            // 3. ListView.builder with upcoming tracks and drag handles
+            Expanded(
+              child: upcomingTracks.isEmpty
+                  ? const Center(
+                      child: Text('No hay canciones a continuación',
+                          style: TextStyle(color: Colors.white38, fontSize: 13)),
+                    )
+                  : ListView.builder(
+                      itemCount: upcomingTracks.length,
+                      itemBuilder: (context, index) {
+                        final track = upcomingTracks[index];
+                        final actualIndex = currentIndex + 1 + index;
+
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                          onTap: () async => player.loadPlaylist(queue, initialIndex: actualIndex),
+                          leading: _buildCover(track),
+                          title: Text(
+                            track.displayTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
-                        ],
-                      ),
+                          subtitle: Text(
+                            track.displayArtist,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
+                          ),
+                          trailing: const Icon(
+                            Icons.drag_handle_rounded,
+                            color: Colors.white38,
+                            size: 20,
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
           ],
         );

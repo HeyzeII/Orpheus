@@ -308,7 +308,7 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
       statusBarBrightness: Brightness.dark,
-      systemNavigationBarColor: Color(0xFF0D0D0D),
+      systemNavigationBarColor: Colors.transparent,
       systemNavigationBarIconBrightness: Brightness.light,
       systemNavigationBarDividerColor: Colors.transparent,
     );
@@ -321,13 +321,24 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlayStyle,
       child: PopScope(
-        // If the expanded player is open, intercept back and let our code
-        // close it; otherwise allow the default system pop.
-        canPop: !_expandedPlayerOpen,
+        canPop: false,
         onPopInvokedWithResult: (didPop, _) {
-          if (!didPop && _expandedPlayerOpen) {
-            Navigator.of(context).pop(); // close the expanded player dialog
+          if (didPop) return;
+
+          // 1. Close expanded player dialog if open
+          if (_expandedPlayerOpen) {
+            Navigator.of(context).pop();
+            return;
           }
+
+          // 2. Pop sub-route/details view if navigator can pop
+          if (Navigator.canPop(context)) {
+            Navigator.pop(context);
+            return;
+          }
+
+          // 3. At root level: send app to background (music keeps playing)
+          SystemNavigator.pop();
         },
         child: Scaffold(
           extendBody: true,

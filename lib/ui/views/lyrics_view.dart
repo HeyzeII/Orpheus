@@ -287,20 +287,15 @@ class _LyricLineItem extends StatelessWidget {
     final double lineHeight = isActive ? 1.4 : 1.35;
 
     if (isActive) {
-      textColor = AppTheme.accent;
+      textColor = Colors.white;
       fontWeight = FontWeight.w700;
-      fontSize = 22;
+      fontSize = 24;
       opacity = 1.0;
-    } else if (isPast) {
-      textColor = AppTheme.textSecondary;
-      fontWeight = FontWeight.w400;
-      fontSize = 18;
-      opacity = 0.45;
     } else {
-      textColor = AppTheme.textPrimary;
+      textColor = Colors.white;
       fontWeight = FontWeight.w500;
-      fontSize = 18;
-      opacity = 0.65;
+      fontSize = 20;
+      opacity = 0.5;
     }
 
     return GestureDetector(
