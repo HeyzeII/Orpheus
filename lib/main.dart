@@ -1,3 +1,4 @@
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
@@ -5,6 +6,7 @@ import 'package:metadata_god/metadata_god.dart';
 
 import 'core/database/local_database.dart';
 import 'core/services/album_art_fetcher_service.dart';
+import 'core/services/audio_handler.dart';
 import 'core/services/audio_player_service.dart';
 import 'ui/layouts/main_shell.dart';
 import 'ui/theme/app_theme.dart';
@@ -36,6 +38,17 @@ Future<void> main() async {
   await LocalDatabase.instance.initialize();
   // Restore last playback queue + position before building the widget tree.
   await AudioPlayerService.instance.hydratePlaybackState();
+
+  // Initialize audio_service to establish native media controls and focus management
+  await AudioService.init(
+    builder: () => OrpheusAudioHandler(),
+    config: const AudioServiceConfig(
+      androidNotificationChannelId: 'com.heyzell.orpheus.channel.audio',
+      androidNotificationChannelName: 'Orpheus Playback',
+      androidNotificationOngoing: true,
+      androidStopForegroundOnPause: true,
+    ),
+  );
 
   // Start background album art fetching for any missing cover art
   AlbumArtFetcherService.instance.processLibrary();
