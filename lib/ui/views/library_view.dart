@@ -172,8 +172,12 @@ class _LibraryViewState extends State<LibraryView> {
 
   Future<void> _shufflePlayTracks(List<Track> tracks) async {
     if (tracks.isEmpty) return;
-    final shuffled = List<Track>.from(tracks)..shuffle();
-    await AudioPlayerService.instance.loadPlaylist(shuffled, initialIndex: 0);
+    final player = AudioPlayerService.instance;
+    // Enable shuffle in the service if not already on, then load the full
+    // unshuffled list. AudioPlayerService will produce the shuffled queue
+    // internally and preserve _originalQueue for restoration.
+    if (!player.shuffleEnabled) player.toggleShuffle();
+    await player.loadPlaylist(tracks, initialIndex: 0);
   }
 
   // Favorite toggle

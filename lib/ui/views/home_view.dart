@@ -77,8 +77,14 @@ class _HomeViewState extends State<HomeView> {
     });
   }
 
-  Future<void> _playTrack(Track track) async =>
-      AudioPlayerService.instance.loadPlaylist([track]);
+  Future<void> _playTrack(Track track) async {
+    final index = _allTracks.indexWhere((t) => t.trackId == track.trackId);
+    if (index != -1) {
+      await AudioPlayerService.instance.loadPlaylist(_allTracks, initialIndex: index);
+    } else {
+      await AudioPlayerService.instance.loadPlaylist([track]);
+    }
+  }
 
   Future<void> _playGenre(String genre) async {
     final genreTracks = _allTracks.where((t) => t.genre == genre).toList();

@@ -52,3 +52,4 @@ flutter:
 # causing a "Bad state: codegen version mismatch" crash at app startup.
 dependency_overrides:
   flutter_rust_bridge: 2.11.1
+  sqflite_android: 2.4.1

@@ -36,7 +36,8 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       _updatePlaybackState();
     }));
 
-    // 4. Sincronizar duración
+    // 4. Sincronizar duración — re-emitir MediaItem con la duración real
+    //    una vez que media_kit la resuelva (puede tardar unos ms al abrir el archivo).
     _subscriptions.add(player.durationStream.listen((_) {
       final track = player.currentTrack;
       if (track != null) {
@@ -45,10 +46,11 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       _updatePlaybackState();
     }));
 
-    // 5. Sincronizar posición periódicamente para que el sistema actualice el slider
-    _subscriptions.add(player.positionStream.listen((_) {
-      _updatePlaybackState();
-    }));
+    // NOTE: positionStream is intentionally NOT subscribed here.
+    // Emitting a full PlaybackState on every position tick (~5 Hz) would
+    // overwhelm the MediaSession binder on low-end devices.  The OS reads
+    // updatePosition + updateTime from the last emitted PlaybackState and
+    // interpolates position on its own — no per-tick update needed.
   }
 
   MediaItem _mapTrackToMediaItem(Track track) {

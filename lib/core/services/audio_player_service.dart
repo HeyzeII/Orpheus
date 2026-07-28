@@ -185,57 +185,68 @@ class AudioPlayerService {
 
   /// Replaces the current queue with [tracks] and starts playing at [initialIndex].
   Future<void> loadPlaylist(List<Track> tracks, {int initialIndex = 0}) async {
-    // Check if the tracks list is exactly the same as our current _queue (same trackId and same order)
-    bool isCurrentQueue = false;
-    if (tracks.length == _queue.length) {
-      isCurrentQueue = true;
-      for (int i = 0; i < tracks.length; i++) {
-        if (tracks[i].trackId != _queue[i].trackId) {
-          isCurrentQueue = false;
-          break;
-        }
-      }
-    }
-
-    if (isCurrentQueue) {
-      if (_queue.isNotEmpty) {
-        final targetIdx = initialIndex.clamp(0, _queue.length - 1);
-        await _playIndex(targetIdx);
-      }
-      return;
-    }
-
-    _queue.clear();
-    _queue.addAll(tracks);
-    _consecutiveErrors = 0;
-    _originalQueue = null;
-
-    if (_queue.isEmpty) {
+    if (tracks.isEmpty) {
+      _queue.clear();
+      _originalQueue = null;
       _currentIndex = -1;
       await stop();
       _notifyState();
       return;
     }
 
-    var startIndex = initialIndex;
-    if (startIndex < 0 || startIndex >= _queue.length) {
-      startIndex = 0;
+    final targetIdx = initialIndex.clamp(0, tracks.length - 1);
+
+    // Compare with _originalQueue (if shuffle is ON) or _queue (if shuffle is OFF)
+    final referenceList = _originalQueue ?? _queue;
+    bool isSameQueue = referenceList.length == tracks.length;
+    if (isSameQueue) {
+      for (int i = 0; i < tracks.length; i++) {
+        if (tracks[i].trackId != referenceList[i].trackId) {
+          isSameQueue = false;
+          break;
+        }
+      }
     }
 
+    if (isSameQueue) {
+      // Playlist is already loaded. Simply jump _currentIndex to the target track.
+      final selectedTrack = tracks[targetIdx];
+      final queueIdx = _queue.indexWhere((t) => t.trackId == selectedTrack.trackId);
+      if (queueIdx != -1) {
+        await _playIndex(queueIdx);
+      } else {
+        await _playIndex(targetIdx);
+      }
+      return;
+    }
+
+    _consecutiveErrors = 0;
+
     if (_shuffle) {
-      _originalQueue = List<Track>.from(_queue);
-      final current = _queue[startIndex];
-      final remaining = List<Track>.from(_queue)..removeAt(startIndex);
+      _originalQueue = List<Track>.from(tracks);
+      final selectedTrack = tracks[targetIdx];
+      final remaining = List<Track>.from(tracks)..removeAt(targetIdx);
       remaining.shuffle(Random());
-      _queue.clear();
-      _queue.add(current);
-      _queue.addAll(remaining);
-      startIndex = 0;
+
+      _queue
+        ..clear()
+        ..add(selectedTrack)
+        ..addAll(remaining);
+      _currentIndex = 0;
+    } else {
+      _originalQueue = null;
+      _queue
+        ..clear()
+        ..addAll(tracks);
+      _currentIndex = targetIdx;
     }
 
     // 🔑 Save state before opening the new track (position resets to 0).
-    await _saveCurrentPlaybackState(overrideTrackId: _queue[startIndex].trackId, overridePositionMs: 0);
-    await _playIndex(startIndex);
+    await _saveCurrentPlaybackState(
+      overrideTrackId: _queue[_currentIndex].trackId,
+      overridePositionMs: 0,
+    );
+    await _playIndex(_currentIndex);
   }
 
   Future<void> play() async {
@@ -289,7 +300,9 @@ class AudioPlayerService {
   void toggleShuffle() {
     _shuffle = !_shuffle;
     if (_shuffle) {
-      _originalQueue = List<Track>.from(_queue);
+      if (_originalQueue == null) {
+        _originalQueue = List<Track>.from(_queue);
+      }
       if (_queue.isNotEmpty) {
         final current = currentTrack;
         final remaining = List<Track>.from(_queue);
@@ -307,11 +320,13 @@ class AudioPlayerService {
     } else {
       if (_originalQueue != null) {
         final current = currentTrack;
-        _queue.clear();
-        _queue.addAll(_originalQueue!);
+        _queue
+          ..clear()
+          ..addAll(_originalQueue!);
         _originalQueue = null;
         if (current != null) {
           _currentIndex = _queue.indexWhere((t) => t.trackId == current.trackId);
+          if (_currentIndex == -1) _currentIndex = 0;
         }
       }
     }
