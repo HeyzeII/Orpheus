@@ -244,7 +244,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                     ],
                     image: hasArt
                         ? DecorationImage(
-                            image: FileImage(File(coverPath!)),
+                            image: FileImage(File(coverPath)),
                             fit: BoxFit.cover,
                           )
                         : null,
@@ -577,10 +577,19 @@ class _ExpandedPlaybackControls extends StatelessWidget {
         ),
         const SizedBox(width: 16),
         // Previous
-        IconButton(
-          icon:
-              const Icon(Icons.skip_previous_rounded, color: Colors.white, size: 38),
-          onPressed: player.previous,
+        StreamBuilder<Track?>(
+          stream: player.currentTrackStream,
+          builder: (_, __) {
+            final canPrev = player.canSkipPrevious;
+            return IconButton(
+              icon: Icon(
+                Icons.skip_previous_rounded,
+                color: canPrev ? Colors.white : Colors.white24,
+                size: 38,
+              ),
+              onPressed: canPrev ? player.previous : null,
+            );
+          },
         ),
         const SizedBox(width: 16),
         // Play / Pause (prominent circle)
@@ -608,9 +617,19 @@ class _ExpandedPlaybackControls extends StatelessWidget {
         ),
         const SizedBox(width: 16),
         // Next
-        IconButton(
-          icon: const Icon(Icons.skip_next_rounded, color: Colors.white, size: 38),
-          onPressed: player.next,
+        StreamBuilder<Track?>(
+          stream: player.currentTrackStream,
+          builder: (_, __) {
+            final canNext = player.canSkipNext;
+            return IconButton(
+              icon: Icon(
+                Icons.skip_next_rounded,
+                color: canNext ? Colors.white : Colors.white24,
+                size: 38,
+              ),
+              onPressed: canNext ? player.next : null,
+            );
+          },
         ),
         const SizedBox(width: 16),
         // Repeat
@@ -709,21 +728,24 @@ class _ExpandedUtilityPanelState extends State<_ExpandedUtilityPanel>
 class _QueueTab extends StatelessWidget {
   const _QueueTab();
 
-  Widget _buildCover(Track track, {double size = 42}) {
+  Widget _buildCover(Track track, {double size = 42, bool isPast = false}) {
     final coverPath = track.customMetadata.customCoverPath;
     final hasArt = coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: hasArt
-            ? Image.file(File(coverPath!), fit: BoxFit.cover, cacheWidth: (size * 2).toInt())
-            : const ColoredBox(
-                color: AppTheme.bgHover,
-                child: Icon(Icons.music_note_rounded, color: AppTheme.textHint, size: 20),
-              ),
+    return Opacity(
+      opacity: isPast ? 0.45 : 1.0,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: hasArt
+              ? Image.file(File(coverPath), fit: BoxFit.cover, cacheWidth: (size * 2).toInt())
+              : const ColoredBox(
+                  color: AppTheme.bgHover,
+                  child: Icon(Icons.music_note_rounded, color: AppTheme.textHint, size: 20),
+                ),
+        ),
       ),
     );
   }
@@ -746,14 +768,65 @@ class _QueueTab extends StatelessWidget {
           );
         }
 
-        final upcomingTracks = currentIndex >= 0 && currentIndex < queue.length - 1
+        final historyTracks = (currentIndex > 0 && currentIndex < queue.length)
+            ? queue.sublist(0, currentIndex)
+            : <Track>[];
+        final upcomingTracks = (currentIndex >= 0 && currentIndex < queue.length - 1)
             ? queue.sublist(currentIndex + 1)
             : (currentIndex < 0 ? queue : <Track>[]);
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        return ListView(
+          padding: const EdgeInsets.symmetric(vertical: 4),
           children: [
-            // 1. REPRODUCIENDO ACTUALMENTE
+            // ── 1. HISTORIAL DE REPRODUCCIÓN ──────────────────────────────────
+            if (historyTracks.isNotEmpty) ...[
+              const Padding(
+                padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
+                child: Text(
+                  'HISTORIAL DE REPRODUCCIÓN',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textHint,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+              for (int i = 0; i < historyTracks.length; i++) ...[
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  onTap: () => player.skipToIndex(i),
+                  leading: _buildCover(historyTracks[i], isPast: true),
+                  title: Text(
+                    historyTracks[i].displayTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.45),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                  subtitle: Text(
+                    historyTracks[i].displayArtist,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 11),
+                  ),
+                  trailing: Icon(
+                    Icons.history_rounded,
+                    color: Colors.white.withOpacity(0.3),
+                    size: 18,
+                  ),
+                ),
+              ],
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Divider(color: AppTheme.divider, height: 1),
+              ),
+            ],
+
+            // ── 2. REPRODUCIENDO ACTUALMENTE ──────────────────────────────────
             if (currentTrack != null) ...[
               const Padding(
                 padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
@@ -794,7 +867,7 @@ class _QueueTab extends StatelessWidget {
               ),
             ],
 
-            // 2. A CONTINUACIÓN:
+            // ── 3. A CONTINUACIÓN ──────────────────────────────────────────────
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -824,48 +897,47 @@ class _QueueTab extends StatelessWidget {
               ],
             ),
 
-            // 3. ListView.builder with upcoming tracks and drag handles
-            Expanded(
-              child: upcomingTracks.isEmpty
-                  ? const Center(
-                      child: Text('No hay canciones a continuación',
-                          style: TextStyle(color: Colors.white38, fontSize: 13)),
-                    )
-                  : ListView.builder(
-                      itemCount: upcomingTracks.length,
-                      itemBuilder: (context, index) {
-                        final track = upcomingTracks[index];
-                        final actualIndex = currentIndex + 1 + index;
-
-                        return ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                          onTap: () async => player.loadPlaylist(queue, initialIndex: actualIndex),
-                          leading: _buildCover(track),
-                          title: Text(
-                            track.displayTitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          subtitle: Text(
-                            track.displayArtist,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
-                          ),
-                          trailing: const Icon(
-                            Icons.drag_handle_rounded,
-                            color: Colors.white38,
-                            size: 20,
-                          ),
-                        );
-                      },
+            if (upcomingTracks.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text('No hay canciones a continuación',
+                      style: TextStyle(color: Colors.white38, fontSize: 13)),
+                ),
+              )
+            else
+              for (int index = 0; index < upcomingTracks.length; index++) ...[
+                Builder(builder: (context) {
+                  final track = upcomingTracks[index];
+                  final actualIndex = currentIndex + 1 + index;
+                  return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    onTap: () => player.skipToIndex(actualIndex),
+                    leading: _buildCover(track),
+                    title: Text(
+                      track.displayTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-            ),
+                    subtitle: Text(
+                      track.displayArtist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
+                    ),
+                    trailing: const Icon(
+                      Icons.drag_handle_rounded,
+                      color: Colors.white38,
+                      size: 20,
+                    ),
+                  );
+                }),
+              ],
           ],
         );
       },

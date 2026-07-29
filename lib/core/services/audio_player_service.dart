@@ -196,17 +196,16 @@ class AudioPlayerService {
 
     final targetIdx = initialIndex.clamp(0, tracks.length - 1);
 
-    // Compare with _originalQueue (if shuffle is ON) or _queue (if shuffle is OFF)
-    final referenceList = _originalQueue ?? _queue;
-    bool isSameQueue = referenceList.length == tracks.length;
-    if (isSameQueue) {
+    // Compare with both _queue (active order) and _originalQueue (unshuffled order)
+    bool matchesList(List<Track> ref) {
+      if (ref.length != tracks.length) return false;
       for (int i = 0; i < tracks.length; i++) {
-        if (tracks[i].trackId != referenceList[i].trackId) {
-          isSameQueue = false;
-          break;
-        }
+        if (tracks[i].trackId != ref[i].trackId) return false;
       }
+      return true;
     }
+
+    final isSameQueue = matchesList(_queue) || (_originalQueue != null && matchesList(_originalQueue!));
 
     if (isSameQueue) {
       // Playlist is already loaded. Simply jump _currentIndex to the target track.
@@ -391,6 +390,24 @@ class AudioPlayerService {
       await _playIndex(prevIndex);
     }
   }
+
+  /// Jumps directly to the specified [index] in the current queue without re-shuffling.
+  Future<void> skipToIndex(int index) async {
+    if (index >= 0 && index < _queue.length) {
+      await _playIndex(index);
+    }
+  }
+
+  /// Whether skipping to the next track is valid given the current queue & repeat mode.
+  bool get canSkipNext =>
+      _queue.isNotEmpty &&
+      (_repeatMode == PlayerRepeatMode.playlist || _currentIndex < _queue.length - 1);
+
+  /// Whether skipping to the previous track is valid given the current queue & position.
+  bool get canSkipPrevious =>
+      _queue.isNotEmpty &&
+      (_repeatMode == PlayerRepeatMode.playlist || _currentIndex > 0 || position.inSeconds > 3);
+
 
   /// Inserts [track] immediately after the currently playing track.
   ///

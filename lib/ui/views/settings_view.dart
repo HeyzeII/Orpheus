@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/database/local_database.dart';
+import '../../core/models/track.dart';
 import '../../core/services/album_art_fetcher_service.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/audio_scanner.dart';
@@ -141,8 +142,22 @@ class _SettingsViewState extends State<SettingsView> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+
+    return StreamBuilder<Track?>(
+      stream: AudioPlayerService.instance.currentTrackStream,
+      initialData: AudioPlayerService.instance.currentTrack,
+      builder: (context, snap) {
+        final hasTrack = snap.data != null && snap.data!.trackId.isNotEmpty;
+        final sysPad = MediaQuery.of(context).padding.bottom;
+        // Panel = nav bar (60) + gap (12). If mini-player visible, add 64px.
+        final bottomPad = isMobile
+            ? (hasTrack ? 60.0 + 64.0 + 12.0 : 60.0 + 12.0) + sysPad + 16.0
+            : 32.0;
+        final hPad = isMobile ? 16.0 : 32.0;
+        final tPad = isMobile ? 24.0 : 36.0;
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(32, 36, 32, 32),
+      padding: EdgeInsets.fromLTRB(hPad, tPad, hPad, bottomPad),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -197,6 +212,8 @@ class _SettingsViewState extends State<SettingsView> {
           _buildMaintenanceTools(),
         ],
       ),
+    );
+      },
     );
   }
 

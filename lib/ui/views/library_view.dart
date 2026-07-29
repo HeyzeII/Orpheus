@@ -566,48 +566,64 @@ class _LibraryViewState extends State<LibraryView> {
       return _buildPlaylistDetails(_selectedPlaylist!);
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // ── Tabs Header ──────────────────────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(32, 36, 32, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Tu Biblioteca',
-                style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-              const SizedBox(height: 18),
-              Row(
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+    final sysPad = MediaQuery.of(context).padding.bottom;
+
+    return StreamBuilder<Track?>(
+      stream: AudioPlayerService.instance.currentTrackStream,
+      initialData: AudioPlayerService.instance.currentTrack,
+      builder: (context, snap) {
+        final hasTrack = snap.data != null && snap.data!.trackId.isNotEmpty;
+        // Panel height: nav (60) + gap (12) + mini-player (64 if track loaded).
+        final bottomPad = isMobile
+            ? (hasTrack ? 60.0 + 64.0 + 12.0 : 60.0 + 12.0) + sysPad + 8.0
+            : 0.0;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Tabs Header ──────────────────────────────────────────────────────
+            Padding(
+              padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, isMobile ? 20 : 36, isMobile ? 16 : 32, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildTabButton(LibraryTab.tracks, 'Canciones'),
-                  _buildTabButton(LibraryTab.albums, 'Álbumes'),
-                  _buildTabButton(LibraryTab.artists, 'Artistas'),
-                  _buildTabButton(LibraryTab.playlists, 'Playlists'),
+                  Text(
+                    'Tu Biblioteca',
+                    style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          fontSize: isMobile ? 26 : null,
+                        ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      _buildTabButton(LibraryTab.tracks, 'Canciones'),
+                      _buildTabButton(LibraryTab.albums, 'Álbumes'),
+                      _buildTabButton(LibraryTab.artists, 'Artistas'),
+                      _buildTabButton(LibraryTab.playlists, 'Playlists'),
+                    ],
+                  ),
                 ],
               ),
-            ],
-          ),
-        ),
-        const Divider(color: AppTheme.divider, height: 1),
+            ),
+            const Divider(color: AppTheme.divider, height: 1),
 
-        // ── Active Tab View Content ──────────────────────────────────────────
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: switch (_activeTab) {
-              LibraryTab.tracks => _buildTracksTab(),
-              LibraryTab.albums => _buildAlbumsTab(),
-              LibraryTab.artists => _buildArtistsTab(),
-              LibraryTab.playlists => _buildPlaylistsTab(),
-            },
-          ),
-        ),
-      ],
+            // ── Active Tab View Content ──────────────────────────────────────────
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 32),
+                child: switch (_activeTab) {
+                  LibraryTab.tracks   => _buildTracksTab(bottomPad: bottomPad),
+                  LibraryTab.albums   => _buildAlbumsTab(bottomPad: bottomPad),
+                  LibraryTab.artists  => _buildArtistsTab(bottomPad: bottomPad),
+                  LibraryTab.playlists => _buildPlaylistsTab(),
+                },
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -648,7 +664,7 @@ class _LibraryViewState extends State<LibraryView> {
   // ══════════════════════════════════════════════════════════════════════════
 
   // ── Tracks Tab ─────────────────────────────────────────────────────────────
-  Widget _buildTracksTab() {
+  Widget _buildTracksTab({double bottomPad = 0}) {
     final filtered = _allTracks.where((t) {
       final query = _searchQuery.toLowerCase();
       return t.displayTitle.toLowerCase().contains(query) ||
@@ -665,7 +681,7 @@ class _LibraryViewState extends State<LibraryView> {
             child: filtered.isEmpty
                 ? _buildEmptyState('No se encontraron canciones.')
                 : isMobile
-                    ? _buildMobileSongsList(filtered)
+                    ? _buildMobileSongsList(filtered, bottomPad: bottomPad)
                     : _buildTrackTable(filtered),
           ),
         ],
@@ -674,7 +690,7 @@ class _LibraryViewState extends State<LibraryView> {
   }
 
   // ── Albums Tab ─────────────────────────────────────────────────────────────
-  Widget _buildAlbumsTab() {
+  Widget _buildAlbumsTab({double bottomPad = 0}) {
     final filtered = _uniqueAlbums.where((a) {
       return a.toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
@@ -698,7 +714,7 @@ class _LibraryViewState extends State<LibraryView> {
           _buildSearchBar(),
           Expanded(
             child: GridView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              padding: EdgeInsets.only(top: 16, bottom: bottomPad > 0 ? bottomPad : 16),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: cols,
                 crossAxisSpacing: isMobile ? 10 : 16,
@@ -775,7 +791,7 @@ class _LibraryViewState extends State<LibraryView> {
   }
 
   // ── Artists Tab ────────────────────────────────────────────────────────────
-  Widget _buildArtistsTab() {
+  Widget _buildArtistsTab({double bottomPad = 0}) {
     final filtered = _uniqueArtists.where((a) {
       return a.toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
@@ -794,7 +810,7 @@ class _LibraryViewState extends State<LibraryView> {
         _buildSearchBar(),
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: EdgeInsets.only(top: 16, bottom: bottomPad > 0 ? bottomPad : 16),
             itemCount: filtered.length,
             itemBuilder: (context, idx) {
               final artistName = filtered[idx];
@@ -1740,9 +1756,9 @@ class _LibraryViewState extends State<LibraryView> {
 
   /// Mobile-optimised songs list: clean ListTile rows with rounded cover art,
   /// title, artist, and an IconButton opening the BottomSheet menu.
-  Widget _buildMobileSongsList(List<Track> tracks) {
+  Widget _buildMobileSongsList(List<Track> tracks, {double bottomPad = 0}) {
     return ListView.separated(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: EdgeInsets.only(bottom: bottomPad > 0 ? bottomPad : 16),
       itemCount: tracks.length,
       separatorBuilder: (_, __) => const Divider(
         color: AppTheme.divider,

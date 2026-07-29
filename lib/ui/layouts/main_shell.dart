@@ -561,12 +561,21 @@ class _MiniPlayerStrip extends StatelessWidget {
                     },
                   ),
                   // Skip next
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(width: 36, height: 40),
-                    icon: const Icon(Icons.skip_next_rounded,
-                        color: AppTheme.textSecondary, size: 24),
-                    onPressed: () => svc.next(),
+                  StreamBuilder<Track?>(
+                    stream: svc.currentTrackStream,
+                    builder: (context, _) {
+                      final canNext = svc.canSkipNext;
+                      return IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(width: 36, height: 40),
+                        icon: Icon(
+                          Icons.skip_next_rounded,
+                          color: canNext ? AppTheme.textSecondary : AppTheme.textHint.withOpacity(0.3),
+                          size: 24,
+                        ),
+                        onPressed: canNext ? () => svc.next() : null,
+                      );
+                    },
                   ),
                 ],
               ),
