@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -254,15 +256,22 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
     with WidgetsBindingObserver {
   int _currentIndex = 0;
   bool _expandedPlayerOpen = false;
+  StreamSubscription<bool>? _notificationSub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _notificationSub = AudioService.notificationClicked.listen((clicked) {
+      if (clicked && !_expandedPlayerOpen && mounted) {
+        _openExpandedPlayer();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _notificationSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -481,19 +490,27 @@ class _MiniPlayerStrip extends StatelessWidget {
 
   Widget _coverArt() {
     final path = track.customMetadata.customCoverPath;
-    final hasArt = path != null && path.isNotEmpty && File(path).existsSync();
+    final file = path != null && path.isNotEmpty ? File(path) : null;
+    final hasArt = file != null && file.existsSync() && file.lengthSync() > 0;
+    const fallback = ColoredBox(
+      color: AppTheme.bgHover,
+      child: Icon(Icons.music_note_rounded,
+          color: AppTheme.textHint, size: 18),
+    );
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
       child: SizedBox(
         width: 40,
         height: 40,
         child: hasArt
-            ? Image.file(File(path!), fit: BoxFit.cover, cacheWidth: 80)
-            : const ColoredBox(
-                color: AppTheme.bgHover,
-                child: Icon(Icons.music_note_rounded,
-                    color: AppTheme.textHint, size: 18),
-              ),
+            ? Image.file(
+                file,
+                fit: BoxFit.cover,
+                cacheWidth: 80,
+                errorBuilder: (_, __, ___) => fallback,
+              )
+            : fallback,
       ),
     );
   }

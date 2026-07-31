@@ -46,22 +46,30 @@ class MobileMiniPlayer extends StatelessWidget {
 
   Widget _coverArt(Track track) {
     final path = track.customMetadata.customCoverPath;
-    final hasArt = path != null && path.isNotEmpty && File(path).existsSync();
+    final file = path != null && path.isNotEmpty ? File(path) : null;
+    final hasArt = file != null && file.existsSync() && file.lengthSync() > 0;
+    const fallback = ColoredBox(
+      color: AppTheme.bgHover,
+      child: Icon(
+        Icons.music_note_rounded,
+        color: AppTheme.textHint,
+        size: 20,
+      ),
+    );
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
       child: SizedBox(
         width: 44,
         height: 44,
         child: hasArt
-            ? Image.file(File(path!), fit: BoxFit.cover, cacheWidth: 88)
-            : const ColoredBox(
-                color: AppTheme.bgHover,
-                child: Icon(
-                  Icons.music_note_rounded,
-                  color: AppTheme.textHint,
-                  size: 20,
-                ),
-              ),
+            ? Image.file(
+                file,
+                fit: BoxFit.cover,
+                cacheWidth: 88,
+                errorBuilder: (_, __, ___) => fallback,
+              )
+            : fallback,
       ),
     );
   }
@@ -157,11 +165,19 @@ class MobileMiniPlayer extends StatelessWidget {
                         ),
 
                         // Skip next
-                        _IconBtn(
-                          icon: Icons.skip_next_rounded,
-                          color: AppTheme.textSecondary,
-                          size: 24,
-                          onPressed: () => svc.next(),
+                        StreamBuilder<Track?>(
+                          stream: svc.currentTrackStream,
+                          builder: (context, _) {
+                            final canNext = svc.canSkipNext;
+                            return _IconBtn(
+                              icon: Icons.skip_next_rounded,
+                              color: canNext
+                                  ? AppTheme.textSecondary
+                                  : AppTheme.textHint.withValues(alpha: 0.3),
+                              size: 24,
+                              onPressed: canNext ? () => svc.next() : () {},
+                            );
+                          },
                         ),
                       ],
                     ),

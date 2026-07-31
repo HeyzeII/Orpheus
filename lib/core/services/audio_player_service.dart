@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:audio_session/audio_session.dart';
+import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart' hide Track;
 
 import '../database/local_database.dart';
@@ -88,6 +90,8 @@ class AudioPlayerService {
       ),
     );
 
+    _initAudioSession();
+
     // ── Pipe native media_kit streams to our broadcast streams ────────────────
 
     _subscriptions.add(_player.stream.playing.listen((playing) {
@@ -131,6 +135,33 @@ class AudioPlayerService {
         }
       }
     }));
+  }
+
+  Future<void> _initAudioSession() async {
+    if (kIsWeb || Platform.environment.containsKey('FLUTTER_TEST')) return;
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.music());
+
+      _subscriptions.add(session.interruptionEventStream.listen((event) {
+        if (event.begin) {
+          switch (event.type) {
+            case AudioInterruptionType.duck:
+            case AudioInterruptionType.pause:
+            case AudioInterruptionType.unknown:
+              pause();
+              break;
+          }
+        }
+      }));
+
+      _subscriptions.add(session.becomingNoisyEventStream.listen((_) {
+        // Headset unplugged or Bluetooth disconnected
+        pause();
+      }));
+    } catch (e) {
+      debugPrint('Error configuring AudioSession: $e');
+    }
   }
 
   // ── Getters ────────────────────────────────────────────────────────────────

@@ -82,6 +82,7 @@ void main() {
           androidNotificationChannelName: 'Orpheus Playback',
           androidNotificationOngoing: true,
           androidStopForegroundOnPause: true,
+          androidNotificationClickStartsActivity: true,
         ),
       );
     } catch (e, s) {
