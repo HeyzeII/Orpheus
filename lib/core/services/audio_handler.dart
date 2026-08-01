@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 import 'audio_player_service.dart';
+import '../database/local_database.dart';
 import '../models/track.dart';
 
 /// Bridges the Flutter audio engine (media_kit) to the native OS Media Session controls.
@@ -73,6 +74,9 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       },
       onError: (err) => debugPrint('Error in durationStream: $err'),
     ));
+
+    // 5. Sincronizar estado de favoritos ("Me gusta")
+    LocalDatabase.instance.likedTrackIdsNotifier.addListener(_updatePlaybackState);
   }
 
   MediaItem _mapTrackToMediaItem(Track track) {
@@ -94,20 +98,29 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     try {
       final player = AudioPlayerService.instance;
       final isPlaying = player.isPlaying;
+      final currentTrack = player.currentTrack;
+      final isLiked = currentTrack != null &&
+          LocalDatabase.instance.likedTrackIdsNotifier.value.contains(currentTrack.trackId);
+
+      final likeControl = MediaControl.custom(
+        androidIcon: isLiked ? 'drawable/ic_heart_filled' : 'drawable/ic_heart_empty',
+        label: isLiked ? 'Quitar de Me gusta' : 'Añadir a Me gusta',
+        name: 'toggle_like',
+      );
 
       playbackState.add(PlaybackState(
         controls: [
           MediaControl.skipToPrevious,
           if (isPlaying) MediaControl.pause else MediaControl.play,
-          MediaControl.stop,
           MediaControl.skipToNext,
+          likeControl,
         ],
         systemActions: const {
           MediaAction.seek,
           MediaAction.seekForward,
           MediaAction.seekBackward,
         },
-        androidCompactActionIndices: const [0, 1, 3],
+        androidCompactActionIndices: const [0, 1, 2],
         processingState: player.currentTrack == null
             ? AudioProcessingState.idle
             : AudioProcessingState.ready,
@@ -145,6 +158,31 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   Future<void> skipToQueueItem(int index) =>
       AudioPlayerService.instance.loadPlaylist(AudioPlayerService.instance.queue, initialIndex: index);
 
+  /// Handles custom actions from the media notification (such as toggle_like)
+  @override
+  Future<dynamic> customAction(String name, [Map<String, dynamic>? extras]) async {
+    if (name == 'toggle_like') {
+      try {
+        final currentTrack = AudioPlayerService.instance.currentTrack;
+        if (currentTrack != null) {
+          final db = LocalDatabase.instance;
+          final likedPlaylist = await db.getPlaylistById('__liked__');
+          if (likedPlaylist != null) {
+            final isLiked = db.likedTrackIdsNotifier.value.contains(currentTrack.trackId);
+            if (isLiked) {
+              await db.removeTrackFromPlaylist(playlist: likedPlaylist, trackId: currentTrack.trackId);
+            } else {
+              await db.addTrackToPlaylist(playlist: likedPlaylist, trackId: currentTrack.trackId);
+            }
+          }
+        }
+      } catch (e, s) {
+        debugPrint('Error toggling like from notification customAction: $e\n$s');
+      }
+    }
+    return super.customAction(name, extras);
+  }
+
   /// Called by Android when the user swipes the app from Recents.
   ///
   /// Safe cleanup: stops playback, releases audio focus, and stops the service
@@ -165,6 +203,11 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   }
 
   void dispose() {
+    try {
+      LocalDatabase.instance.likedTrackIdsNotifier.removeListener(_updatePlaybackState);
+    } catch (e) {
+      // Ignore during teardown
+    }
     for (var sub in _subscriptions) {
       sub.cancel();
     }

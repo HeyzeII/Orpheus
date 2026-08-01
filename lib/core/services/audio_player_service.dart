@@ -61,6 +61,7 @@ class AudioPlayerService {
   /// Suppresses the "pause → save" listener during the hydration phase so we
   /// don't overwrite the restored state with a position-0 snapshot.
   bool _hydrating = false;
+  bool _disposed = false;
 
   // ── Stream Controllers ─────────────────────────────────────────────────────
 
@@ -100,6 +101,7 @@ class AudioPlayerService {
     // ── Pipe native media_kit streams to our broadcast streams ────────────────
 
     _subscriptions.add(_player.stream.playing.listen((playing) {
+      if (_disposed) return;
       _isPlayingController.add(playing);
 
       // 🔑 Event-based save: capture position the moment playback pauses.
@@ -109,19 +111,23 @@ class AudioPlayerService {
     }));
 
     _subscriptions.add(_player.stream.position.listen((pos) {
+      if (_disposed) return;
       _positionController.add(pos);
     }));
 
     _subscriptions.add(_player.stream.duration.listen((dur) {
+      if (_disposed) return;
       _durationController.add(dur);
     }));
 
     _subscriptions.add(_player.stream.volume.listen((vol) {
+      if (_disposed) return;
       _volumeController.add(vol / 100.0);
     }));
 
     // Auto-advance and statistics logging on track completion
     _subscriptions.add(_player.stream.completed.listen((completed) async {
+      if (_disposed) return;
       if (completed) {
         final finishedTrack = currentTrack;
         if (finishedTrack != null) {
@@ -158,6 +164,7 @@ class AudioPlayerService {
       await session.configure(const AudioSessionConfiguration.music());
 
       _subscriptions.add(session.interruptionEventStream.listen((event) async {
+        if (_disposed) return;
         try {
           if (event.begin) {
             switch (event.type) {
@@ -182,6 +189,7 @@ class AudioPlayerService {
       }));
 
       _subscriptions.add(session.becomingNoisyEventStream.listen((_) async {
+        if (_disposed) return;
         try {
           // Headset unplugged or Bluetooth disconnected — pause gracefully.
           await _safeSetActive(false);
@@ -742,6 +750,7 @@ class AudioPlayerService {
   }
 
   void _notifyState() {
+    if (_disposed) return;
     _currentTrackController.add(currentTrack);
     _isPlayingController.add(isPlaying);
     _positionController.add(position);
@@ -757,6 +766,7 @@ class AudioPlayerService {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   Future<void> dispose() async {
+    _disposed = true;
     for (final sub in _subscriptions) {
       await sub.cancel();
     }

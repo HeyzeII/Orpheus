@@ -172,13 +172,14 @@ class MobileMiniPlayer extends StatelessWidget {
                           initialData: svc.canSkipNext,
                           builder: (context, snap) {
                             final canNext = snap.data ?? svc.canSkipNext;
-                            return _IconBtn(
-                              icon: Icons.skip_next_rounded,
-                              color: canNext
-                                  ? AppTheme.textSecondary
-                                  : AppTheme.textHint.withValues(alpha: 0.3),
-                              size: 24,
-                              onPressed: canNext ? () => svc.next() : () {},
+                            return Opacity(
+                              opacity: canNext ? 1.0 : 0.3,
+                              child: _IconBtn(
+                                icon: Icons.skip_next_rounded,
+                                color: AppTheme.textSecondary,
+                                size: 24,
+                                onPressed: canNext ? () => svc.next() : null,
+                              ),
                             );
                           },
                         ),
@@ -217,7 +218,7 @@ class _IconBtn extends StatelessWidget {
   final IconData icon;
   final Color color;
   final double size;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) => IconButton(

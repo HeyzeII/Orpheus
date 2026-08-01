@@ -622,13 +622,16 @@ class _ExpandedPlaybackControls extends StatelessWidget {
           initialData: player.canSkipNext,
           builder: (_, snap) {
             final canNext = snap.data ?? player.canSkipNext;
-            return IconButton(
-              icon: Icon(
-                Icons.skip_next_rounded,
-                color: canNext ? Colors.white : Colors.white24,
-                size: 38,
+            return Opacity(
+              opacity: canNext ? 1.0 : 0.3,
+              child: IconButton(
+                icon: const Icon(
+                  Icons.skip_next_rounded,
+                  color: Colors.white,
+                  size: 38,
+                ),
+                onPressed: canNext ? player.next : null,
               ),
-              onPressed: canNext ? player.next : null,
             );
           },
         ),

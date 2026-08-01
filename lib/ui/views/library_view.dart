@@ -1549,6 +1549,7 @@ class _LibraryViewState extends State<LibraryView> {
   void _showTrackOptionsModal(BuildContext context, Track track) {
     final coverPath = track.customMetadata.customCoverPath;
     final hasArt = coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
+    final db = LocalDatabase.instance;
 
     showModalBottomSheet(
       context: context,
@@ -1560,111 +1561,138 @@ class _LibraryViewState extends State<LibraryView> {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header: Cover + Title + Artist
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: hasArt
-                              ? Image.file(File(coverPath!), fit: BoxFit.cover, cacheWidth: 96)
-                              : const ColoredBox(
-                                  color: AppTheme.bgHover,
-                                  child: Icon(Icons.music_note_rounded,
-                                      color: AppTheme.textHint, size: 24),
+            child: ValueListenableBuilder<Set<String>>(
+              valueListenable: db.likedTrackIdsNotifier,
+              builder: (context, likedTrackIds, _) {
+                final isLiked = likedTrackIds.contains(track.trackId);
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header: Cover + Title + Artist
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: hasArt
+                                  ? Image.file(File(coverPath!), fit: BoxFit.cover, cacheWidth: 96)
+                                  : const ColoredBox(
+                                      color: AppTheme.bgHover,
+                                      child: Icon(Icons.music_note_rounded,
+                                          color: AppTheme.textHint, size: 24),
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  track.displayTitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppTheme.textPrimary,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              track.displayTitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppTheme.textPrimary,
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                              ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  track.displayArtist,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppTheme.textSecondary,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              track.displayArtist,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Divider(color: AppTheme.divider, height: 1),
-                const SizedBox(height: 4),
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(color: AppTheme.divider, height: 1),
+                    const SizedBox(height: 4),
 
-                // Options List
-                ListTile(
-                  leading: const Icon(Icons.playlist_play_rounded, color: AppTheme.textPrimary),
-                  title: const Text('Reproducir a continuación',
-                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    AudioPlayerService.instance.playNext(track);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.queue_music_rounded, color: AppTheme.textPrimary),
-                  title: const Text('Añadir a la cola',
-                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    AudioPlayerService.instance.addToQueue(track);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.playlist_add_rounded, color: AppTheme.textPrimary),
-                  title: const Text('Añadir a playlist',
-                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _showAddToPlaylistModal(context, track);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.album_rounded, color: AppTheme.textPrimary),
-                  title: const Text('Ir al álbum',
-                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    setState(() => _selectedAlbum = track.displayAlbum);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.person_rounded, color: AppTheme.textPrimary),
-                  title: const Text('Ir al artista',
-                      style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    setState(() => _selectedArtist = track.displayArtist);
-                  },
-                ),
-              ],
+                    // Options List
+                    ListTile(
+                      leading: const Icon(Icons.playlist_play_rounded, color: AppTheme.textPrimary),
+                      title: const Text('Reproducir a continuación',
+                          style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        AudioPlayerService.instance.playNext(track);
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.queue_music_rounded, color: AppTheme.textPrimary),
+                      title: const Text('Añadir a la cola',
+                          style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        AudioPlayerService.instance.addToQueue(track);
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.playlist_add_rounded, color: AppTheme.textPrimary),
+                      title: const Text('Añadir a playlist',
+                          style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showAddToPlaylistModal(context, track);
+                      },
+                    ),
+                    ListTile(
+                      leading: Icon(
+                        isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                        color: isLiked ? Colors.redAccent : AppTheme.textPrimary,
+                      ),
+                      title: Text(
+                        isLiked ? 'Quitar de Me gusta' : 'Añadir a Me gusta',
+                        style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
+                      ),
+                      onTap: () async {
+                        Navigator.pop(ctx);
+                        final likedPlaylist = await db.getPlaylistById('__liked__');
+                        if (likedPlaylist != null) {
+                          if (isLiked) {
+                            await db.removeTrackFromPlaylist(playlist: likedPlaylist, trackId: track.trackId);
+                          } else {
+                            await db.addTrackToPlaylist(playlist: likedPlaylist, trackId: track.trackId);
+                          }
+                        }
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.album_rounded, color: AppTheme.textPrimary),
+                      title: const Text('Ir al álbum',
+                          style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        setState(() => _selectedAlbum = track.displayAlbum);
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.person_rounded, color: AppTheme.textPrimary),
+                      title: const Text('Ir al artista',
+                          style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        setState(() => _selectedArtist = track.displayArtist);
+                      },
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         );

@@ -346,8 +346,18 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
             return;
           }
 
-          // 3. At root level: send app to background (music keeps playing)
-          SystemNavigator.pop();
+          // 3. At root level: send app to background by invoking our custom MethodChannel
+          // to call moveTaskToBack(true) in MainActivity. This guarantees the activity context
+          // is preserved and FFI callbacks (from media_kit or other plugins) don't crash.
+          if (Platform.isAndroid) {
+            const MethodChannel('com.heyzell.orpheus/app_control')
+                .invokeMethod('minimizeApp')
+                .catchError((e) {
+              debugPrint('Error invoking minimizeApp: $e');
+            });
+          } else {
+            SystemNavigator.pop(animated: true);
+          }
         },
         child: Scaffold(
           extendBody: true,

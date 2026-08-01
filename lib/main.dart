@@ -80,11 +80,16 @@ void main() {
         config: const AudioServiceConfig(
           androidNotificationChannelId: 'com.heyzell.orpheus.channel.audio',
           androidNotificationChannelName: 'Orpheus Playback',
-          androidNotificationOngoing: true,
+          // ongoing=false allows Android to dismiss the notification when paused
+          // (Spotify/Tidal behavior). ongoing=true + stopForegroundOnPause=true
+          // is contradictory and silently kills the notification on Android 12+.
+          androidNotificationOngoing: false,
           androidStopForegroundOnPause: true,
           androidNotificationClickStartsActivity: true,
-          // Guaranteed launcher icon in mipmap to prevent invalid notification icon crash
-          androidNotificationIcon: 'mipmap/ic_launcher',
+          // ic_notification is a proper monochromatic white silhouette PNG
+          // required by Android for notification smallIcons (API 26+).
+          // mipmap/ic_launcher is a colorful launcher icon and is rejected.
+          androidNotificationIcon: 'drawable/ic_notification',
         ),
       );
     } catch (e, s) {
