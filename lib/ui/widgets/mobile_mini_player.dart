@@ -164,11 +164,14 @@ class MobileMiniPlayer extends StatelessWidget {
                           },
                         ),
 
-                        // Skip next
-                        StreamBuilder<Track?>(
-                          stream: svc.currentTrackStream,
-                          builder: (context, _) {
-                            final canNext = svc.canSkipNext;
+                        // Skip next — uses canSkipNextStream so the button
+                        // dims correctly even when the same last track is
+                        // still playing (currentTrackStream wouldn't emit).
+                        StreamBuilder<bool>(
+                          stream: svc.canSkipNextStream,
+                          initialData: svc.canSkipNext,
+                          builder: (context, snap) {
+                            final canNext = snap.data ?? svc.canSkipNext;
                             return _IconBtn(
                               icon: Icons.skip_next_rounded,
                               color: canNext

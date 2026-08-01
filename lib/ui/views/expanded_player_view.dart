@@ -616,11 +616,12 @@ class _ExpandedPlaybackControls extends StatelessWidget {
           },
         ),
         const SizedBox(width: 16),
-        // Next
-        StreamBuilder<Track?>(
-          stream: player.currentTrackStream,
-          builder: (_, __) {
-            final canNext = player.canSkipNext;
+        // Next — uses canSkipNextStream for accurate disabled state
+        StreamBuilder<bool>(
+          stream: player.canSkipNextStream,
+          initialData: player.canSkipNext,
+          builder: (_, snap) {
+            final canNext = snap.data ?? player.canSkipNext;
             return IconButton(
               icon: Icon(
                 Icons.skip_next_rounded,

@@ -72,6 +72,11 @@ class AudioPlayerService {
   final _shuffleController = StreamController<bool>.broadcast();
   final _repeatController = StreamController<PlayerRepeatMode>.broadcast();
   final _queueController = StreamController<List<Track>>.broadcast();
+  /// Emits the current [canSkipNext] value whenever queue state changes.
+  final _canSkipNextController = StreamController<bool>.broadcast();
+
+  /// Cached [AudioSession] reference — set during [_initAudioSession].
+  AudioSession? _audioSession;
 
   final List<StreamSubscription> _subscriptions = [];
 
@@ -137,27 +142,53 @@ class AudioPlayerService {
     }));
   }
 
+  Future<void> _safeSetActive(bool active) async {
+    try {
+      await _audioSession?.setActive(active);
+    } catch (e) {
+      debugPrint('AudioSession.setActive($active) safely caught error: $e');
+    }
+  }
+
   Future<void> _initAudioSession() async {
     if (kIsWeb || Platform.environment.containsKey('FLUTTER_TEST')) return;
     try {
       final session = await AudioSession.instance;
+      _audioSession = session;
       await session.configure(const AudioSessionConfiguration.music());
 
-      _subscriptions.add(session.interruptionEventStream.listen((event) {
-        if (event.begin) {
-          switch (event.type) {
-            case AudioInterruptionType.duck:
-            case AudioInterruptionType.pause:
-            case AudioInterruptionType.unknown:
-              pause();
-              break;
+      _subscriptions.add(session.interruptionEventStream.listen((event) async {
+        try {
+          if (event.begin) {
+            switch (event.type) {
+              case AudioInterruptionType.duck:
+              case AudioInterruptionType.pause:
+              case AudioInterruptionType.unknown:
+                // Release focus immediately so other apps can take over.
+                await _safeSetActive(false);
+                await pause();
+                break;
+            }
+          } else {
+            // Interruption ended — reclaim audio focus and resume if we were
+            // playing before the interruption.
+            if (event.type != AudioInterruptionType.duck && isPlaying) {
+              await _safeSetActive(true);
+            }
           }
+        } catch (e, s) {
+          debugPrint('Error handling audio interruption event: $e\n$s');
         }
       }));
 
-      _subscriptions.add(session.becomingNoisyEventStream.listen((_) {
-        // Headset unplugged or Bluetooth disconnected
-        pause();
+      _subscriptions.add(session.becomingNoisyEventStream.listen((_) async {
+        try {
+          // Headset unplugged or Bluetooth disconnected — pause gracefully.
+          await _safeSetActive(false);
+          await pause();
+        } catch (e, s) {
+          debugPrint('Error handling becomingNoisy event: $e\n$s');
+        }
       }));
     } catch (e) {
       debugPrint('Error configuring AudioSession: $e');
@@ -211,6 +242,9 @@ class AudioPlayerService {
   Stream<PlayerRepeatMode> get repeatStream => _repeatController.stream;
 
   Stream<List<Track>> get queueStream => _queueController.stream;
+
+  /// Reactive stream of [canSkipNext]. Emits on every queue/index/repeat change.
+  Stream<bool> get canSkipNextStream => _canSkipNextController.stream;
 
   // ── Control API ────────────────────────────────────────────────────────────
 
@@ -281,19 +315,37 @@ class AudioPlayerService {
 
   Future<void> play() async {
     if (Platform.environment.containsKey('FLUTTER_TEST')) return;
-    await _player.play();
+    // Claim audio focus so other media apps yield their audio.
+    await _safeSetActive(true);
+    try {
+      await _player.play();
+    } catch (e) {
+      debugPrint('Error playing audio: $e');
+    }
     _notifyState();
   }
 
   Future<void> pause() async {
     if (Platform.environment.containsKey('FLUTTER_TEST')) return;
-    await _player.pause();
+    try {
+      await _player.pause();
+    } catch (e) {
+      debugPrint('Error pausing audio: $e');
+    }
+    // Release audio focus so other apps (TikTok, Instagram, etc.) can resume.
+    await _safeSetActive(false);
     _notifyState();
   }
 
   Future<void> stop() async {
     if (Platform.environment.containsKey('FLUTTER_TEST')) return;
-    await _player.stop();
+    try {
+      await _player.stop();
+    } catch (e) {
+      debugPrint('Error stopping audio: $e');
+    }
+    // Release audio focus completely.
+    await _safeSetActive(false);
     _currentIndex = -1;
     _notifyState();
   }
@@ -665,6 +717,8 @@ class AudioPlayerService {
         overrideTrackId: track.trackId,
         overridePositionMs: 0,
       );
+      // Claim audio focus before starting playback.
+      await _safeSetActive(true);
       await _player.open(
         Media(
           Uri.file(track.filePath).toString(),
@@ -696,6 +750,8 @@ class AudioPlayerService {
     _shuffleController.add(_shuffle);
     _repeatController.add(_repeatMode);
     _queueController.add(queue);
+    // Always re-evaluate skip availability so the UI stays in sync.
+    _canSkipNextController.add(canSkipNext);
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
@@ -715,5 +771,6 @@ class AudioPlayerService {
     await _shuffleController.close();
     await _repeatController.close();
     await _queueController.close();
+    await _canSkipNextController.close();
   }
 }

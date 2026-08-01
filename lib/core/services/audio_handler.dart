@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:audio_service/audio_service.dart';
+import 'package:flutter/foundation.dart';
 import 'audio_player_service.dart';
 import '../models/track.dart';
 
@@ -17,40 +18,61 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     final player = AudioPlayerService.instance;
 
     // 1. Sincronizar cola de reproducción
-    _subscriptions.add(player.queueStream.listen((tracks) {
-      queue.add(tracks.map((t) => _mapTrackToMediaItem(t)).toList());
-    }));
+    _subscriptions.add(player.queueStream.listen(
+      (tracks) {
+        try {
+          queue.add(tracks.map((t) => _mapTrackToMediaItem(t)).toList());
+        } catch (e, s) {
+          debugPrint('Error updating queue in AudioHandler: $e\n$s');
+        }
+      },
+      onError: (err) => debugPrint('Error in queueStream: $err'),
+    ));
 
     // 2. Sincronizar track actual y duración
-    _subscriptions.add(player.currentTrackStream.listen((track) {
-      if (track == null) {
-        mediaItem.add(null);
-      } else {
-        mediaItem.add(_mapTrackToMediaItem(track));
-      }
-      _updatePlaybackState();
-    }));
+    _subscriptions.add(player.currentTrackStream.listen(
+      (track) {
+        try {
+          if (track == null) {
+            mediaItem.add(null);
+          } else {
+            mediaItem.add(_mapTrackToMediaItem(track));
+          }
+          _updatePlaybackState();
+        } catch (e, s) {
+          debugPrint('Error updating currentTrack in AudioHandler: $e\n$s');
+        }
+      },
+      onError: (err) => debugPrint('Error in currentTrackStream: $err'),
+    ));
 
     // 3. Sincronizar estado de reproducción (play/pause)
-    _subscriptions.add(player.isPlayingStream.listen((_) {
-      _updatePlaybackState();
-    }));
+    _subscriptions.add(player.isPlayingStream.listen(
+      (_) {
+        try {
+          _updatePlaybackState();
+        } catch (e, s) {
+          debugPrint('Error updating isPlaying in AudioHandler: $e\n$s');
+        }
+      },
+      onError: (err) => debugPrint('Error in isPlayingStream: $err'),
+    ));
 
     // 4. Sincronizar duración — re-emitir MediaItem con la duración real
-    //    una vez que media_kit la resuelva (puede tardar unos ms al abrir el archivo).
-    _subscriptions.add(player.durationStream.listen((_) {
-      final track = player.currentTrack;
-      if (track != null) {
-        mediaItem.add(_mapTrackToMediaItem(track));
-      }
-      _updatePlaybackState();
-    }));
-
-    // NOTE: positionStream is intentionally NOT subscribed here.
-    // Emitting a full PlaybackState on every position tick (~5 Hz) would
-    // overwhelm the MediaSession binder on low-end devices.  The OS reads
-    // updatePosition + updateTime from the last emitted PlaybackState and
-    // interpolates position on its own — no per-tick update needed.
+    _subscriptions.add(player.durationStream.listen(
+      (_) {
+        try {
+          final track = player.currentTrack;
+          if (track != null) {
+            mediaItem.add(_mapTrackToMediaItem(track));
+          }
+          _updatePlaybackState();
+        } catch (e, s) {
+          debugPrint('Error updating duration in AudioHandler: $e\n$s');
+        }
+      },
+      onError: (err) => debugPrint('Error in durationStream: $err'),
+    ));
   }
 
   MediaItem _mapTrackToMediaItem(Track track) {
@@ -69,30 +91,34 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   }
 
   void _updatePlaybackState() {
-    final player = AudioPlayerService.instance;
-    final isPlaying = player.isPlaying;
+    try {
+      final player = AudioPlayerService.instance;
+      final isPlaying = player.isPlaying;
 
-    playbackState.add(PlaybackState(
-      controls: [
-        MediaControl.skipToPrevious,
-        if (isPlaying) MediaControl.pause else MediaControl.play,
-        MediaControl.stop,
-        MediaControl.skipToNext,
-      ],
-      systemActions: const {
-        MediaAction.seek,
-        MediaAction.seekForward,
-        MediaAction.seekBackward,
-      },
-      androidCompactActionIndices: const [0, 1, 3],
-      processingState: player.currentTrack == null
-          ? AudioProcessingState.idle
-          : AudioProcessingState.ready,
-      playing: isPlaying,
-      updatePosition: player.position,
-      bufferedPosition: player.position,
-      speed: 1.0,
-    ));
+      playbackState.add(PlaybackState(
+        controls: [
+          MediaControl.skipToPrevious,
+          if (isPlaying) MediaControl.pause else MediaControl.play,
+          MediaControl.stop,
+          MediaControl.skipToNext,
+        ],
+        systemActions: const {
+          MediaAction.seek,
+          MediaAction.seekForward,
+          MediaAction.seekBackward,
+        },
+        androidCompactActionIndices: const [0, 1, 3],
+        processingState: player.currentTrack == null
+            ? AudioProcessingState.idle
+            : AudioProcessingState.ready,
+        playing: isPlaying,
+        updatePosition: player.position,
+        bufferedPosition: player.position,
+        speed: 1.0,
+      ));
+    } catch (e) {
+      debugPrint('Safely caught error updating playbackState: $e');
+    }
   }
 
   // ── Delegated Actions from OS / Bluetooth controls ───────────────────────
@@ -118,6 +144,25 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   @override
   Future<void> skipToQueueItem(int index) =>
       AudioPlayerService.instance.loadPlaylist(AudioPlayerService.instance.queue, initialIndex: index);
+
+  /// Called by Android when the user swipes the app from Recents.
+  ///
+  /// Safe cleanup: stops playback, releases audio focus, and stops the service
+  /// cleanly without throwing uncaught exceptions or triggering native OS kills.
+  @override
+  Future<void> onTaskRemoved() async {
+    debugPrint('OrpheusAudioHandler: onTaskRemoved triggered cleanly');
+    try {
+      await AudioPlayerService.instance.stop();
+    } catch (e, s) {
+      debugPrint('Error stopping AudioPlayerService in onTaskRemoved: $e\n$s');
+    }
+    try {
+      await super.stop();
+    } catch (e, s) {
+      debugPrint('Error in super.stop() in onTaskRemoved: $e\n$s');
+    }
+  }
 
   void dispose() {
     for (var sub in _subscriptions) {

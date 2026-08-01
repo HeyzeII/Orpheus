@@ -83,6 +83,8 @@ void main() {
           androidNotificationOngoing: true,
           androidStopForegroundOnPause: true,
           androidNotificationClickStartsActivity: true,
+          // Guaranteed launcher icon in mipmap to prevent invalid notification icon crash
+          androidNotificationIcon: 'mipmap/ic_launcher',
         ),
       );
     } catch (e, s) {
