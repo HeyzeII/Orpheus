@@ -60,6 +60,19 @@ class PermissionService {
     }
   }
 
+  /// Requests notification permissions for Android 13+ (SDK 33+):
+  /// Returns `true` if granted or if not on Android, `false` otherwise.
+  static Future<bool> requestNotificationPermission() async {
+    if (!Platform.isAndroid) return true;
+
+    final sdkVersion = _getAndroidSdkVersion();
+    if (sdkVersion >= 33) {
+      final status = await Permission.notification.request();
+      return status.isGranted;
+    }
+    return true;
+  }
+
   /// Parses Android SDK version from Platform.operatingSystemVersion.
   /// Typically looks like: "Android 14 (API 34)" or "13"
   static int _getAndroidSdkVersion() {

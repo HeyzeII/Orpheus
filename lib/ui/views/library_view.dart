@@ -983,75 +983,82 @@ class _LibraryViewState extends State<LibraryView> {
     final albumTracks = _allTracks.where((t) => t.displayAlbum == albumName).toList();
     final coverPath = albumTracks.isNotEmpty ? albumTracks.first.customMetadata.customCoverPath : null;
 
-    return Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                onPressed: () => setState(() => _selectedAlbum = null),
-              ),
-              const SizedBox(width: 8),
-              const Text('Volver a Álbumes', style: TextStyle(color: AppTheme.textSecondary)),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 160,
-                  height: 160,
-                  child: coverPath != null
-                      ? Image.file(File(coverPath), fit: BoxFit.cover)
-                      : Container(
-                          color: AppTheme.bgSurface,
-                          child: const Icon(Icons.album_rounded, color: AppTheme.textHint, size: 64),
-                        ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        setState(() => _selectedAlbum = null);
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
+                  onPressed: () => setState(() => _selectedAlbum = null),
                 ),
-              ),
-              const SizedBox(width: 24),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('ÁLBUM',
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textSecondary,
-                            letterSpacing: 1.5)),
-                    const SizedBox(height: 6),
-                    Text(
-                      albumName,
-                      style: const TextStyle(
-                          fontSize: 32, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      albumTracks.isNotEmpty ? albumTracks.first.displayArtist : 'Artista Desconocido',
-                      style: const TextStyle(fontSize: 16, color: AppTheme.textSecondary),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      '${albumTracks.length} canciones',
-                      style: const TextStyle(fontSize: 12, color: AppTheme.textHint),
-                    ),
-                  ],
+                const SizedBox(width: 8),
+                const Text('Volver a Álbumes', style: TextStyle(color: AppTheme.textSecondary)),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: SizedBox(
+                    width: 160,
+                    height: 160,
+                    child: coverPath != null
+                        ? Image.file(File(coverPath), fit: BoxFit.cover)
+                        : Container(
+                            color: AppTheme.bgSurface,
+                            child: const Icon(Icons.album_rounded, color: AppTheme.textHint, size: 64),
+                          ),
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 32),
-          Expanded(
-            child: _buildTrackTable(albumTracks),
-          ),
-        ],
+                const SizedBox(width: 24),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('ÁLBUM',
+                          style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textSecondary,
+                              letterSpacing: 1.5)),
+                      const SizedBox(height: 6),
+                      Text(
+                        albumName,
+                        style: const TextStyle(
+                            fontSize: 32, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        albumTracks.isNotEmpty ? albumTracks.first.displayArtist : 'Artista Desconocido',
+                        style: const TextStyle(fontSize: 16, color: AppTheme.textSecondary),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '${albumTracks.length} canciones',
+                        style: const TextStyle(fontSize: 12, color: AppTheme.textHint),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            Expanded(
+              child: _buildTrackTable(albumTracks),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1060,158 +1067,171 @@ class _LibraryViewState extends State<LibraryView> {
   Widget _buildArtistDetails(String artistName) {
     final artistTracks = _allTracks.where((t) => t.displayArtist == artistName).toList();
 
-    return Padding(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                onPressed: () => setState(() => _selectedArtist = null),
-              ),
-              const SizedBox(width: 8),
-              const Text('Volver a Artistas', style: TextStyle(color: AppTheme.textSecondary)),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 40,
-                backgroundColor: AppTheme.bgSurface,
-                child: const Icon(Icons.person_rounded, color: AppTheme.accent, size: 48),
-              ),
-              const SizedBox(width: 24),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('ARTISTA',
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textSecondary,
-                            letterSpacing: 1.5)),
-                    const SizedBox(height: 6),
-                    Text(
-                      artistName,
-                      style: const TextStyle(
-                          fontSize: 32, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${artistTracks.length} canciones en tu biblioteca',
-                      style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-                    ),
-                  ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        setState(() => _selectedArtist = null);
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
+                  onPressed: () => setState(() => _selectedArtist = null),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 32),
-          Expanded(
-            child: _buildTrackTable(artistTracks),
-          ),
-        ],
+                const SizedBox(width: 8),
+                const Text('Volver a Artistas', style: TextStyle(color: AppTheme.textSecondary)),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 40,
+                  backgroundColor: AppTheme.bgSurface,
+                  child: const Icon(Icons.person_rounded, color: AppTheme.accent, size: 48),
+                ),
+                const SizedBox(width: 24),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('ARTISTA',
+                          style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.textSecondary,
+                              letterSpacing: 1.5)),
+                      const SizedBox(height: 6),
+                      Text(
+                        artistName,
+                        style: const TextStyle(
+                            fontSize: 32, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${artistTracks.length} canciones en tu biblioteca',
+                        style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+            Expanded(
+              child: _buildTrackTable(artistTracks),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   // ── Playlist Details View ──────────────────────────────────────────────────
   Widget _buildPlaylistDetails(Playlist initialPlaylist) {
-    return StreamBuilder<Playlist?>(
-      stream: LocalDatabase.instance.watchPlaylistById(initialPlaylist.playlistId),
-      initialData: initialPlaylist,
-      builder: (context, snapshot) {
-        final playlist = snapshot.data ?? initialPlaylist;
-        // Resolve tracks in order
-        final playlistTracks = playlist.trackIds
-            .map((id) => _allTracks.firstWhere((t) => t.id == id, orElse: () => Track()))
-            .where((t) => t.trackId.isNotEmpty)
-            .toList();
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        setState(() => _selectedPlaylist = null);
+      },
+      child: StreamBuilder<Playlist?>(
+        stream: LocalDatabase.instance.watchPlaylistById(initialPlaylist.playlistId),
+        initialData: initialPlaylist,
+        builder: (context, snapshot) {
+          final playlist = snapshot.data ?? initialPlaylist;
+          // Resolve tracks in order
+          final playlistTracks = playlist.trackIds
+              .map((id) => _allTracks.firstWhere((t) => t.id == id, orElse: () => Track()))
+              .where((t) => t.trackId.isNotEmpty)
+              .toList();
 
-        final isLiked = playlist.playlistId == '__liked__';
+          final isLiked = playlist.playlistId == '__liked__';
 
-        // Determine the background image path for the blurred Tidal atmosphere:
-        // priority: playlist customCoverPath > first track with cover
-        String? bgImagePath = playlist.customCoverPath;
-        if (bgImagePath == null || bgImagePath.isEmpty || !File(bgImagePath).existsSync()) {
-          for (final t in playlistTracks) {
-            final cp = t.customMetadata.customCoverPath;
-            if (cp != null && cp.isNotEmpty && File(cp).existsSync()) {
-              bgImagePath = cp;
-              break;
+          // Determine the background image path for the blurred Tidal atmosphere:
+          // priority: playlist customCoverPath > first track with cover
+          String? bgImagePath = playlist.customCoverPath;
+          if (bgImagePath == null || bgImagePath.isEmpty || !File(bgImagePath).existsSync()) {
+            for (final t in playlistTracks) {
+              final cp = t.customMetadata.customCoverPath;
+              if (cp != null && cp.isNotEmpty && File(cp).existsSync()) {
+                bgImagePath = cp;
+                break;
+              }
             }
           }
-        }
 
-        final isMobile = MediaQuery.sizeOf(context).width < 600;
-        if (isMobile) {
-          return _buildMobilePlaylistDetails(
-            playlist,
-            playlistTracks,
-            isLiked,
-            bgImagePath,
-          );
-        }
+          final isMobile = MediaQuery.sizeOf(context).width < 600;
+          if (isMobile) {
+            return _buildMobilePlaylistDetails(
+              playlist,
+              playlistTracks,
+              isLiked,
+              bgImagePath,
+            );
+          }
 
-        return Stack(
-          children: [
-            // ───────────────────────────────────────────────────────────────────
-            // 🎨 TIDAL-STYLE BLURRED IMAGE BACKGROUND
-            // ───────────────────────────────────────────────────────────────────
-            Positioned.fill(
-              child: ClipRect(
-                child: bgImagePath != null
-                    ? _BlurredImageBackground(imagePath: bgImagePath)
-                    : Container(color: const Color(0xFF141414)),
+          return Stack(
+            children: [
+              // ───────────────────────────────────────────────────────────────────
+              // 🎨 TIDAL-STYLE BLURRED IMAGE BACKGROUND
+              // ───────────────────────────────────────────────────────────────────
+              Positioned.fill(
+                child: ClipRect(
+                  child: bgImagePath != null
+                      ? _BlurredImageBackground(imagePath: bgImagePath)
+                      : Container(color: const Color(0xFF141414)),
+                ),
               ),
-            ),
 
-            // ───────────────────────────────────────────────────────────────────
-            // 🔮 MAIN CONTENT
-            // ───────────────────────────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Back button
-                  Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                        onPressed: () => setState(() => _selectedPlaylist = null),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text('Volver a Playlists', style: TextStyle(color: AppTheme.textSecondary)),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
+              // ───────────────────────────────────────────────────────────────────
+              // 🔮 MAIN CONTENT
+              // ───────────────────────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Back button
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
+                          onPressed: () => setState(() => _selectedPlaylist = null),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('Volver a Playlists', style: TextStyle(color: AppTheme.textSecondary)),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
 
-                  // Header row: cover + metadata + actions (Responsive Column/Row layout)
-                  MediaQuery.sizeOf(context).width < 600
-                      ? Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Center(
-                              child: _PlaylistCoverPicker(
-                                playlist: playlist,
-                                allTracks: _allTracks,
-                                onPickCover: isLiked ? null : () => _pickPlaylistCover(playlist),
-                                onClearCover: (isLiked || playlist.customCoverPath == null)
-                                    ? null
-                                    : () => _clearPlaylistCover(playlist),
-                                coverVersion: _coverVersions[playlist.playlistId],
+                    // Header row: cover + metadata + actions (Responsive Column/Row layout)
+                    MediaQuery.sizeOf(context).width < 600
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Center(
+                                child: _PlaylistCoverPicker(
+                                  playlist: playlist,
+                                  allTracks: _allTracks,
+                                  onPickCover: isLiked ? null : () => _pickPlaylistCover(playlist),
+                                  onClearCover: (isLiked || playlist.customCoverPath == null)
+                                      ? null
+                                      : () => _clearPlaylistCover(playlist),
+                                  coverVersion: _coverVersions[playlist.playlistId],
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 20),
-                            _buildPlaylistHeaderMetadata(playlist, playlistTracks, isLiked, true),
-                          ],
-                        )
-                      : Row(
+                              const SizedBox(height: 20),
+                              _buildPlaylistHeaderMetadata(playlist, playlistTracks, isLiked, true),
+                            ],
+                          )
+                        : Row(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             _PlaylistCoverPicker(
@@ -1241,8 +1261,9 @@ class _LibraryViewState extends State<LibraryView> {
           ],
         );
       },
-    );
-  }
+    ),
+  );
+}
 
   /// Mobile-optimised Playlist Detail View using CustomScrollView.
   /// Renders a compact header with a small cover art (< 180px), title,

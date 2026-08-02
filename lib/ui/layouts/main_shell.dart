@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/models/track.dart';
 import '../../core/services/audio_player_service.dart';
+import '../../core/services/permission_service.dart';
 import '../theme/app_theme.dart';
 import '../views/expanded_player_view.dart';
 import '../views/home_view.dart';
@@ -255,6 +256,7 @@ class MobileNavigationShell extends StatefulWidget {
 class _MobileNavigationShellState extends State<MobileNavigationShell>
     with WidgetsBindingObserver {
   int _currentIndex = 0;
+  final List<int> _navigationHistory = [];
   bool _expandedPlayerOpen = false;
   StreamSubscription<bool>? _notificationSub;
 
@@ -267,6 +269,9 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
         _openExpandedPlayer();
       }
     });
+
+    // Request runtime notification permission on Android 13+ (API 33+)
+    PermissionService.requestNotificationPermission();
   }
 
   @override
@@ -340,13 +345,15 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
             return;
           }
 
-          // 2. Pop sub-route/details view if navigator can pop
-          if (Navigator.canPop(context)) {
-            Navigator.pop(context);
+          // 3. Pop tab history if we have previous tab visits
+          if (_navigationHistory.isNotEmpty) {
+            setState(() {
+              _currentIndex = _navigationHistory.removeLast();
+            });
             return;
           }
 
-          // 3. At root level: send app to background by invoking our custom MethodChannel
+          // 4. At root level: send app to background by invoking our custom MethodChannel
           // to call moveTaskToBack(true) in MainActivity. This guarantees the activity context
           // is preserved and FFI callbacks (from media_kit or other plugins) don't crash.
           if (Platform.isAndroid) {
@@ -388,7 +395,12 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
                   miniPlayerHeight: miniH,
                   navBarHeight: navH,
                   currentIndex: _currentIndex,
-                  onNavTap: (i) => setState(() => _currentIndex = i),
+                  onNavTap: (i) {
+                    if (_currentIndex != i) {
+                      _navigationHistory.add(_currentIndex);
+                      setState(() => _currentIndex = i);
+                    }
+                  },
                   onMiniPlayerTap: _openExpandedPlayer,
                 ),
               ),
