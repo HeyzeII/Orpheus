@@ -11,6 +11,14 @@ import '../models/track.dart';
 class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   OrpheusAudioHandler() {
     _initSinks();
+    // Emit initial idle state immediately so audio_service's BehaviorSubject
+    // is primed. Without this, the first meaningful state change (playing→ready)
+    // may not be recognised as a transition and the foreground service may not start.
+    playbackState.add(PlaybackState(
+      controls: const [],
+      processingState: AudioProcessingState.idle,
+      playing: false,
+    ));
   }
 
   final List<StreamSubscription> _subscriptions = [];

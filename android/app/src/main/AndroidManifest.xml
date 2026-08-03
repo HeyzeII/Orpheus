@@ -39,13 +39,12 @@
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </activity>
-        <!-- Required: media_kit uses this foreground service to keep audio playing
-             in the background and power the lock-screen / notification controls.
-             android:foregroundServiceType="mediaPlayback" activates MediaSession. -->
-        <service
-            android:name="com.alexmercerind.media_kit_libs_audio.media_kit_core.MediaKitCoreService"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
+        <!-- NOTE: media_kit's MediaKitCoreService foreground registration is intentionally
+             omitted. audio_service (AudioService below) already manages the foreground
+             service lifecycle and Android MediaSession. Running both simultaneously
+             creates two competing MediaSession notifications — audio_service's card
+             gets suppressed by media_kit's. media_kit's native engine continues to work
+             because it operates through the JNI/FFI bridge, not through a foreground service. -->
 
         <!-- Required for audio_service to bridge to native MediaSession -->
         <service

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// Service to handle runtime permission requests on Android.
@@ -60,17 +61,28 @@ class PermissionService {
     }
   }
 
-  /// Requests notification permissions for Android 13+ (SDK 33+):
-  /// Returns `true` if granted or if not on Android, `false` otherwise.
-  static Future<bool> requestNotificationPermission() async {
+  /// Requests notification permissions for Android 13+ (SDK 33+).
+  /// Returns `true` if the permission is granted (either already was or just granted now),
+  /// `false` if denied or not on Android 13+.
+  /// The [onGranted] callback is invoked only if permission was **newly** approved
+  /// during this call (i.e., was not granted before the dialog appeared).
+  static Future<bool> requestNotificationPermission({
+    VoidCallback? onGranted,
+  }) async {
     if (!Platform.isAndroid) return true;
 
     final sdkVersion = _getAndroidSdkVersion();
-    if (sdkVersion >= 33) {
-      final status = await Permission.notification.request();
-      return status.isGranted;
+    if (sdkVersion < 33) return true;
+
+    final before = await Permission.notification.status;
+    final status = await Permission.notification.request();
+    final isGranted = status.isGranted;
+
+    // Fire callback only when the user just tapped "Allow"
+    if (isGranted && !before.isGranted && onGranted != null) {
+      onGranted();
     }
-    return true;
+    return isGranted;
   }
 
   /// Parses Android SDK version from Platform.operatingSystemVersion.

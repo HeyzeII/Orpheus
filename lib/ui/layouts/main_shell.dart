@@ -270,8 +270,24 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
       }
     });
 
-    // Request runtime notification permission on Android 13+ (API 33+)
-    PermissionService.requestNotificationPermission();
+    // Request runtime notification permission on Android 13+ (API 33+).
+    // The onGranted callback fires only when the user taps "Allow" — at that
+    // moment we force the AudioHandler to re-emit playbackState so audio_service
+    // re-posts the media notification now that Android will accept it.
+    PermissionService.requestNotificationPermission(
+      onGranted: () {
+        // audio_service exposes the global handler via AudioService.notificationClicked,
+        // but to re-trigger the notification we call directly into the handler instance.
+        // The handler listens to AudioPlayerService streams which may not re-emit.
+        // Force a state push via the AudioService.notificationClicked stream by calling
+        // play (no-op if already playing) or by refreshing the handler's state manually.
+        final svc = AudioPlayerService.instance;
+        if (svc.isPlaying) {
+          // play() → handler emits updated playbackState → audio_service posts notification
+          svc.play();
+        }
+      },
+    );
   }
 
   @override
@@ -398,6 +414,10 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
                   onNavTap: (i) {
                     if (_currentIndex != i) {
                       _navigationHistory.add(_currentIndex);
+                      // Keep the history stack bounded at 10 entries.
+                      if (_navigationHistory.length > 10) {
+                        _navigationHistory.removeAt(0);
+                      }
                       setState(() => _currentIndex = i);
                     }
                   },
