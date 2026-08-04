@@ -21,6 +21,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     ));
   }
 
+  bool _disposed = false;
   final List<StreamSubscription> _subscriptions = [];
 
   void _initSinks() {
@@ -44,10 +45,19 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
         try {
           if (track == null) {
             mediaItem.add(null);
+            _updatePlaybackState();
           } else {
+            // Emit the MediaItem first so audio_service sends it to the Java side.
+            // Java's setMetadata() loads the artwork bitmap asynchronously on a
+            // Handler thread. We delay _updatePlaybackState() by 80 ms so that
+            // mediaMetadata is already set in Java before enterPlayingState() calls
+            // startForeground(buildNotification()) — otherwise buildNotification()
+            // runs with mediaMetadata == null and Android drops the card.
             mediaItem.add(_mapTrackToMediaItem(track));
+            Future.delayed(const Duration(milliseconds: 80), () {
+              if (!_disposed) _updatePlaybackState();
+            });
           }
-          _updatePlaybackState();
         } catch (e, s) {
           debugPrint('Error updating currentTrack in AudioHandler: $e\n$s');
         }
@@ -90,15 +100,25 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   MediaItem _mapTrackToMediaItem(Track track) {
     final player = AudioPlayerService.instance;
     final coverPath = track.customMetadata.customCoverPath;
-    final hasArt = coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
+    final hasArt = coverPath != null &&
+        coverPath.isNotEmpty &&
+        File(coverPath).existsSync();
 
     return MediaItem(
       id: track.trackId,
       album: track.displayAlbum,
       title: track.displayTitle,
       artist: track.displayArtist,
-      duration: player.currentTrack?.trackId == track.trackId ? player.duration : null,
+      duration: player.currentTrack?.trackId == track.trackId
+          ? player.duration
+          : null,
       artUri: hasArt ? Uri.file(coverPath) : null,
+      // Pass the file path directly as 'artCacheFile' so audio_service's Java side
+      // calls BitmapFactory.decodeFile(path) immediately, bypassing the async HTTP
+      // cache lookup. Without this, a file:// artUri goes through an async branch
+      // that may not complete before startForeground(buildNotification()) is called,
+      // resulting in a notification with no artwork (which Android 13 may discard).
+      extras: hasArt ? <String, dynamic>{'artCacheFile': coverPath} : null,
     );
   }
 
@@ -211,6 +231,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   }
 
   void dispose() {
+    _disposed = true;
     try {
       LocalDatabase.instance.likedTrackIdsNotifier.removeListener(_updatePlaybackState);
     } catch (e) {

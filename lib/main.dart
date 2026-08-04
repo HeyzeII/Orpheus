@@ -78,18 +78,21 @@ void main() {
       await AudioService.init(
         builder: () => OrpheusAudioHandler(),
         config: const AudioServiceConfig(
-          androidNotificationChannelId: 'com.heyzell.orpheus.channel.audio',
-          androidNotificationChannelName: 'Orpheus Playback',
-          androidNotificationChannelDescription: 'Orpheus music playback controls',
-          // Keep the foreground service alive even when paused.
-          // With stopForegroundOnPause=true on Android 12+, stopping the foreground service
-          // causes the OS to REMOVE the notification card completely, not just dismiss it.
-          // Setting false keeps the MediaSession notification visible at all times.
+          // Channel ID 'playback' (vs previous 'audio') forces Android to recreate the
+          // notification channel fresh. Android caches channel importance permanently —
+          // the old 'audio' channel was created with IMPORTANCE_LOW and cannot be upgraded
+          // on existing installs. A new ID bypasses the stale cache.
+          androidNotificationChannelId: 'com.heyzell.orpheus.channel.playback',
+          androidNotificationChannelName: 'Orpheus — Reproducción',
+          androidNotificationChannelDescription:
+              'Controles de reproducción de música de Orpheus',
+          // Keep the foreground service alive even when paused so the media
+          // card remains visible in the notification shade.
           androidStopForegroundOnPause: false,
           androidNotificationOngoing: false,
           androidNotificationClickStartsActivity: true,
-          // ic_notification is a proper monochromatic white silhouette PNG
-          // required by Android for notification smallIcons (API 26+).
+          // ic_notification: monochromatic white silhouette required by Android
+          // notification small icon spec (API 26+).
           androidNotificationIcon: 'drawable/ic_notification',
         ),
       );
