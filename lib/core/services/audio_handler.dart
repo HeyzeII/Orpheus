@@ -11,12 +11,12 @@ import '../models/track.dart';
 class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   OrpheusAudioHandler() {
     _initSinks();
-    // Emit initial idle state immediately so audio_service's BehaviorSubject
-    // is primed. Without this, the first meaningful state change (playing→ready)
-    // may not be recognised as a transition and the foreground service may not start.
+    // Emit initial ready state so audio_service maintains an active native service.
+    // Transitioning to AudioProcessingState.idle triggers AudioService._stop() in Dart
+    // which calls stopSelf() in Java and destroys the native AudioService instance.
     playbackState.add(PlaybackState(
       controls: const [],
-      processingState: AudioProcessingState.idle,
+      processingState: AudioProcessingState.ready,
       playing: false,
     ));
   }
@@ -149,9 +149,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
           MediaAction.seekBackward,
         },
         androidCompactActionIndices: const [0, 1, 2],
-        processingState: player.currentTrack == null
-            ? AudioProcessingState.idle
-            : AudioProcessingState.ready,
+        processingState: AudioProcessingState.ready,
         playing: isPlaying,
         updatePosition: player.position,
         bufferedPosition: player.position,

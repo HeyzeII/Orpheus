@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/database/local_database.dart';
 import '../../core/models/track.dart';
@@ -712,6 +713,107 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 
+  Future<void> _runNotificationDiagnostics() async {
+    try {
+      const channel = MethodChannel('com.heyzell.orpheus/app_control');
+      final Map<dynamic, dynamic>? result =
+          await channel.invokeMethod<Map<dynamic, dynamic>>('getNotificationDiagnostics');
+      
+      if (result == null) {
+        if (!mounted) return;
+        AppToast.showText(context, 'No se pudo obtener el diagnóstico nativo.', icon: Icons.error_outline);
+        return;
+      }
+
+      final report = Map<String, dynamic>.from(result);
+
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            backgroundColor: AppTheme.bgSurface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: AppTheme.divider),
+            ),
+            title: Row(
+              children: [
+                const Icon(Icons.analytics_rounded, color: AppTheme.accent),
+                const SizedBox(width: 10),
+                const Text(
+                  'Auditoría de Audio',
+                  style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('1. CANAL DE NOTIFICACIONES', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: AppTheme.textSecondary)),
+                  const SizedBox(height: 6),
+                  Text('• Permisos habilitados (DND/Gral): ${report['areNotificationsEnabled'] ?? 'Desconocido'}'),
+                  Text('• Canal existe: ${report['channelExists'] ?? 'No'}'),
+                  if (report['channelExists'] == true) ...[
+                    Text('  - ID Canal: ${report['channelId']}'),
+                    Text('  - Nombre: ${report['channelName']}'),
+                    Text('  - Importancia: ${report['channelImportance']} (Default: 3, Low: 2)'),
+                    Text('  - Visibilidad lockscreen: ${report['channelLockscreenVisibility']} (Public: 1)'),
+                    Text('  - Ignorar DND (canBypassDnd): ${report['channelBypassDnd']}'),
+                    Text('  - Mostrar punto: ${report['channelShowBadge']}'),
+                  ],
+                  const SizedBox(height: 16),
+                  const Text('2. SERVICIO EN PRIMER PLANO', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: AppTheme.textSecondary)),
+                  const SizedBox(height: 6),
+                  Text('• Servicio corriendo (AudioService): ${report['serviceRunning'] ?? 'No'}'),
+                  if (report['serviceError'] != null)
+                    Text('  - Error: ${report['serviceError']}', style: const TextStyle(color: Colors.redAccent)),
+                  if (report['serviceRunning'] == true) ...[
+                    Text('  - Estado reproducción: ${report['serviceProcessingState']}'),
+                    Text('  - Reproduciendo (playing): ${report['servicePlaying']}'),
+                    Text('  - Creado en cortina (notificationCreated): ${report['notificationCreated']}'),
+                    Text('  - Canal usado por servicio: ${report['serviceNotificationChannelId']}'),
+                  ],
+                  const SizedBox(height: 16),
+                  const Text('3. MEDIASESSION Y METADATOS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: AppTheme.textSecondary)),
+                  const SizedBox(height: 6),
+                  if (report['serviceRunning'] == true) ...[
+                    Text('• MediaSession Activo: ${report['mediaSessionActive'] ?? 'Desconocido'}'),
+                    Text('• Metadatos cargados: ${report['metadataLoaded'] ?? 'No'}'),
+                    if (report['metadataLoaded'] == true) ...[
+                      Text('  - Título: ${report['metadataTitle']}'),
+                      Text('  - Artista: ${report['metadataArtist']}'),
+                    ],
+                    Text('• Portada cargada (artBitmap): ${report['artBitmapLoaded'] ?? 'No'}'),
+                    if (report['artBitmapLoaded'] == true)
+                      Text('  - Dimensiones: ${report['artBitmapWidth']}x${report['artBitmapHeight']} px'),
+                  ] else ...[
+                    const Text('El servicio de reproducción no está activo en este momento. Reproduce una canción antes de auditar.', style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: AppTheme.textSecondary)),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.accent,
+                  foregroundColor: AppTheme.bgDeep,
+                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Entendido', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      AppToast.showText(context, 'Error al ejecutar auditoría: $e', icon: Icons.error_outline);
+    }
+  }
+
   Widget _buildMaintenanceTools() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -811,7 +913,44 @@ class _SettingsViewState extends State<SettingsView> {
               const SizedBox(height: 20),
               Container(height: 1, color: AppTheme.divider),
               const SizedBox(height: 20),
-              // Tool 2: Reset DB
+              // Tool 3: Notification & Audio Diagnostics
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.analytics_outlined, color: AppTheme.accent, size: 22),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Auditoría de Audio y Notificaciones',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppTheme.textPrimary),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Ejecuta un diagnóstico en tiempo de ejecución de los canales de notificación nativos, el estado del servicio en primer plano y MediaSession.',
+                          style: TextStyle(fontSize: 11, color: AppTheme.textSecondary, height: 1.4),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppTheme.divider),
+                      foregroundColor: AppTheme.textPrimary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: _isScanning ? null : _runNotificationDiagnostics,
+                    child: const Text('Auditar', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Container(height: 1, color: AppTheme.divider),
+              const SizedBox(height: 20),
+              // Tool 4: Reset DB
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
