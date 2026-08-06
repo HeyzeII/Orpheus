@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
+import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/permission_service.dart';
 import '../dialogs/edit_metadata_dialog.dart';
@@ -167,7 +168,7 @@ class _LibraryViewState extends State<LibraryView> {
   // Playback integration
   Future<void> _playTracks(List<Track> tracks, int startIndex) async {
     if (tracks.isEmpty) return;
-    await AudioPlayerService.instance.loadPlaylist(tracks, initialIndex: startIndex);
+    await OrpheusAudioHandler.instance.loadQueue(tracks, initialIndex: startIndex);
   }
 
   Future<void> _shufflePlayTracks(List<Track> tracks) async {
@@ -177,7 +178,7 @@ class _LibraryViewState extends State<LibraryView> {
     // unshuffled list. AudioPlayerService will produce the shuffled queue
     // internally and preserve _originalQueue for restoration.
     if (!player.shuffleEnabled) player.toggleShuffle();
-    await player.loadPlaylist(tracks, initialIndex: 0);
+    await OrpheusAudioHandler.instance.loadQueue(tracks, initialIndex: 0);
   }
 
   // Favorite toggle

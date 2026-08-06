@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
+import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_toast.dart';
@@ -379,7 +380,7 @@ class _PlaybackControls extends StatelessWidget {
               _IconBtn(
                 icon: Icons.skip_previous_rounded,
                 size: 22,
-                onTap: player.previous,
+                onTap: OrpheusAudioHandler.instance.skipToPrevious,
                 tooltip: 'Anterior',
               ),
               const SizedBox(width: 10),
@@ -390,7 +391,7 @@ class _PlaybackControls extends StatelessWidget {
                   final playing = snap.data ?? player.isPlaying;
                   return _PlayButton(
                     isPlaying: playing,
-                    onTap: playing ? player.pause : player.play,
+                    onTap: OrpheusAudioHandler.instance.togglePlayPause,
                   );
                 },
               ),
@@ -399,7 +400,7 @@ class _PlaybackControls extends StatelessWidget {
               _IconBtn(
                 icon: Icons.skip_next_rounded,
                 size: 22,
-                onTap: player.next,
+                onTap: OrpheusAudioHandler.instance.skipToNext,
                 tooltip: 'Siguiente',
               ),
               const SizedBox(width: 12),
@@ -561,7 +562,7 @@ class _ProgressBar extends StatelessWidget {
                       min: 0,
                       max: maxVal > 0 ? maxVal : 1.0,
                       onChanged: maxVal > 0
-                          ? (val) => player.seek(
+                          ? (val) => OrpheusAudioHandler.instance.seek(
                                 Duration(milliseconds: val.toInt()),
                               )
                           : null,

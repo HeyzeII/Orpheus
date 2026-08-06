@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/models/track.dart';
+import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/lyrics_service.dart';
 import '../../core/utils/lrc_parser.dart';
@@ -249,7 +250,7 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
                 isActive: isActive,
                 isPast: isPast,
                 onTap: () {
-                  widget.player.seek(line.timestamp);
+                  OrpheusAudioHandler.instance.seek(line.timestamp);
                 },
               );
             },

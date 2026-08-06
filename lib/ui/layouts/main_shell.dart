@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/models/track.dart';
+import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/permission_service.dart';
 import '../theme/app_theme.dart';
@@ -284,7 +285,7 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
         final svc = AudioPlayerService.instance;
         if (svc.isPlaying) {
           // play() → handler emits updated playbackState → audio_service posts notification
-          svc.play();
+          OrpheusAudioHandler.instance.play();
         }
       },
     );

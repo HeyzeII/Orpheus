@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
-import '../../core/services/audio_player_service.dart';
+import '../../core/services/audio_handler.dart';
 import '../theme/app_theme.dart';
 
 /// Dynamic Home View — Displays user greeting, quick picks, recently played tracks,
@@ -78,18 +78,13 @@ class _HomeViewState extends State<HomeView> {
   }
 
   Future<void> _playTrack(Track track) async {
-    final index = _allTracks.indexWhere((t) => t.trackId == track.trackId);
-    if (index != -1) {
-      await AudioPlayerService.instance.loadPlaylist(_allTracks, initialIndex: index);
-    } else {
-      await AudioPlayerService.instance.loadPlaylist([track]);
-    }
+    await OrpheusAudioHandler.instance.playTrack(track, contextQueue: _allTracks);
   }
 
   Future<void> _playGenre(String genre) async {
     final genreTracks = _allTracks.where((t) => t.genre == genre).toList();
     if (genreTracks.isNotEmpty) {
-      await AudioPlayerService.instance.loadPlaylist(genreTracks);
+      await OrpheusAudioHandler.instance.loadQueue(genreTracks);
     }
   }
 

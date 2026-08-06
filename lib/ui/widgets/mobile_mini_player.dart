@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../core/models/track.dart';
+import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
 import '../views/expanded_player_view.dart';
@@ -158,8 +159,7 @@ class MobileMiniPlayer extends StatelessWidget {
                                   : Icons.play_arrow_rounded,
                               color: AppTheme.accent,
                               size: 28,
-                              onPressed: () =>
-                                  playing ? svc.pause() : svc.play(),
+                              onPressed: () => OrpheusAudioHandler.instance.togglePlayPause(),
                             );
                           },
                         ),
@@ -178,7 +178,7 @@ class MobileMiniPlayer extends StatelessWidget {
                                 icon: Icons.skip_next_rounded,
                                 color: AppTheme.textSecondary,
                                 size: 24,
-                                onPressed: canNext ? () => svc.next() : null,
+                                onPressed: canNext ? () => OrpheusAudioHandler.instance.skipToNext() : null,
                               ),
                             );
                           },

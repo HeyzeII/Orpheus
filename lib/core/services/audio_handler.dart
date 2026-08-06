@@ -9,7 +9,18 @@ import '../models/track.dart';
 /// Bridges the Flutter audio engine (media_kit) to the native OS Media Session controls.
 /// Handles background commands from OS lock screen, notifications, and Bluetooth devices.
 class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
+  static OrpheusAudioHandler? _instance;
+
+  /// Global singleton instance of [OrpheusAudioHandler] initialized by [AudioService.init].
+  static OrpheusAudioHandler get instance {
+    if (_instance == null) {
+      throw StateError('OrpheusAudioHandler has not been initialized yet.');
+    }
+    return _instance!;
+  }
+
   OrpheusAudioHandler() {
+    _instance = this;
     _initSinks();
     // Emit initial ready state so audio_service maintains an active native service.
     // Transitioning to AudioProcessingState.idle triggers AudioService._stop() in Dart
@@ -160,7 +171,31 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     }
   }
 
-  // ── Delegated Actions from OS / Bluetooth controls ───────────────────────
+  // ── Delegated Actions from OS / Bluetooth / UI controls ─────────────────
+
+  /// High-level API used by UI components to load and play a queue of tracks.
+  Future<void> loadQueue(List<Track> tracks, {int initialIndex = 0}) async {
+    await AudioPlayerService.instance.loadPlaylist(tracks, initialIndex: initialIndex);
+  }
+
+  /// High-level API used by UI components to play a single track with optional context queue.
+  Future<void> playTrack(Track track, {List<Track>? contextQueue}) async {
+    if (contextQueue != null && contextQueue.isNotEmpty) {
+      final index = contextQueue.indexWhere((t) => t.trackId == track.trackId);
+      await loadQueue(contextQueue, initialIndex: index == -1 ? 0 : index);
+    } else {
+      await loadQueue([track], initialIndex: 0);
+    }
+  }
+
+  /// Toggles playback between playing and paused.
+  Future<void> togglePlayPause() async {
+    if (AudioPlayerService.instance.isPlaying) {
+      await pause();
+    } else {
+      await play();
+    }
+  }
 
   @override
   Future<void> play() => AudioPlayerService.instance.play();

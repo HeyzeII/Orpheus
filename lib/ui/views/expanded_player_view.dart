@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/models/models.dart';
+import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
 import 'lyrics_view.dart';
@@ -517,7 +518,7 @@ class _ExpandedProgressBar extends StatelessWidget {
                       min: 0,
                       max: maxVal > 0 ? maxVal : 1.0,
                       onChanged: maxVal > 0
-                          ? (val) => player
+                          ? (val) => OrpheusAudioHandler.instance
                               .seek(Duration(milliseconds: val.toInt()))
                           : null,
                     ),
@@ -587,7 +588,7 @@ class _ExpandedPlaybackControls extends StatelessWidget {
                 color: canPrev ? Colors.white : Colors.white24,
                 size: 38,
               ),
-              onPressed: canPrev ? player.previous : null,
+              onPressed: canPrev ? OrpheusAudioHandler.instance.skipToPrevious : null,
             );
           },
         ),
@@ -598,7 +599,7 @@ class _ExpandedPlaybackControls extends StatelessWidget {
           builder: (_, snap) {
             final playing = snap.data ?? player.isPlaying;
             return GestureDetector(
-              onTap: playing ? player.pause : player.play,
+              onTap: OrpheusAudioHandler.instance.togglePlayPause,
               child: Container(
                 width: 64,
                 height: 64,
@@ -630,7 +631,7 @@ class _ExpandedPlaybackControls extends StatelessWidget {
                   color: Colors.white,
                   size: 38,
                 ),
-                onPressed: canNext ? player.next : null,
+                onPressed: canNext ? OrpheusAudioHandler.instance.skipToNext : null,
               ),
             );
           },
@@ -799,7 +800,7 @@ class _QueueTab extends StatelessWidget {
               for (int i = 0; i < historyTracks.length; i++) ...[
                 ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  onTap: () => player.skipToIndex(i),
+                  onTap: () => OrpheusAudioHandler.instance.skipToQueueItem(i),
                   leading: _buildCover(historyTracks[i], isPast: true),
                   title: Text(
                     historyTracks[i].displayTitle,
@@ -916,7 +917,7 @@ class _QueueTab extends StatelessWidget {
                   final actualIndex = currentIndex + 1 + index;
                   return ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                    onTap: () => player.skipToIndex(actualIndex),
+                    onTap: () => OrpheusAudioHandler.instance.skipToQueueItem(actualIndex),
                     leading: _buildCover(track),
                     title: Text(
                       track.displayTitle,
