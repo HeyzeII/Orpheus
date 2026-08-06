@@ -2,12 +2,13 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:audio_service/audio_service.dart' as as_service;
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart' hide Track;
 
 import '../database/local_database.dart';
-import '../models/playback_state.dart';
+import '../models/playback_state.dart' as local;
 import '../models/track.dart';
 
 enum PlayerRepeatMode {
@@ -390,9 +391,7 @@ class AudioPlayerService {
   void toggleShuffle() {
     _shuffle = !_shuffle;
     if (_shuffle) {
-      if (_originalQueue == null) {
-        _originalQueue = List<Track>.from(_queue);
-      }
+      _originalQueue ??= List<Track>.from(_queue);
       if (_queue.isNotEmpty) {
         final current = currentTrack;
         final remaining = List<Track>.from(_queue);
@@ -591,12 +590,12 @@ class AudioPlayerService {
       final posMs = overridePositionMs ?? position.inMilliseconds;
       final queueIds = _queue.map((t) => t.trackId).toList();
 
-      final state = PlaybackState()
+      final state = local.PlaybackState()
         ..trackId = trackId
         ..positionMs = posMs
         ..queueTrackIds = queueIds;
-
-      await _db.savePlaybackState(state);
+      
+      await _db.savePlaybackState(state);    
     } catch (_) {
       // Non-fatal: persistence failures should never interrupt playback.
     }

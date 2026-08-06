@@ -106,18 +106,33 @@ class MainActivity : AudioServiceActivity() {
                 // 2. AudioService Runtime Auditor using reflection
                 try {
                     val serviceClass = Class.forName("com.ryanheise.audioservice.AudioService")
-                    val instanceField = serviceClass.getDeclaredField("instance")
-                    instanceField.isAccessible = true
-                    val serviceInstance = instanceField.get(null)
+                    fun getFieldSafely(targetClass: Class<*>, fieldName: String): java.lang.reflect.Field? {
+                        var cur: Class<*>? = targetClass
+                        while (cur != null) {
+                            val f = cur.declaredFields.firstOrNull { it.name == fieldName }
+                            if (f != null) return f
+                            cur = cur.superclass
+                        }
+                        return null
+                    }
+
+                    val instanceField = getFieldSafely(serviceClass, "instance")
+                    val serviceInstance = if (instanceField != null) {
+                        instanceField.isAccessible = true
+                        instanceField.get(null)
+                    } else null
                     
                     if (serviceInstance != null) {
                         report["serviceRunning"] = true
                         
                         // Inspect mediaSession via reflection
                         try {
-                            val mediaSessionField = serviceClass.getDeclaredField("mediaSession")
-                            mediaSessionField.isAccessible = true
-                            val mediaSession = mediaSessionField.get(serviceInstance)
+                            val mediaSessionField = getFieldSafely(serviceClass, "mediaSession")
+                            val mediaSession = if (mediaSessionField != null) {
+                                mediaSessionField.isAccessible = true
+                                mediaSessionField.get(serviceInstance)
+                            } else null
+
                             if (mediaSession != null) {
                                 val isActiveMethod = mediaSession.javaClass.getMethod("isActive")
                                 report["mediaSessionActive"] = isActiveMethod.invoke(mediaSession) as? Boolean ?: false
@@ -130,18 +145,25 @@ class MainActivity : AudioServiceActivity() {
                         
                         // Inspect notificationCreated
                         try {
-                            val notifCreatedField = serviceClass.getDeclaredField("notificationCreated")
-                            notifCreatedField.isAccessible = true
-                            report["notificationCreated"] = notifCreatedField.get(serviceInstance) as? Boolean ?: false
+                            val notifCreatedField = getFieldSafely(serviceClass, "notificationCreated")
+                            if (notifCreatedField != null) {
+                                notifCreatedField.isAccessible = true
+                                report["notificationCreated"] = notifCreatedField.get(serviceInstance) as? Boolean ?: false
+                            } else {
+                                report["notificationCreated"] = false
+                            }
                         } catch (e: Exception) {
                             report["notificationCreatedError"] = e.toString()
                         }
 
                         // Inspect metadata
                         try {
-                            val metadataField = serviceClass.getDeclaredField("mediaMetadata")
-                            metadataField.isAccessible = true
-                            val metadata = metadataField.get(serviceInstance)
+                            val metadataField = getFieldSafely(serviceClass, "mediaMetadata")
+                            val metadata = if (metadataField != null) {
+                                metadataField.isAccessible = true
+                                metadataField.get(serviceInstance)
+                            } else null
+
                             if (metadata != null) {
                                 report["metadataLoaded"] = true
                                 val getDescriptionMethod = metadata.javaClass.getMethod("getDescription")
@@ -161,9 +183,12 @@ class MainActivity : AudioServiceActivity() {
                         
                         // Inspect artBitmap
                         try {
-                            val artBitmapField = serviceClass.getDeclaredField("artBitmap")
-                            artBitmapField.isAccessible = true
-                            val artBitmap = artBitmapField.get(serviceInstance) as? android.graphics.Bitmap
+                            val artBitmapField = getFieldSafely(serviceClass, "artBitmap")
+                            val artBitmap = if (artBitmapField != null) {
+                                artBitmapField.isAccessible = true
+                                artBitmapField.get(serviceInstance) as? android.graphics.Bitmap
+                            } else null
+
                             if (artBitmap != null) {
                                 report["artBitmapLoaded"] = true
                                 report["artBitmapWidth"] = artBitmap.width
@@ -177,28 +202,34 @@ class MainActivity : AudioServiceActivity() {
                         
                         // Inspect notificationChannelId
                         try {
-                            val serviceChannelIdField = serviceClass.getDeclaredField("notificationChannelId")
-                            serviceChannelIdField.isAccessible = true
-                            report["serviceNotificationChannelId"] = serviceChannelIdField.get(serviceInstance) as? String
+                            val serviceChannelIdField = getFieldSafely(serviceClass, "notificationChannelId")
+                            if (serviceChannelIdField != null) {
+                                serviceChannelIdField.isAccessible = true
+                                report["serviceNotificationChannelId"] = serviceChannelIdField.get(serviceInstance) as? String
+                            }
                         } catch (e: Exception) {
                             report["serviceNotificationChannelIdError"] = e.toString()
                         }
 
                         // Inspect playing
                         try {
-                            val playingField = serviceClass.getDeclaredField("playing")
-                            playingField.isAccessible = true
-                            report["servicePlaying"] = playingField.get(serviceInstance) as? Boolean ?: false
+                            val playingField = getFieldSafely(serviceClass, "playing")
+                            if (playingField != null) {
+                                playingField.isAccessible = true
+                                report["servicePlaying"] = playingField.get(serviceInstance) as? Boolean ?: false
+                            }
                         } catch (e: Exception) {
                             report["servicePlayingError"] = e.toString()
                         }
                         
                         // Inspect processingState
                         try {
-                            val procStateField = serviceClass.getDeclaredField("processingState")
-                            procStateField.isAccessible = true
-                            val procState = procStateField.get(serviceInstance)
-                            report["serviceProcessingState"] = procState?.toString()
+                            val procStateField = getFieldSafely(serviceClass, "processingState")
+                            if (procStateField != null) {
+                                procStateField.isAccessible = true
+                                val procState = procStateField.get(serviceInstance)
+                                report["serviceProcessingState"] = procState?.toString()
+                            }
                         } catch (e: Exception) {
                             report["serviceProcessingStateError"] = e.toString()
                         }
