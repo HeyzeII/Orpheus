@@ -22,13 +22,27 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   OrpheusAudioHandler() {
     _instance = this;
     _initSinks();
-    // Emit initial ready state so audio_service maintains an active native service.
-    // Transitioning to AudioProcessingState.idle triggers AudioService._stop() in Dart
-    // which calls stopSelf() in Java and destroys the native AudioService instance.
+
+    // Prime initial mediaItem & playbackState on initialization
+    final player = AudioPlayerService.instance;
+    final current = player.currentTrack;
+    if (current != null) {
+      mediaItem.add(_mapTrackToMediaItem(current));
+    }
     playbackState.add(PlaybackState(
-      controls: const [],
+      controls: [
+        MediaControl.skipToPrevious,
+        if (player.isPlaying) MediaControl.pause else MediaControl.play,
+        MediaControl.skipToNext,
+      ],
+      systemActions: const {
+        MediaAction.seek,
+        MediaAction.seekForward,
+        MediaAction.seekBackward,
+      },
+      androidCompactActionIndices: const [0, 1, 2],
       processingState: AudioProcessingState.ready,
-      playing: false,
+      playing: player.isPlaying,
     ));
   }
 
@@ -50,25 +64,16 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       onError: (err) => debugPrint('Error in queueStream: $err'),
     ));
 
-    // 2. Sincronizar track actual y duración
+    // 2. Sincronizar track actual
     _subscriptions.add(player.currentTrackStream.listen(
       (track) {
         try {
           if (track == null) {
             mediaItem.add(null);
-            _updatePlaybackState();
           } else {
-            // Emit the MediaItem first so audio_service sends it to the Java side.
-            // Java's setMetadata() loads the artwork bitmap asynchronously on a
-            // Handler thread. We delay _updatePlaybackState() by 80 ms so that
-            // mediaMetadata is already set in Java before enterPlayingState() calls
-            // startForeground(buildNotification()) — otherwise buildNotification()
-            // runs with mediaMetadata == null and Android drops the card.
             mediaItem.add(_mapTrackToMediaItem(track));
-            Future.delayed(const Duration(milliseconds: 80), () {
-              if (!_disposed) _updatePlaybackState();
-            });
           }
+          _updatePlaybackState();
         } catch (e, s) {
           debugPrint('Error updating currentTrack in AudioHandler: $e\n$s');
         }
@@ -124,22 +129,26 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
           ? player.duration
           : null,
       artUri: hasArt ? Uri.file(coverPath) : null,
-      // Pass the file path directly as 'artCacheFile' so audio_service's Java side
-      // calls BitmapFactory.decodeFile(path) immediately, bypassing the async HTTP
-      // cache lookup. Without this, a file:// artUri goes through an async branch
-      // that may not complete before startForeground(buildNotification()) is called,
-      // resulting in a notification with no artwork (which Android 13 may discard).
       extras: hasArt ? <String, dynamic>{'artCacheFile': coverPath} : null,
     );
   }
 
   void _updatePlaybackState() {
+    if (_disposed) return;
     try {
       final player = AudioPlayerService.instance;
       final isPlaying = player.isPlaying;
       final currentTrack = player.currentTrack;
       final isLiked = currentTrack != null &&
           LocalDatabase.instance.likedTrackIdsNotifier.value.contains(currentTrack.trackId);
+
+      // Ensure mediaItem is set with active track metadata before pushing state
+      if (currentTrack != null) {
+        final newItem = _mapTrackToMediaItem(currentTrack);
+        if (mediaItem.value?.id != newItem.id || mediaItem.value?.duration != newItem.duration) {
+          mediaItem.add(newItem);
+        }
+      }
 
       final likeControl = MediaControl.custom(
         androidIcon: isLiked ? 'drawable/ic_heart_filled' : 'drawable/ic_heart_empty',
