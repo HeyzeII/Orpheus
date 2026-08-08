@@ -21,18 +21,21 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
   OrpheusAudioHandler() {
     _instance = this;
+    // ⚠️  _initSinks() is called here but LocalDatabase.likedTrackIdsNotifier
+    // is NOT attached yet — the DB may not be open at this point (AudioService.init
+    // runs BEFORE LocalDatabase.initialize in main.dart).
+    // The liked-track listener is attached via initAfterDatabaseReady(), which
+    // main.dart calls once the DB is fully open.
     _initSinks();
 
-    // Prime initial mediaItem & playbackState on initialization
-    final player = AudioPlayerService.instance;
-    final current = player.currentTrack;
-    if (current != null) {
-      mediaItem.add(_mapTrackToMediaItem(current));
-    }
+    // Emit a safe "ready but not playing" state so audio_service never transitions
+    // to idle (which would call stopSelf() and destroy the Java service instance).
+    // We deliberately do NOT set playing:true here because the MediaBrowser may
+    // not have connected yet — that event-driven emission happens via _initSinks().
     playbackState.add(PlaybackState(
       controls: [
         MediaControl.skipToPrevious,
-        if (player.isPlaying) MediaControl.pause else MediaControl.play,
+        MediaControl.play,
         MediaControl.skipToNext,
       ],
       systemActions: const {
@@ -42,12 +45,36 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       },
       androidCompactActionIndices: const [0, 1, 2],
       processingState: AudioProcessingState.ready,
-      playing: player.isPlaying,
+      playing: false,
     ));
   }
 
   bool _disposed = false;
   final List<StreamSubscription> _subscriptions = [];
+
+  /// Called by [main.dart] AFTER both [LocalDatabase] and [AudioPlayerService]
+  /// hydration are complete.  This is the correct moment to:
+  ///  1. Attach the liked-track listener (DB is open).
+  ///  2. Push the current track + playback state so audio_service can start
+  ///     the foreground service if a track is already loaded.
+  void initAfterDatabaseReady() {
+    // Attach liked-track listener now that the DB is open.
+    try {
+      LocalDatabase.instance.likedTrackIdsNotifier.addListener(_updatePlaybackState);
+    } catch (e) {
+      debugPrint('OrpheusAudioHandler: could not attach likedTrackIds listener: $e');
+    }
+
+    // Push current state so audio_service knows the real track + playing status
+    // after hydration. The MediaBrowser connection should be fully established
+    // by the time main.dart finishes its await chain.
+    final player = AudioPlayerService.instance;
+    final current = player.currentTrack;
+    if (current != null) {
+      mediaItem.add(_mapTrackToMediaItem(current));
+    }
+    _updatePlaybackState();
+  }
 
   void _initSinks() {
     final player = AudioPlayerService.instance;
@@ -109,8 +136,9 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       onError: (err) => debugPrint('Error in durationStream: $err'),
     ));
 
-    // 5. Sincronizar estado de favoritos ("Me gusta")
-    LocalDatabase.instance.likedTrackIdsNotifier.addListener(_updatePlaybackState);
+    // Note: the liked-track listener (LocalDatabase.instance.likedTrackIdsNotifier)
+    // is attached in initAfterDatabaseReady(), NOT here, because _initSinks() is
+    // called from the constructor which runs before LocalDatabase is initialized.
   }
 
   MediaItem _mapTrackToMediaItem(Track track) {

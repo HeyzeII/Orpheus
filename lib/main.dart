@@ -138,6 +138,11 @@ void main() {
       return;
     }
 
+    // Now that LocalDatabase and AudioPlayerService are fully ready, attach the
+    // DB-dependent listeners and push the first real MediaItem + PlaybackState.
+    // This is the correct moment: the MediaBrowser is connected and the DB is open.
+    OrpheusAudioHandler.instance.initAfterDatabaseReady();
+
     // Defer background album art fetching for any missing cover art to 3 seconds
     // after the app mounts its first frame, avoiding SQLite/sqflite lock collisions at startup.
     WidgetsBinding.instance.addPostFrameCallback((_) {
