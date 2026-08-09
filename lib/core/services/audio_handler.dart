@@ -148,11 +148,29 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
         coverPath.isNotEmpty &&
         File(coverPath).existsSync();
 
+    final safeId = track.trackId.trim().isNotEmpty
+        ? track.trackId.trim()
+        : 'unknown_track_${DateTime.now().millisecondsSinceEpoch}';
+
+    final safeTitle = track.displayTitle.trim().isNotEmpty
+        ? track.displayTitle.trim()
+        : (track.title?.trim().isNotEmpty == true
+            ? track.title!.trim()
+            : 'Pista desconocida');
+
+    final safeArtist = track.displayArtist.trim().isNotEmpty
+        ? track.displayArtist.trim()
+        : 'Artista desconocido';
+
+    final safeAlbum = track.displayAlbum.trim().isNotEmpty
+        ? track.displayAlbum.trim()
+        : 'Álbum desconocido';
+
     return MediaItem(
-      id: track.trackId,
-      album: track.displayAlbum,
-      title: track.displayTitle,
-      artist: track.displayArtist,
+      id: safeId,
+      album: safeAlbum,
+      title: safeTitle,
+      artist: safeArtist,
       duration: player.currentTrack?.trackId == track.trackId
           ? player.duration
           : null,

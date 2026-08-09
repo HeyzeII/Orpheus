@@ -86,10 +86,9 @@ void main() {
           androidNotificationChannelName: 'Orpheus — Reproducción',
           androidNotificationChannelDescription:
               'Controles de reproducción de música de Orpheus',
-          // Keep the foreground service alive even when paused so the media
-          // card remains visible in the notification shade.
-          androidStopForegroundOnPause: false,
-          androidNotificationOngoing: false,
+          // Keep the foreground service alive and ongoing while playing.
+          androidStopForegroundOnPause: true,
+          androidNotificationOngoing: true,
           androidNotificationClickStartsActivity: true,
           // ic_notification: monochromatic white silhouette required by Android
           // notification small icon spec (API 26+).
