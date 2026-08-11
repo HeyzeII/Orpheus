@@ -152,9 +152,9 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
   void _handleSwipe(DragEndDetails details) {
     if (details.primaryVelocity != null) {
       if (details.primaryVelocity! < -200) {
-        AudioPlayerService.instance.next();
+        OrpheusAudioHandler.instance.skipToNext();
       } else if (details.primaryVelocity! > 200) {
-        AudioPlayerService.instance.previous();
+        OrpheusAudioHandler.instance.skipToPrevious();
       }
     }
   }
@@ -390,9 +390,9 @@ class _ExpandedArtisticCore extends StatelessWidget {
                   onHorizontalDragEnd: (details) {
                     if (details.primaryVelocity != null) {
                       if (details.primaryVelocity! < -200) {
-                        AudioPlayerService.instance.next();
+                        OrpheusAudioHandler.instance.skipToNext();
                       } else if (details.primaryVelocity! > 200) {
-                        AudioPlayerService.instance.previous();
+                        OrpheusAudioHandler.instance.skipToPrevious();
                       }
                     }
                   },

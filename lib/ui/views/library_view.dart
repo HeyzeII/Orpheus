@@ -1652,7 +1652,7 @@ class _LibraryViewState extends State<LibraryView> {
                           style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
                       onTap: () {
                         Navigator.pop(ctx);
-                        AudioPlayerService.instance.playNext(track);
+                        OrpheusAudioHandler.instance.playNext(track);
                       },
                     ),
                     ListTile(
@@ -1661,7 +1661,7 @@ class _LibraryViewState extends State<LibraryView> {
                           style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
                       onTap: () {
                         Navigator.pop(ctx);
-                        AudioPlayerService.instance.addToQueue(track);
+                        OrpheusAudioHandler.instance.addToQueueTrack(track);
                       },
                     ),
                     ListTile(
@@ -1920,8 +1920,8 @@ class _LibraryViewState extends State<LibraryView> {
         customPlaylists: _playlists.where((p) => p.playlistId != '__liked__').toList(),
         playlistSource: playlistSource,
         onPlay: () => _playTracks(tracks, index),
-        onPlayNext: () => AudioPlayerService.instance.playNext(track),
-        onAddToQueue: () => AudioPlayerService.instance.addToQueue(track),
+        onPlayNext: () => OrpheusAudioHandler.instance.playNext(track),
+        onAddToQueue: () => OrpheusAudioHandler.instance.addToQueueTrack(track),
         onToggleLike: () => _toggleLike(track),
         onCreatePlaylistWithTrack: () => _createAndAddTrackToPlaylist(track),
         onAddToPlaylist: (p) => _addTrackToPlaylist(track, p),

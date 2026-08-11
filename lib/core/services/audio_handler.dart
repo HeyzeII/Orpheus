@@ -252,6 +252,16 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     }
   }
 
+  /// Inserts a track to be played next in the queue.
+  void playNext(Track track) {
+    AudioPlayerService.instance.playNext(track);
+  }
+
+  /// Appends a track to the end of the current queue.
+  void addToQueueTrack(Track track) {
+    AudioPlayerService.instance.addToQueue(track);
+  }
+
   @override
   Future<void> play() => AudioPlayerService.instance.play();
 

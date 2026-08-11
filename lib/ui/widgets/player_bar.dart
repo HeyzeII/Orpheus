@@ -252,9 +252,9 @@ class _TrackActionsState extends State<_TrackActions> {
               ),
               onSelected: (value) {
                 if (value == 'play_next') {
-                  AudioPlayerService.instance.playNext(widget.track);
+                  OrpheusAudioHandler.instance.playNext(widget.track);
                 } else if (value == 'add_to_queue') {
-                  AudioPlayerService.instance.addToQueue(widget.track);
+                  OrpheusAudioHandler.instance.addToQueueTrack(widget.track);
                 } else if (value is Playlist) {
                   LocalDatabase.instance.addTrackToPlaylist(
                     playlist: value,
