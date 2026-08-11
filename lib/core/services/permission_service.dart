@@ -61,6 +61,8 @@ class PermissionService {
     }
   }
 
+  static bool _isRequestingNotificationPermission = false;
+
   /// Requests notification permissions for Android 13+ (SDK 33+).
   /// Returns `true` if the permission is granted (either already was or just granted now),
   /// `false` if denied or not on Android 13+.
@@ -75,14 +77,26 @@ class PermissionService {
     if (sdkVersion < 33) return true;
 
     final before = await Permission.notification.status;
-    final status = await Permission.notification.request();
-    final isGranted = status.isGranted;
+    if (before.isGranted) return true;
+    if (before.isPermanentlyDenied) return false;
 
-    // Fire callback only when the user just tapped "Allow"
-    if (isGranted && !before.isGranted && onGranted != null) {
-      onGranted();
+    if (_isRequestingNotificationPermission) {
+      return before.isGranted;
     }
-    return isGranted;
+
+    _isRequestingNotificationPermission = true;
+    try {
+      final status = await Permission.notification.request();
+      final isGranted = status.isGranted;
+
+      // Fire callback only when the user just tapped "Allow"
+      if (isGranted && !before.isGranted && onGranted != null) {
+        onGranted();
+      }
+      return isGranted;
+    } finally {
+      _isRequestingNotificationPermission = false;
+    }
   }
 
   /// Parses Android SDK version from Platform.operatingSystemVersion.

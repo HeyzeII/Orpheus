@@ -10,6 +10,7 @@ import 'core/database/local_database.dart';
 import 'core/services/album_art_fetcher_service.dart';
 import 'core/services/audio_handler.dart';
 import 'core/services/audio_player_service.dart';
+import 'core/services/permission_service.dart';
 import 'ui/layouts/main_shell.dart';
 import 'ui/theme/app_theme.dart';
 
@@ -145,6 +146,7 @@ void main() {
     // Defer background album art fetching for any missing cover art to 3 seconds
     // after the app mounts its first frame, avoiding SQLite/sqflite lock collisions at startup.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      PermissionService.requestNotificationPermission();
       Future.delayed(const Duration(seconds: 3), () {
         AlbumArtFetcherService.instance.processLibrary();
       });
