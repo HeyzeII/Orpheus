@@ -11,6 +11,7 @@ import 'core/services/album_art_fetcher_service.dart';
 import 'core/services/audio_handler.dart';
 import 'core/services/audio_player_service.dart';
 import 'core/services/permission_service.dart';
+import 'core/utils/debug_logger.dart';
 import 'ui/layouts/main_shell.dart';
 import 'ui/theme/app_theme.dart';
 
@@ -65,8 +66,11 @@ void main() {
     // ── Safe Service Initialization Blocks ───────────────────────────────────
 
     try {
+      DebugLogger.log('Iniciando MediaKit.ensureInitialized()...');
       MediaKit.ensureInitialized();
+      DebugLogger.log('MediaKit inicializado correctamente.');
     } catch (e, s) {
+      DebugLogger.log('ERROR en MediaKit.ensureInitialized: $e\n$s');
       runApp(OrpheusErrorScreenApp(
         serviceName: 'MediaKit (Motor de Audio)',
         error: e,
@@ -76,27 +80,23 @@ void main() {
     }
 
     try {
+      DebugLogger.log('Iniciando AudioService.init()...');
       await AudioService.init(
         builder: () => OrpheusAudioHandler(),
         config: const AudioServiceConfig(
-          // Channel ID 'playback' (vs previous 'audio') forces Android to recreate the
-          // notification channel fresh. Android caches channel importance permanently —
-          // the old 'audio' channel was created with IMPORTANCE_LOW and cannot be upgraded
-          // on existing installs. A new ID bypasses the stale cache.
           androidNotificationChannelId: 'com.heyzell.orpheus.channel.playback',
           androidNotificationChannelName: 'Orpheus — Reproducción',
           androidNotificationChannelDescription:
               'Controles de reproducción de música de Orpheus',
-          // Keep the foreground service alive and ongoing while playing.
           androidStopForegroundOnPause: true,
           androidNotificationOngoing: true,
           androidNotificationClickStartsActivity: true,
-          // ic_notification: monochromatic white silhouette required by Android
-          // notification small icon spec (API 26+).
           androidNotificationIcon: 'drawable/ic_notification',
         ),
       );
+      DebugLogger.log('AudioService.init() completado exitosamente.');
     } catch (e, s) {
+      DebugLogger.log('ERROR CRÍTICO en AudioService.init: $e\n$s');
       runApp(OrpheusErrorScreenApp(
         serviceName: 'AudioService (Foreground Session)',
         error: e,
@@ -108,6 +108,7 @@ void main() {
     try {
       await MetadataGod.initialize();
     } catch (e, s) {
+      DebugLogger.log('ERROR en MetadataGod: $e\n$s');
       runApp(OrpheusErrorScreenApp(
         serviceName: 'MetadataGod (Tag Editor FFI)',
         error: e,
@@ -117,8 +118,11 @@ void main() {
     }
 
     try {
+      DebugLogger.log('Iniciando LocalDatabase.initialize()...');
       await LocalDatabase.instance.initialize();
+      DebugLogger.log('LocalDatabase inicializado correctamente.');
     } catch (e, s) {
+      DebugLogger.log('ERROR en LocalDatabase: $e\n$s');
       runApp(OrpheusErrorScreenApp(
         serviceName: 'LocalDatabase (Isar DB)',
         error: e,
@@ -128,8 +132,11 @@ void main() {
     }
 
     try {
+      DebugLogger.log('Hydratando estado de AudioPlayerService...');
       await AudioPlayerService.instance.hydratePlaybackState();
+      DebugLogger.log('AudioPlayerService hydratado.');
     } catch (e, s) {
+      DebugLogger.log('ERROR en AudioPlayerService hydration: $e\n$s');
       runApp(OrpheusErrorScreenApp(
         serviceName: 'AudioPlayerService (Playback Engine)',
         error: e,
@@ -140,12 +147,12 @@ void main() {
 
     // Now that LocalDatabase and AudioPlayerService are fully ready, attach the
     // DB-dependent listeners and push the first real MediaItem + PlaybackState.
-    // This is the correct moment: the MediaBrowser is connected and the DB is open.
+    DebugLogger.log('Invocando OrpheusAudioHandler.initAfterDatabaseReady()...');
     OrpheusAudioHandler.instance.initAfterDatabaseReady();
+    DebugLogger.log('OrpheusAudioHandler listo post-DB.');
 
-    // Defer background album art fetching for any missing cover art to 3 seconds
-    // after the app mounts its first frame, avoiding SQLite/sqflite lock collisions at startup.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      DebugLogger.log('Post-Frame callback: Solicitando permisos de notificación...');
       PermissionService.requestNotificationPermission();
       Future.delayed(const Duration(seconds: 3), () {
         AlbumArtFetcherService.instance.processLibrary();

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'audio_player_service.dart';
 import '../database/local_database.dart';
 import '../models/track.dart';
+import '../utils/debug_logger.dart';
 
 /// Bridges the Flutter audio engine (media_kit) to the native OS Media Session controls.
 /// Handles background commands from OS lock screen, notifications, and Bluetooth devices.
@@ -21,17 +22,9 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
   OrpheusAudioHandler() {
     _instance = this;
-    // ⚠️  _initSinks() is called here but LocalDatabase.likedTrackIdsNotifier
-    // is NOT attached yet — the DB may not be open at this point (AudioService.init
-    // runs BEFORE LocalDatabase.initialize in main.dart).
-    // The liked-track listener is attached via initAfterDatabaseReady(), which
-    // main.dart calls once the DB is fully open.
+    DebugLogger.log('OrpheusAudioHandler: Instancia del Handler creada en memoria.');
     _initSinks();
 
-    // Emit a safe "ready but not playing" state so audio_service never transitions
-    // to idle (which would call stopSelf() and destroy the Java service instance).
-    // We deliberately do NOT set playing:true here because the MediaBrowser may
-    // not have connected yet — that event-driven emission happens via _initSinks().
     playbackState.add(PlaybackState(
       controls: [
         MediaControl.skipToPrevious,
@@ -47,33 +40,30 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       processingState: AudioProcessingState.ready,
       playing: false,
     ));
+    DebugLogger.log('OrpheusAudioHandler: Estado inicial emitido (playing: false, ready).');
   }
 
   bool _disposed = false;
   final List<StreamSubscription> _subscriptions = [];
 
-  /// Called by [main.dart] AFTER both [LocalDatabase] and [AudioPlayerService]
-  /// hydration are complete.  This is the correct moment to:
-  ///  1. Attach the liked-track listener (DB is open).
-  ///  2. Push the current track + playback state so audio_service can start
-  ///     the foreground service if a track is already loaded.
   void initAfterDatabaseReady() {
-    // Attach liked-track listener now that the DB is open.
+    DebugLogger.log('OrpheusAudioHandler.initAfterDatabaseReady() iniciado...');
     try {
       LocalDatabase.instance.likedTrackIdsNotifier.addListener(_updatePlaybackState);
+      DebugLogger.log('OrpheusAudioHandler: Listener likedTrackIds adjuntado.');
     } catch (e) {
-      debugPrint('OrpheusAudioHandler: could not attach likedTrackIds listener: $e');
+      DebugLogger.log('OrpheusAudioHandler ERROR adjuntando listener likedTrackIds: $e');
     }
 
-    // Push current state so audio_service knows the real track + playing status
-    // after hydration. The MediaBrowser connection should be fully established
-    // by the time main.dart finishes its await chain.
     final player = AudioPlayerService.instance;
     final current = player.currentTrack;
     if (current != null) {
-      mediaItem.add(_mapTrackToMediaItem(current));
+      final item = _mapTrackToMediaItem(current);
+      mediaItem.add(item);
+      DebugLogger.log('OrpheusAudioHandler: MediaItem inicial cargado (id: ${item.id}, title: "${item.title}").');
     }
     _updatePlaybackState();
+    DebugLogger.log('OrpheusAudioHandler.initAfterDatabaseReady() finalizado.');
   }
 
   void _initSinks() {
@@ -193,6 +183,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
         final newItem = _mapTrackToMediaItem(currentTrack);
         if (mediaItem.value?.id != newItem.id || mediaItem.value?.duration != newItem.duration) {
           mediaItem.add(newItem);
+          DebugLogger.log('OrpheusAudioHandler: mediaItem.add -> id: ${newItem.id}, title: "${newItem.title}", artist: "${newItem.artist}"');
         }
       }
 
@@ -202,7 +193,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
         name: 'toggle_like',
       );
 
-      playbackState.add(PlaybackState(
+      final newState = PlaybackState(
         controls: [
           MediaControl.skipToPrevious,
           if (isPlaying) MediaControl.pause else MediaControl.play,
@@ -220,9 +211,12 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
         updatePosition: player.position,
         bufferedPosition: player.position,
         speed: 1.0,
-      ));
-    } catch (e) {
-      debugPrint('Safely caught error updating playbackState: $e');
+      );
+
+      playbackState.add(newState);
+      DebugLogger.log('OrpheusAudioHandler: playbackState.add -> playing: ${newState.playing}, state: ready, pos: ${player.position.inSeconds}s');
+    } catch (e, s) {
+      DebugLogger.log('OrpheusAudioHandler ERROR en _updatePlaybackState: $e\n$s');
     }
   }
 
@@ -230,11 +224,13 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
   /// High-level API used by UI components to load and play a queue of tracks.
   Future<void> loadQueue(List<Track> tracks, {int initialIndex = 0}) async {
+    DebugLogger.log('OrpheusAudioHandler.loadQueue() invocado con ${tracks.length} tracks, index: $initialIndex');
     await AudioPlayerService.instance.loadPlaylist(tracks, initialIndex: initialIndex);
   }
 
   /// High-level API used by UI components to play a single track with optional context queue.
   Future<void> playTrack(Track track, {List<Track>? contextQueue}) async {
+    DebugLogger.log('OrpheusAudioHandler.playTrack() invocado para track: "${track.displayTitle}"');
     if (contextQueue != null && contextQueue.isNotEmpty) {
       final index = contextQueue.indexWhere((t) => t.trackId == track.trackId);
       await loadQueue(contextQueue, initialIndex: index == -1 ? 0 : index);
@@ -245,6 +241,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
   /// Toggles playback between playing and paused.
   Future<void> togglePlayPause() async {
+    DebugLogger.log('OrpheusAudioHandler.togglePlayPause() invocado');
     if (AudioPlayerService.instance.isPlaying) {
       await pause();
     } else {
@@ -254,22 +251,33 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
   /// Inserts a track to be played next in the queue.
   void playNext(Track track) {
+    DebugLogger.log('OrpheusAudioHandler.playNext() invocado para "${track.displayTitle}"');
     AudioPlayerService.instance.playNext(track);
   }
 
   /// Appends a track to the end of the current queue.
   void addToQueueTrack(Track track) {
+    DebugLogger.log('OrpheusAudioHandler.addToQueueTrack() invocado para "${track.displayTitle}"');
     AudioPlayerService.instance.addToQueue(track);
   }
 
   @override
-  Future<void> play() => AudioPlayerService.instance.play();
+  Future<void> play() async {
+    DebugLogger.log('OrpheusAudioHandler.play() [OS/UI Action] invocado -> enviando play a media_kit');
+    await AudioPlayerService.instance.play();
+  }
 
   @override
-  Future<void> pause() => AudioPlayerService.instance.pause();
+  Future<void> pause() async {
+    DebugLogger.log('OrpheusAudioHandler.pause() [OS/UI Action] invocado -> enviando pause a media_kit');
+    await AudioPlayerService.instance.pause();
+  }
 
   @override
-  Future<void> stop() => AudioPlayerService.instance.stop();
+  Future<void> stop() async {
+    DebugLogger.log('OrpheusAudioHandler.stop() [OS/UI Action] invocado -> enviando stop a media_kit');
+    await AudioPlayerService.instance.stop();
+  }
 
   @override
   Future<void> seek(Duration position) => AudioPlayerService.instance.seek(position);

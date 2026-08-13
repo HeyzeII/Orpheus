@@ -10,6 +10,7 @@ import '../../core/services/audio_scanner.dart';
 import '../../core/services/permission_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_toast.dart';
+import 'debug_log_view.dart';
 
 /// Settings View — Configuration panel for managing scan directories,
 /// running library scans, and resolving artist duplicate conflicts.
@@ -935,7 +936,7 @@ class _SettingsViewState extends State<SettingsView> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 8),
                   OutlinedButton(
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: AppTheme.divider),
@@ -944,6 +945,21 @@ class _SettingsViewState extends State<SettingsView> {
                     ),
                     onPressed: _isScanning ? null : _runNotificationDiagnostics,
                     child: const Text('Auditar', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.accent,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const DebugLogScreen()),
+                      );
+                    },
+                    child: const Text('Ver Logs', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
