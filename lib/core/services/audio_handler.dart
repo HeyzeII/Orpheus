@@ -44,6 +44,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   }
 
   bool _disposed = false;
+  bool _isUpdatePending = false;
   final List<StreamSubscription> _subscriptions = [];
 
   void initAfterDatabaseReady() {
@@ -171,6 +172,17 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
   void _updatePlaybackState() {
     if (_disposed) return;
+    if (_isUpdatePending) return;
+
+    _isUpdatePending = true;
+    scheduleMicrotask(() {
+      _isUpdatePending = false;
+      _executeUpdatePlaybackState();
+    });
+  }
+
+  void _executeUpdatePlaybackState() {
+    if (_disposed) return;
     try {
       final player = AudioPlayerService.instance;
       final isPlaying = player.isPlaying;
@@ -178,13 +190,13 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       final isLiked = currentTrack != null &&
           LocalDatabase.instance.likedTrackIdsNotifier.value.contains(currentTrack.trackId);
 
-      // Ensure mediaItem is set with active track metadata before pushing state
+      // Always re-emit the current mediaItem — audio_service requires at least one
+      // unconditional emission to start the Foreground Service. The id-equality guard
+      // was silently suppressing this emission on repeated playback of the same track.
       if (currentTrack != null) {
         final newItem = _mapTrackToMediaItem(currentTrack);
-        if (mediaItem.value?.id != newItem.id || mediaItem.value?.duration != newItem.duration) {
-          mediaItem.add(newItem);
-          DebugLogger.log('OrpheusAudioHandler: mediaItem.add -> id: ${newItem.id}, title: "${newItem.title}", artist: "${newItem.artist}"');
-        }
+        mediaItem.add(newItem);
+        DebugLogger.log('OrpheusAudioHandler: mediaItem.add forzado -> id: ${newItem.id}, title: "${newItem.title}"');
       }
 
       final likeControl = MediaControl.custom(
@@ -216,15 +228,27 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       playbackState.add(newState);
       DebugLogger.log('OrpheusAudioHandler: playbackState.add -> playing: ${newState.playing}, state: ready, pos: ${player.position.inSeconds}s');
     } catch (e, s) {
-      DebugLogger.log('OrpheusAudioHandler ERROR en _updatePlaybackState: $e\n$s');
+      DebugLogger.log('OrpheusAudioHandler ERROR en _executeUpdatePlaybackState: $e\n$s');
     }
   }
 
   // ── Delegated Actions from OS / Bluetooth / UI controls ─────────────────
 
   /// High-level API used by UI components to load and play a queue of tracks.
+  ///
+  /// Immediately injects the [MediaItem] of the initial track before calling the
+  /// audio engine so that [audio_service] has all required metadata to start the
+  /// Foreground Service without waiting for stream events to propagate.
   Future<void> loadQueue(List<Track> tracks, {int initialIndex = 0}) async {
     DebugLogger.log('OrpheusAudioHandler.loadQueue() invocado con ${tracks.length} tracks, index: $initialIndex');
+
+    if (tracks.isNotEmpty && initialIndex >= 0 && initialIndex < tracks.length) {
+      final initialTrack = tracks[initialIndex];
+      final initialItem = _mapTrackToMediaItem(initialTrack);
+      mediaItem.add(initialItem);
+      DebugLogger.log('OrpheusAudioHandler: mediaItem forzado en loadQueue -> id: ${initialItem.id}, title: "${initialItem.title}"');
+    }
+
     await AudioPlayerService.instance.loadPlaylist(tracks, initialIndex: initialIndex);
   }
 

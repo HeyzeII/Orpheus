@@ -89,10 +89,14 @@ class AudioPlayerService {
     }
     _player = Player(
       configuration: const PlayerConfiguration(
-        // Enables the native Android MediaSession notification (lock-screen
-        // controls, notification panel) through media_kit's platform layer.
-        title: 'Orpheus',
-        pitch: false,    // disable pitch control — not needed for audio-only
+        // IMPORTANT: Do NOT set 'title' here.
+        // Passing a title to PlayerConfiguration activates media_kit's own
+        // native Android MediaSession registration (via libmpv's --title option).
+        // This creates a SECOND competing MediaSession alongside audio_service's,
+        // causing SystemUI to suppress audio_service's notification entirely.
+        // audio_service is the sole MediaSession owner — media_kit operates
+        // as a pure audio engine through JNI/FFI with no OS-level session.
+        pitch: false, // disable pitch control — not needed for audio-only
       ),
     );
 

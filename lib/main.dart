@@ -80,6 +80,14 @@ void main() {
     }
 
     try {
+      DebugLogger.log('Solicitando permisos de notificación en arranque...');
+      await PermissionService.requestNotificationPermission();
+      DebugLogger.log('Permisos de notificación resueltos.');
+    } catch (e, s) {
+      DebugLogger.log('Advertencia al solicitar permisos de notificación en arranque: $e\n$s');
+    }
+
+    try {
       DebugLogger.log('Iniciando AudioService.init()...');
       await AudioService.init(
         builder: () => OrpheusAudioHandler(),
@@ -152,8 +160,6 @@ void main() {
     DebugLogger.log('OrpheusAudioHandler listo post-DB.');
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      DebugLogger.log('Post-Frame callback: Solicitando permisos de notificación...');
-      PermissionService.requestNotificationPermission();
       Future.delayed(const Duration(seconds: 3), () {
         AlbumArtFetcherService.instance.processLibrary();
       });
