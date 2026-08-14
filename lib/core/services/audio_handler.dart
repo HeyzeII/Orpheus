@@ -12,6 +12,9 @@ import '../utils/debug_logger.dart';
 class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   static OrpheusAudioHandler? _instance;
 
+  /// Returns true if [OrpheusAudioHandler] has been initialized by [AudioService.init].
+  static bool get hasInstance => _instance != null;
+
   /// Global singleton instance of [OrpheusAudioHandler] initialized by [AudioService.init].
   static OrpheusAudioHandler get instance {
     if (_instance == null) {

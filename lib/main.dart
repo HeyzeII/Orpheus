@@ -80,40 +80,6 @@ void main() {
     }
 
     try {
-      DebugLogger.log('Solicitando permisos de notificación en arranque...');
-      await PermissionService.requestNotificationPermission();
-      DebugLogger.log('Permisos de notificación resueltos.');
-    } catch (e, s) {
-      DebugLogger.log('Advertencia al solicitar permisos de notificación en arranque: $e\n$s');
-    }
-
-    try {
-      DebugLogger.log('Iniciando AudioService.init()...');
-      await AudioService.init(
-        builder: () => OrpheusAudioHandler(),
-        config: const AudioServiceConfig(
-          androidNotificationChannelId: 'com.heyzell.orpheus.channel.playback',
-          androidNotificationChannelName: 'Orpheus — Reproducción',
-          androidNotificationChannelDescription:
-              'Controles de reproducción de música de Orpheus',
-          androidStopForegroundOnPause: true,
-          androidNotificationOngoing: true,
-          androidNotificationClickStartsActivity: true,
-          androidNotificationIcon: 'drawable/ic_notification',
-        ),
-      );
-      DebugLogger.log('AudioService.init() completado exitosamente.');
-    } catch (e, s) {
-      DebugLogger.log('ERROR CRÍTICO en AudioService.init: $e\n$s');
-      runApp(OrpheusErrorScreenApp(
-        serviceName: 'AudioService (Foreground Session)',
-        error: e,
-        stackTrace: s,
-      ));
-      return;
-    }
-
-    try {
       await MetadataGod.initialize();
     } catch (e, s) {
       DebugLogger.log('ERROR en MetadataGod: $e\n$s');
@@ -153,19 +119,61 @@ void main() {
       return;
     }
 
-    // Now that LocalDatabase and AudioPlayerService are fully ready, attach the
-    // DB-dependent listeners and push the first real MediaItem + PlaybackState.
-    DebugLogger.log('Invocando OrpheusAudioHandler.initAfterDatabaseReady()...');
-    OrpheusAudioHandler.instance.initAfterDatabaseReady();
-    DebugLogger.log('OrpheusAudioHandler listo post-DB.');
+    // Mount UI first to ensure MainActivity is in the foreground and warm
+    runApp(const OrpheusApp());
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // Defer AudioService.init and permission request to post-frame callback
+    // when MainActivity is fully rendered and in ON_RESUME state (required for Android 14+).
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      DebugLogger.log('Post-Frame UI activa: Solicitando permisos de notificación...');
+      try {
+        await PermissionService.requestNotificationPermission();
+        DebugLogger.log('Permisos de notificación resueltos.');
+      } catch (e, s) {
+        DebugLogger.log('Advertencia permisos notificación: $e\n$s');
+      }
+
+      try {
+        DebugLogger.log('Iniciando AudioService.init() con UI montada...');
+        await AudioService.init(
+          builder: () => OrpheusAudioHandler(),
+          config: const AudioServiceConfig(
+            androidNotificationChannelId: 'com.heyzell.orpheus.channel.playback',
+            androidNotificationChannelName: 'Orpheus — Reproducción',
+            androidNotificationChannelDescription:
+                'Controles de reproducción de música de Orpheus',
+            androidStopForegroundOnPause: true,
+            androidNotificationOngoing: true,
+            androidNotificationClickStartsActivity: true,
+            androidNotificationIcon: 'drawable/ic_notification',
+          ),
+        );
+        DebugLogger.log('AudioService.init() completado exitosamente.');
+
+        // Attach DB-dependent listeners and push initial state
+        OrpheusAudioHandler.instance.initAfterDatabaseReady();
+        DebugLogger.log('OrpheusAudioHandler listo post-DB.');
+
+        // Execute native Android reflection auditor to verify Java service state
+        try {
+          const channel = MethodChannel('com.heyzell.orpheus/app_control');
+          final report = await channel.invokeMethod<Map<dynamic, dynamic>>('getNotificationDiagnostics');
+          if (report != null) {
+            DebugLogger.log('--- DIAGNÓSTICO NATIVO POST-INIT ---');
+            report.forEach((k, v) => DebugLogger.log('NATIVO [$k]: $v'));
+            DebugLogger.log('------------------------------------');
+          }
+        } catch (e) {
+          DebugLogger.log('Error al ejecutar diagnóstico nativo post-init: $e');
+        }
+      } catch (e, s) {
+        DebugLogger.log('ERROR CRÍTICO en AudioService.init (post-frame): $e\n$s');
+      }
+
       Future.delayed(const Duration(seconds: 3), () {
         AlbumArtFetcherService.instance.processLibrary();
       });
     });
-
-    runApp(const OrpheusApp());
   }, (Object error, StackTrace stack) {
     runApp(OrpheusErrorScreenApp(
       serviceName: 'Excepción Global (Zoned)',
