@@ -252,9 +252,17 @@ class _TrackActionsState extends State<_TrackActions> {
               ),
               onSelected: (value) {
                 if (value == 'play_next') {
-                  OrpheusAudioHandler.instance.playNext(widget.track);
+                  if (OrpheusAudioHandler.hasInstance) {
+                    OrpheusAudioHandler.instance.playNext(widget.track);
+                  } else {
+                    AudioPlayerService.instance.playNext(widget.track);
+                  }
                 } else if (value == 'add_to_queue') {
-                  OrpheusAudioHandler.instance.addToQueueTrack(widget.track);
+                  if (OrpheusAudioHandler.hasInstance) {
+                    OrpheusAudioHandler.instance.addToQueueTrack(widget.track);
+                  } else {
+                    AudioPlayerService.instance.addToQueue(widget.track);
+                  }
                 } else if (value is Playlist) {
                   LocalDatabase.instance.addTrackToPlaylist(
                     playlist: value,
@@ -380,7 +388,13 @@ class _PlaybackControls extends StatelessWidget {
               _IconBtn(
                 icon: Icons.skip_previous_rounded,
                 size: 22,
-                onTap: OrpheusAudioHandler.instance.skipToPrevious,
+                onTap: () {
+                  if (OrpheusAudioHandler.hasInstance) {
+                    OrpheusAudioHandler.instance.skipToPrevious();
+                  } else {
+                    player.previous();
+                  }
+                },
                 tooltip: 'Anterior',
               ),
               const SizedBox(width: 10),
@@ -391,7 +405,17 @@ class _PlaybackControls extends StatelessWidget {
                   final playing = snap.data ?? player.isPlaying;
                   return _PlayButton(
                     isPlaying: playing,
-                    onTap: OrpheusAudioHandler.instance.togglePlayPause,
+                    onTap: () {
+                      if (OrpheusAudioHandler.hasInstance) {
+                        OrpheusAudioHandler.instance.togglePlayPause();
+                      } else {
+                        if (player.isPlaying) {
+                          player.pause();
+                        } else {
+                          player.play();
+                        }
+                      }
+                    },
                   );
                 },
               ),
@@ -400,7 +424,13 @@ class _PlaybackControls extends StatelessWidget {
               _IconBtn(
                 icon: Icons.skip_next_rounded,
                 size: 22,
-                onTap: OrpheusAudioHandler.instance.skipToNext,
+                onTap: () {
+                  if (OrpheusAudioHandler.hasInstance) {
+                    OrpheusAudioHandler.instance.skipToNext();
+                  } else {
+                    player.next();
+                  }
+                },
                 tooltip: 'Siguiente',
               ),
               const SizedBox(width: 12),
@@ -562,9 +592,14 @@ class _ProgressBar extends StatelessWidget {
                       min: 0,
                       max: maxVal > 0 ? maxVal : 1.0,
                       onChanged: maxVal > 0
-                          ? (val) => OrpheusAudioHandler.instance.seek(
-                                Duration(milliseconds: val.toInt()),
-                              )
+                          ? (val) {
+                              final dur = Duration(milliseconds: val.toInt());
+                              if (OrpheusAudioHandler.hasInstance) {
+                                OrpheusAudioHandler.instance.seek(dur);
+                              } else {
+                                AudioPlayerService.instance.seek(dur);
+                              }
+                            }
                           : null,
                     ),
                   ),

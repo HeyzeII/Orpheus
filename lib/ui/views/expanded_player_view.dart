@@ -588,7 +588,15 @@ class _ExpandedPlaybackControls extends StatelessWidget {
                 color: canPrev ? Colors.white : Colors.white24,
                 size: 38,
               ),
-              onPressed: canPrev ? OrpheusAudioHandler.instance.skipToPrevious : null,
+              onPressed: canPrev
+                  ? () {
+                      if (OrpheusAudioHandler.hasInstance) {
+                        OrpheusAudioHandler.instance.skipToPrevious();
+                      } else {
+                        player.previous();
+                      }
+                    }
+                  : null,
             );
           },
         ),
@@ -599,7 +607,17 @@ class _ExpandedPlaybackControls extends StatelessWidget {
           builder: (_, snap) {
             final playing = snap.data ?? player.isPlaying;
             return GestureDetector(
-              onTap: OrpheusAudioHandler.instance.togglePlayPause,
+              onTap: () {
+                if (OrpheusAudioHandler.hasInstance) {
+                  OrpheusAudioHandler.instance.togglePlayPause();
+                } else {
+                  if (player.isPlaying) {
+                    player.pause();
+                  } else {
+                    player.play();
+                  }
+                }
+              },
               child: Container(
                 width: 64,
                 height: 64,
@@ -631,7 +649,15 @@ class _ExpandedPlaybackControls extends StatelessWidget {
                   color: Colors.white,
                   size: 38,
                 ),
-                onPressed: canNext ? OrpheusAudioHandler.instance.skipToNext : null,
+                onPressed: canNext
+                    ? () {
+                        if (OrpheusAudioHandler.hasInstance) {
+                          OrpheusAudioHandler.instance.skipToNext();
+                        } else {
+                          player.next();
+                        }
+                      }
+                    : null,
               ),
             );
           },

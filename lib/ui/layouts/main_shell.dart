@@ -283,8 +283,7 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
         // Force a state push via the AudioService.notificationClicked stream by calling
         // play (no-op if already playing) or by refreshing the handler's state manually.
         final svc = AudioPlayerService.instance;
-        if (svc.isPlaying) {
-          // play() → handler emits updated playbackState → audio_service posts notification
+        if (svc.isPlaying && OrpheusAudioHandler.hasInstance) {
           OrpheusAudioHandler.instance.play();
         }
       },
