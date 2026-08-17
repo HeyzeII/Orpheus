@@ -48,6 +48,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
   bool _disposed = false;
   bool _isUpdatePending = false;
+  bool _playRequested = false;
   final List<StreamSubscription> _subscriptions = [];
 
   void initAfterDatabaseReady() {
@@ -104,9 +105,14 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
     // 3. Sincronizar estado de reproducción (play/pause)
     _subscriptions.add(player.isPlayingStream.listen(
-      (_) {
+      (playing) {
         try {
-          _updatePlaybackState();
+          if (!playing && !_playRequested) {
+            _executeUpdatePlaybackState(overridePlaying: false);
+          } else if (playing) {
+            _playRequested = true;
+            _executeUpdatePlaybackState(overridePlaying: true);
+          }
         } catch (e, s) {
           debugPrint('Error updating isPlaying in AudioHandler: $e\n$s');
         }
@@ -129,10 +135,6 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       },
       onError: (err) => debugPrint('Error in durationStream: $err'),
     ));
-
-    // Note: the liked-track listener (LocalDatabase.instance.likedTrackIdsNotifier)
-    // is attached in initAfterDatabaseReady(), NOT here, because _initSinks() is
-    // called from the constructor which runs before LocalDatabase is initialized.
   }
 
   MediaItem _mapTrackToMediaItem(Track track) {
@@ -188,14 +190,17 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     if (_disposed) return;
     try {
       final player = AudioPlayerService.instance;
-      final isPlaying = overridePlaying ?? player.isPlaying;
+      if (overridePlaying != null) {
+        _playRequested = overridePlaying;
+      }
+
+      final isPlaying = _playRequested || player.isPlaying;
       final currentTrack = player.currentTrack;
       final isLiked = currentTrack != null &&
           LocalDatabase.instance.likedTrackIdsNotifier.value.contains(currentTrack.trackId);
 
       // Always re-emit the current mediaItem — audio_service requires at least one
-      // unconditional emission to start the Foreground Service. The id-equality guard
-      // was silently suppressing this emission on repeated playback of the same track.
+      // unconditional emission to start the Foreground Service.
       if (currentTrack != null) {
         final newItem = _mapTrackToMediaItem(currentTrack);
         mediaItem.add(newItem);
@@ -238,12 +243,9 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   // ── Delegated Actions from OS / Bluetooth / UI controls ─────────────────
 
   /// High-level API used by UI components to load and play a queue of tracks.
-  ///
-  /// Immediately injects the [MediaItem] of the initial track before calling the
-  /// audio engine so that [audio_service] has all required metadata to start the
-  /// Foreground Service without waiting for stream events to propagate.
   Future<void> loadQueue(List<Track> tracks, {int initialIndex = 0}) async {
     DebugLogger.log('OrpheusAudioHandler.loadQueue() invocado con ${tracks.length} tracks, index: $initialIndex');
+    _playRequested = true;
 
     if (tracks.isNotEmpty && initialIndex >= 0 && initialIndex < tracks.length) {
       final initialTrack = tracks[initialIndex];
@@ -254,12 +256,12 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
     _executeUpdatePlaybackState(overridePlaying: true);
     await AudioPlayerService.instance.loadPlaylist(tracks, initialIndex: initialIndex);
-    _executeUpdatePlaybackState();
   }
 
   /// High-level API used by UI components to play a single track with optional context queue.
   Future<void> playTrack(Track track, {List<Track>? contextQueue}) async {
     DebugLogger.log('OrpheusAudioHandler.playTrack() invocado para track: "${track.displayTitle}"');
+    _playRequested = true;
     _executeUpdatePlaybackState(overridePlaying: true);
     if (contextQueue != null && contextQueue.isNotEmpty) {
       final index = contextQueue.indexWhere((t) => t.trackId == track.trackId);
@@ -272,7 +274,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   /// Toggles playback between playing and paused.
   Future<void> togglePlayPause() async {
     DebugLogger.log('OrpheusAudioHandler.togglePlayPause() invocado');
-    if (AudioPlayerService.instance.isPlaying) {
+    if (AudioPlayerService.instance.isPlaying || _playRequested) {
       await pause();
     } else {
       await play();
@@ -294,25 +296,25 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   @override
   Future<void> play() async {
     DebugLogger.log('OrpheusAudioHandler.play() [OS/UI Action] invocado -> promoviendo a playing: true');
+    _playRequested = true;
     _executeUpdatePlaybackState(overridePlaying: true);
     await AudioPlayerService.instance.play();
-    _executeUpdatePlaybackState();
   }
 
   @override
   Future<void> pause() async {
     DebugLogger.log('OrpheusAudioHandler.pause() [OS/UI Action] invocado -> promoviendo a playing: false');
+    _playRequested = false;
     _executeUpdatePlaybackState(overridePlaying: false);
     await AudioPlayerService.instance.pause();
-    _executeUpdatePlaybackState();
   }
 
   @override
   Future<void> stop() async {
     DebugLogger.log('OrpheusAudioHandler.stop() [OS/UI Action] invocado -> promoviendo a playing: false');
+    _playRequested = false;
     _executeUpdatePlaybackState(overridePlaying: false);
     await AudioPlayerService.instance.stop();
-    _executeUpdatePlaybackState();
   }
 
   @override
@@ -324,24 +326,24 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   @override
   Future<void> skipToNext() async {
     DebugLogger.log('OrpheusAudioHandler.skipToNext() invocado');
+    _playRequested = true;
     _executeUpdatePlaybackState(overridePlaying: true);
     await AudioPlayerService.instance.next();
-    _executeUpdatePlaybackState();
   }
 
   @override
   Future<void> skipToPrevious() async {
     DebugLogger.log('OrpheusAudioHandler.skipToPrevious() invocado');
+    _playRequested = true;
     _executeUpdatePlaybackState(overridePlaying: true);
     await AudioPlayerService.instance.previous();
-    _executeUpdatePlaybackState();
   }
 
   @override
   Future<void> skipToQueueItem(int index) async {
+    _playRequested = true;
     _executeUpdatePlaybackState(overridePlaying: true);
     await AudioPlayerService.instance.loadPlaylist(AudioPlayerService.instance.queue, initialIndex: index);
-    _executeUpdatePlaybackState();
   }
 
   /// Handles custom actions from the media notification (such as toggle_like)
