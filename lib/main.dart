@@ -145,7 +145,7 @@ void main() {
             androidStopForegroundOnPause: true,
             androidNotificationOngoing: true,
             androidNotificationClickStartsActivity: true,
-            androidNotificationIcon: 'drawable/ic_notification',
+            androidNotificationIcon: 'mipmap/ic_launcher',
           ),
         );
         DebugLogger.log('AudioService.init() completado exitosamente.');
