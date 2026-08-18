@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../utils/debug_logger.dart';
 
 /// Service to handle runtime permission requests on Android.
 class PermissionService {
@@ -74,26 +75,38 @@ class PermissionService {
     if (!Platform.isAndroid) return true;
 
     final sdkVersion = _getAndroidSdkVersion();
-    if (sdkVersion < 33) return true;
+    if (sdkVersion < 33) {
+      DebugLogger.log('Notification permission check: Android SDK $sdkVersion (< 33) does not require POST_NOTIFICATIONS');
+      return true;
+    }
 
     final before = await Permission.notification.status;
+    DebugLogger.log('Estado previo de permiso POST_NOTIFICATIONS: $before');
     if (before.isGranted) return true;
-    if (before.isPermanentlyDenied) return false;
 
     if (_isRequestingNotificationPermission) {
+      DebugLogger.log('Solicitud POST_NOTIFICATIONS ya en curso, omitiendo duplicada.');
       return before.isGranted;
     }
 
     _isRequestingNotificationPermission = true;
     try {
+      DebugLogger.log('Lanzando dialogo nativo Permission.notification.request()...');
       final status = await Permission.notification.request();
       final isGranted = status.isGranted;
+      DebugLogger.log('Resultado de solicitud POST_NOTIFICATIONS: $status (isGranted: $isGranted)');
 
-      // Fire callback only when the user just tapped "Allow"
-      if (isGranted && !before.isGranted && onGranted != null) {
-        onGranted();
+      if (isGranted) {
+        if (!before.isGranted && onGranted != null) {
+          onGranted();
+        }
+      } else {
+        DebugLogger.log('⚠️ ALERTA: Permiso de notificaciones POST_NOTIFICATIONS fue denegado por el usuario o SO ($status).');
       }
       return isGranted;
+    } catch (e, s) {
+      DebugLogger.log('ERROR al solicitar POST_NOTIFICATIONS: $e\n$s');
+      return false;
     } finally {
       _isRequestingNotificationPermission = false;
     }
