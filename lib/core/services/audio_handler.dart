@@ -194,17 +194,20 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
         _playRequested = overridePlaying;
       }
 
-      final isPlaying = _playRequested || player.isPlaying;
       final currentTrack = player.currentTrack;
+
+      // 🔑 CRITICAL RULE: Never emit playing: true if no track/mediaItem is available
+      final hasTrack = currentTrack != null || mediaItem.value != null;
+      final isPlaying = hasTrack && (_playRequested || player.isPlaying);
+
       final isLiked = currentTrack != null &&
           LocalDatabase.instance.likedTrackIdsNotifier.value.contains(currentTrack.trackId);
 
-      // Always re-emit the current mediaItem — audio_service requires at least one
-      // unconditional emission to start the Foreground Service.
+      // 🔑 CRITICAL RULE: Update and emit mediaItem FIRST on the line before playbackState.add
       if (currentTrack != null) {
         final newItem = _mapTrackToMediaItem(currentTrack);
         mediaItem.add(newItem);
-        DebugLogger.log('OrpheusAudioHandler: mediaItem.add forzado -> id: ${newItem.id}, title: "${newItem.title}"');
+        DebugLogger.log('OrpheusAudioHandler: mediaItem.add (pre-playbackState) -> id: ${newItem.id}, title: "${newItem.title}"');
       }
 
       final likeControl = MediaControl.custom(
@@ -234,7 +237,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       );
 
       playbackState.add(newState);
-      DebugLogger.log('OrpheusAudioHandler: playbackState.add -> playing: ${newState.playing}, state: ready, pos: ${player.position.inSeconds}s');
+      DebugLogger.log('OrpheusAudioHandler: playbackState.add -> playing: ${newState.playing}, mediaItem: "${mediaItem.value?.title}", pos: ${player.position.inSeconds}s');
     } catch (e, s) {
       DebugLogger.log('OrpheusAudioHandler ERROR en _executeUpdatePlaybackState: $e\n$s');
     }

@@ -4,11 +4,11 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
-import com.ryanheise.audioservice.AudioServiceFragmentActivity
+import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity : AudioServiceFragmentActivity() {
+class MainActivity : AudioServiceActivity() {
 
     companion object {
         // Must exactly match AudioServiceConfig.androidNotificationChannelId in main.dart.

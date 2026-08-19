@@ -127,8 +127,8 @@ void main() {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       DebugLogger.log('Post-Frame UI activa: Solicitando permisos de notificación...');
       try {
-        await PermissionService.requestNotificationPermission();
-        DebugLogger.log('Permisos de notificación resueltos.');
+        final isGranted = await PermissionService.requestNotificationPermission();
+        DebugLogger.log('Permisos de notificación resueltos -> Concedido: $isGranted');
       } catch (e, s) {
         DebugLogger.log('Advertencia permisos notificación: $e\n$s');
       }

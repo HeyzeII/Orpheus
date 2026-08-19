@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -14,12 +15,6 @@ class PermissionService {
   static Future<bool> requestStoragePermission() async {
     if (!Platform.isAndroid) return true;
 
-    // Check SDK version via Platform.version or similar, but permission_handler handles this internally
-    // if we request Permission.audio on older versions, it might fail or return permanentlyDenied.
-    // In Android SDK 33+, Permission.storage returns isDenied/permanentlyDenied always.
-    // To check the API level precisely in pure Dart, we can parse Platform.operatingSystemVersion or use permission_handler's own logic.
-    // Actually, permission_handler requests the correct platform manifest declaration.
-    // Let's parse OS version to check SDK level:
     final sdkVersion = _getAndroidSdkVersion();
 
     if (sdkVersion >= 33) {
@@ -62,7 +57,7 @@ class PermissionService {
     }
   }
 
-  static bool _isRequestingNotificationPermission = false;
+  static Completer<bool>? _pendingNotificationCompleter;
 
   /// Requests notification permissions for Android 13+ (SDK 33+).
   /// Returns `true` if the permission is granted (either already was or just granted now),
@@ -84,14 +79,21 @@ class PermissionService {
     DebugLogger.log('Estado previo de permiso POST_NOTIFICATIONS: $before');
     if (before.isGranted) return true;
 
-    if (_isRequestingNotificationPermission) {
-      DebugLogger.log('Solicitud POST_NOTIFICATIONS ya en curso, omitiendo duplicada.');
-      return before.isGranted;
+    // If a request is already in flight, await its completion instead of returning immediately
+    if (_pendingNotificationCompleter != null && !_pendingNotificationCompleter!.isCompleted) {
+      DebugLogger.log('Solicitud POST_NOTIFICATIONS en curso, aguardando resultado del diálogo nativo...');
+      final result = await _pendingNotificationCompleter!.future;
+      if (result && !before.isGranted && onGranted != null) {
+        onGranted();
+      }
+      return result;
     }
 
-    _isRequestingNotificationPermission = true;
+    final completer = Completer<bool>();
+    _pendingNotificationCompleter = completer;
+
     try {
-      DebugLogger.log('Lanzando dialogo nativo Permission.notification.request()...');
+      DebugLogger.log('Lanzando diálogo nativo Permission.notification.request()...');
       final status = await Permission.notification.request();
       final isGranted = status.isGranted;
       DebugLogger.log('Resultado de solicitud POST_NOTIFICATIONS: $status (isGranted: $isGranted)');
@@ -103,12 +105,21 @@ class PermissionService {
       } else {
         DebugLogger.log('⚠️ ALERTA: Permiso de notificaciones POST_NOTIFICATIONS fue denegado por el usuario o SO ($status).');
       }
+
+      if (!completer.isCompleted) {
+        completer.complete(isGranted);
+      }
       return isGranted;
     } catch (e, s) {
       DebugLogger.log('ERROR al solicitar POST_NOTIFICATIONS: $e\n$s');
+      if (!completer.isCompleted) {
+        completer.complete(false);
+      }
       return false;
     } finally {
-      _isRequestingNotificationPermission = false;
+      if (_pendingNotificationCompleter == completer) {
+        _pendingNotificationCompleter = null;
+      }
     }
   }
 
