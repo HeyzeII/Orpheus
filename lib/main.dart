@@ -69,23 +69,29 @@ void main() {
 
     try {
       DebugLogger.log('Iniciando AudioService.init()...');
-      await AudioService.init(
+      // Capture the return value so the native bridge confirms the handler is registered.
+      final audioHandler = await AudioService.init(
         builder: () => OrpheusAudioHandler(),
         config: const AudioServiceConfig(
-          androidNotificationChannelId: 'com.heyzell.orpheus.channel.playback',
+          androidNotificationChannelId: 'com.heyzell.orpheus.channel.playback_v2',
           androidNotificationChannelName: 'Orpheus — Reproducción',
           androidNotificationChannelDescription:
               'Controles de reproducción de música de Orpheus',
-          androidStopForegroundOnPause: true,
-          androidNotificationOngoing: true,
+          // false: Keep the ForegroundService alive while paused so Android doesn't
+          // destroy the MediaSession between track changes or audio-focus losses.
+          androidStopForegroundOnPause: false,
+          // false: Allow the system to remove the notification when the service stops
+          // cleanly, avoiding conflicts with the ongoing flag on re-start.
+          androidNotificationOngoing: false,
           androidNotificationClickStartsActivity: true,
           androidNotificationIcon: 'drawable/ic_stat_music',
         ),
       );
-      DebugLogger.log('AudioService.init() completado exitosamente.');
+      DebugLogger.log('AudioService.init() completado — handler: ${audioHandler.runtimeType}');
     } catch (e, s) {
       DebugLogger.log('ERROR CRÍTICO en AudioService.init: $e\n$s');
     }
+
 
     try {
       await MetadataGod.initialize();

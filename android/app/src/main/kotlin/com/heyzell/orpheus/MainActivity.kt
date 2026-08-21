@@ -14,13 +14,18 @@ class MainActivity : AudioServiceActivity() {
         // Must exactly match AudioServiceConfig.androidNotificationChannelId in main.dart.
         // audio_service's createChannel() checks "if (channel == null)" before creating —
         // so pre-creating here with IMPORTANCE_DEFAULT prevents it from downgrading to IMPORTANCE_LOW.
-        private const val AUDIO_CHANNEL_ID   = "com.heyzell.orpheus.channel.playback"
+        private const val AUDIO_CHANNEL_ID   = "com.heyzell.orpheus.channel.playback_v2"
         private const val AUDIO_CHANNEL_NAME = "Orpheus — Reproducción"
         private const val AUDIO_CHANNEL_DESC = "Controles de reproducción de música de Orpheus"
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
+        // Pre-create the notification channel BEFORE AudioService.init() runs from Dart.
+        // audio_service 0.18.x hard-codes IMPORTANCE_LOW in AudioService.java:691, which is
+        // silently hidden on MIUI / HyperOS / One UI / ColorOS OEMs.
+        // Android's createNotificationChannel() is idempotent: if the channel already exists
+        // it is a no-op, so our IMPORTANCE_DEFAULT + VISIBILITY_PUBLIC settings are preserved.
         ensureNotificationChannel()
     }
 
