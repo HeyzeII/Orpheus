@@ -16,19 +16,11 @@ import 'ui/layouts/main_shell.dart';
 import 'ui/theme/app_theme.dart';
 
 /// Entry point for Orpheus.
-///
-/// Initialization order is strict and intentional:
-/// 1. [WidgetsFlutterBinding.ensureInitialized] — required by all platform plugins.
-/// 2. [MediaKit.ensureInitialized] — registers the media_kit native audio engine.
-/// 3. [AudioService.init] — registers the Android Foreground Service and MediaSession.
-/// 4. [MetadataGod.initialize] — loads the Rust FFI bridge for tag reading.
-/// 5. [LocalDatabase.instance.initialize] — opens Isar and seeds default data.
-/// 6. [AudioPlayerService.instance.hydratePlaybackState] — restores last queue.
 void main() {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Global handler for rendering errors inside widget trees
+    // Global error handlers
     ErrorWidget.builder = (FlutterErrorDetails details) {
       return Scaffold(
         backgroundColor: const Color(0xFF121212),
@@ -40,18 +32,14 @@ void main() {
       );
     };
 
-    // Global Flutter error handler
     FlutterError.onError = (FlutterErrorDetails details) {
       FlutterError.presentError(details);
     };
 
-    // Platform-level asynchronous error handler
     PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-      // Return true to indicate the error was handled
       return true;
     };
 
-    // Enable native Android edge-to-edge mode & transparent system bars
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
@@ -63,116 +51,70 @@ void main() {
       ),
     );
 
-    // ── Safe Service Initialization Blocks ───────────────────────────────────
+    // ── Linear Canonical Startup Sequence ───────────────────────────────────
 
     try {
       DebugLogger.log('Iniciando MediaKit.ensureInitialized()...');
       MediaKit.ensureInitialized();
-      DebugLogger.log('MediaKit inicializado correctamente.');
     } catch (e, s) {
-      DebugLogger.log('ERROR en MediaKit.ensureInitialized: $e\n$s');
-      runApp(OrpheusErrorScreenApp(
-        serviceName: 'MediaKit (Motor de Audio)',
-        error: e,
-        stackTrace: s,
-      ));
-      return;
+      DebugLogger.log('ERROR en MediaKit: $e\n$s');
+    }
+
+    try {
+      DebugLogger.log('Solicitando permisos de notificación en arranque...');
+      await PermissionService.requestNotificationPermission();
+    } catch (e, s) {
+      DebugLogger.log('Advertencia permisos notificación: $e\n$s');
+    }
+
+    try {
+      DebugLogger.log('Iniciando AudioService.init()...');
+      await AudioService.init(
+        builder: () => OrpheusAudioHandler(),
+        config: const AudioServiceConfig(
+          androidNotificationChannelId: 'com.heyzell.orpheus.channel.playback',
+          androidNotificationChannelName: 'Orpheus — Reproducción',
+          androidNotificationChannelDescription:
+              'Controles de reproducción de música de Orpheus',
+          androidStopForegroundOnPause: true,
+          androidNotificationOngoing: true,
+          androidNotificationClickStartsActivity: true,
+          androidNotificationIcon: 'drawable/ic_stat_music',
+        ),
+      );
+      DebugLogger.log('AudioService.init() completado exitosamente.');
+    } catch (e, s) {
+      DebugLogger.log('ERROR CRÍTICO en AudioService.init: $e\n$s');
     }
 
     try {
       await MetadataGod.initialize();
     } catch (e, s) {
       DebugLogger.log('ERROR en MetadataGod: $e\n$s');
-      runApp(OrpheusErrorScreenApp(
-        serviceName: 'MetadataGod (Tag Editor FFI)',
-        error: e,
-        stackTrace: s,
-      ));
-      return;
     }
 
     try {
       DebugLogger.log('Iniciando LocalDatabase.initialize()...');
       await LocalDatabase.instance.initialize();
-      DebugLogger.log('LocalDatabase inicializado correctamente.');
     } catch (e, s) {
       DebugLogger.log('ERROR en LocalDatabase: $e\n$s');
-      runApp(OrpheusErrorScreenApp(
-        serviceName: 'LocalDatabase (Isar DB)',
-        error: e,
-        stackTrace: s,
-      ));
-      return;
     }
 
     try {
       DebugLogger.log('Hydratando estado de AudioPlayerService...');
       await AudioPlayerService.instance.hydratePlaybackState();
-      DebugLogger.log('AudioPlayerService hydratado.');
     } catch (e, s) {
       DebugLogger.log('ERROR en AudioPlayerService hydration: $e\n$s');
-      runApp(OrpheusErrorScreenApp(
-        serviceName: 'AudioPlayerService (Playback Engine)',
-        error: e,
-        stackTrace: s,
-      ));
-      return;
     }
 
-    // Mount UI first to ensure MainActivity is in the foreground and warm
+    if (OrpheusAudioHandler.hasInstance) {
+      OrpheusAudioHandler.instance.initAfterDatabaseReady();
+    }
+
     runApp(const OrpheusApp());
 
-    // Defer AudioService.init and permission request to post-frame callback
-    // when MainActivity is fully rendered and in ON_RESUME state (required for Android 14+).
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      DebugLogger.log('Post-Frame UI activa: Solicitando permisos de notificación...');
-      try {
-        final isGranted = await PermissionService.requestNotificationPermission();
-        DebugLogger.log('Permisos de notificación resueltos -> Concedido: $isGranted');
-      } catch (e, s) {
-        DebugLogger.log('Advertencia permisos notificación: $e\n$s');
-      }
-
-      try {
-        DebugLogger.log('Iniciando AudioService.init() con UI montada...');
-        await AudioService.init(
-          builder: () => OrpheusAudioHandler(),
-          config: const AudioServiceConfig(
-            androidNotificationChannelId: 'com.heyzell.orpheus.channel.playback',
-            androidNotificationChannelName: 'Orpheus — Reproducción',
-            androidNotificationChannelDescription:
-                'Controles de reproducción de música de Orpheus',
-            androidStopForegroundOnPause: true,
-            androidNotificationOngoing: true,
-            androidNotificationClickStartsActivity: true,
-            androidNotificationIcon: 'drawable/ic_stat_music',
-          ),
-        );
-        DebugLogger.log('AudioService.init() completado exitosamente.');
-
-        // Attach DB-dependent listeners and push initial state
-        OrpheusAudioHandler.instance.initAfterDatabaseReady();
-        DebugLogger.log('OrpheusAudioHandler listo post-DB.');
-
-        // Execute native Android reflection auditor to verify Java service state
-        try {
-          const channel = MethodChannel('com.heyzell.orpheus/app_control');
-          final report = await channel.invokeMethod<Map<dynamic, dynamic>>('getNotificationDiagnostics');
-          if (report != null) {
-            DebugLogger.log('--- DIAGNÓSTICO NATIVO POST-INIT ---');
-            report.forEach((k, v) => DebugLogger.log('NATIVO [$k]: $v'));
-            DebugLogger.log('------------------------------------');
-          }
-        } catch (e) {
-          DebugLogger.log('Error al ejecutar diagnóstico nativo post-init: $e');
-        }
-      } catch (e, s) {
-        DebugLogger.log('ERROR CRÍTICO en AudioService.init (post-frame): $e\n$s');
-      }
-
-      Future.delayed(const Duration(seconds: 3), () {
-        AlbumArtFetcherService.instance.processLibrary();
-      });
+    Future.delayed(const Duration(seconds: 3), () {
+      AlbumArtFetcherService.instance.processLibrary();
     });
   }, (Object error, StackTrace stack) {
     runApp(OrpheusErrorScreenApp(
@@ -257,19 +199,16 @@ class OrpheusErrorScreen extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(
-                  Icons.error_outline,
-                  color: Color(0xFFFF5252),
-                  size: 40,
-                ),
+                const Icon(Icons.error_outline_rounded, color: Color(0xFFFF5252), size: 28),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     title,
                     style: const TextStyle(
+                      fontFamily: 'Inter',
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFFFF5252),
+                      color: Colors.white,
                     ),
                   ),
                 ),
@@ -279,81 +218,52 @@ class OrpheusErrorScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
+                color: Colors.black45,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFF333333)),
+                border: Border.all(color: Colors.white12),
               ),
-              width: double.infinity,
               child: SelectableText(
                 error,
                 style: const TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 13,
+                  color: Color(0xFFFF8A8A),
+                ),
+              ),
+            ),
+            if (stackTrace != null) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Stack Trace:',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                   color: Colors.white70,
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Stack Trace:',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E1E),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF333333)),
-                ),
-                width: double.infinity,
-                child: SingleChildScrollView(
-                  child: SelectableText(
-                    stackTrace?.toString() ?? 'No hay stack trace disponible.',
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                      color: Colors.white54,
-                    ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white10),
                   ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF5252),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      stackTrace.toString(),
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: Colors.white54,
                       ),
                     ),
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(
-                        text: 'Servicio: $title\nError: $error\n\nStackTrace:\n$stackTrace',
-                      ));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Detalles de error copiados al portapapeles'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.copy),
-                    label: const Text('Copiar detalles del error'),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ],
         ),
       ),
