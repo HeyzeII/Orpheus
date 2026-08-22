@@ -77,14 +77,10 @@ void main() {
           androidNotificationChannelName: 'Orpheus — Reproducción',
           androidNotificationChannelDescription:
               'Controles de reproducción de música de Orpheus',
-          // false: Keep the ForegroundService alive while paused so Android doesn't
-          // destroy the MediaSession between track changes or audio-focus losses.
           androidStopForegroundOnPause: false,
-          // false: Allow the system to remove the notification when the service stops
-          // cleanly, avoiding conflicts with the ongoing flag on re-start.
           androidNotificationOngoing: false,
           androidNotificationClickStartsActivity: true,
-          androidNotificationIcon: 'drawable/ic_stat_music',
+          androidNotificationIcon: 'mipmap/ic_launcher',
         ),
       );
       DebugLogger.log('AudioService.init() completado — handler: ${audioHandler.runtimeType}');

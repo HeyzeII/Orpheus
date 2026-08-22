@@ -146,7 +146,8 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       duration: player.currentTrack?.trackId == track.trackId
           ? player.duration
           : null,
-      artUri: hasArt ? Uri.file(coverPath) : null,
+      // Temporarily forced to null to test if image decoding affects native notification card
+      artUri: null,
       extras: hasArt ? <String, dynamic>{'artCacheFile': coverPath} : null,
     );
   }
