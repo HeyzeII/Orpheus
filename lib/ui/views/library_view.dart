@@ -14,6 +14,7 @@ import '../../core/services/audio_player_service.dart';
 import '../../core/services/permission_service.dart';
 import '../dialogs/edit_metadata_dialog.dart';
 import '../theme/app_theme.dart';
+import '../widgets/animated_equalizer.dart';
 import '../widgets/app_toast.dart';
 
 enum LibraryTab { tracks, albums, artists, playlists }
@@ -173,12 +174,9 @@ class _LibraryViewState extends State<LibraryView> {
 
   Future<void> _shufflePlayTracks(List<Track> tracks) async {
     if (tracks.isEmpty) return;
-    final player = AudioPlayerService.instance;
-    // Enable shuffle in the service if not already on, then load the full
-    // unshuffled list. AudioPlayerService will produce the shuffled queue
-    // internally and preserve _originalQueue for restoration.
-    if (!player.shuffleEnabled) player.toggleShuffle();
-    await OrpheusAudioHandler.instance.loadQueue(tracks, initialIndex: 0);
+    final handler = OrpheusAudioHandler.instance;
+    if (!handler.shuffleEnabled) handler.toggleShuffle();
+    await handler.loadQueue(tracks, initialIndex: 0);
   }
 
   // Favorite toggle
@@ -571,8 +569,8 @@ class _LibraryViewState extends State<LibraryView> {
     final sysPad = MediaQuery.of(context).padding.bottom;
 
     return StreamBuilder<Track?>(
-      stream: AudioPlayerService.instance.currentTrackStream,
-      initialData: AudioPlayerService.instance.currentTrack,
+      stream: OrpheusAudioHandler.instance.currentTrackStream,
+      initialData: OrpheusAudioHandler.instance.currentTrack,
       builder: (context, snap) {
         final hasTrack = snap.data != null && snap.data!.trackId.isNotEmpty;
         // Panel height: nav (60) + gap (12) + mini-player (64 if track loaded).
@@ -585,7 +583,12 @@ class _LibraryViewState extends State<LibraryView> {
           children: [
             // ── Tabs Header ──────────────────────────────────────────────────────
             Padding(
-              padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, isMobile ? 20 : 36, isMobile ? 16 : 32, 0),
+              padding: EdgeInsets.fromLTRB(
+                isMobile ? 16 : 32,
+                isMobile ? (MediaQuery.of(context).padding.top + 12) : 36,
+                isMobile ? 16 : 32,
+                0,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1412,44 +1415,92 @@ class _LibraryViewState extends State<LibraryView> {
                             coverPath.isNotEmpty &&
                             File(coverPath).existsSync();
 
-                        return ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-                          onTap: () => _playTracks(playlistTracks, idx),
-                          leading: ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: SizedBox(
-                              width: 44,
-                              height: 44,
-                              child: hasArt
-                                  ? Image.file(File(coverPath!), fit: BoxFit.cover, cacheWidth: 88)
-                                  : const ColoredBox(
-                                      color: AppTheme.bgHover,
-                                      child: Icon(Icons.music_note_rounded,
-                                          color: AppTheme.textHint, size: 20),
+                        return StreamBuilder<Track?>(
+                          stream: OrpheusAudioHandler.instance.currentTrackStream,
+                          initialData: OrpheusAudioHandler.instance.currentTrack,
+                          builder: (context, snap) {
+                            final isCurrent = snap.data?.trackId == track.trackId;
+
+                            return Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                border: isCurrent
+                                    ? Border.all(color: AppTheme.accent.withOpacity(0.35), width: 1)
+                                    : null,
+                              ),
+                              child: Material(
+                                color: isCurrent ? AppTheme.accent.withOpacity(0.12) : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                                child: ListTile(
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                                  onTap: () => _playTracks(playlistTracks, idx),
+                                leading: ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: SizedBox(
+                                    width: 44,
+                                    height: 44,
+                                    child: Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        hasArt
+                                            ? Image.file(File(coverPath!), fit: BoxFit.cover, cacheWidth: 88)
+                                            : const ColoredBox(
+                                                color: AppTheme.bgHover,
+                                                child: Icon(Icons.music_note_rounded,
+                                                    color: AppTheme.textHint, size: 20),
+                                              ),
+                                        if (isCurrent)
+                                          Container(
+                                            color: Colors.black54,
+                                            child: Center(
+                                              child: StreamBuilder<bool>(
+                                                stream: OrpheusAudioHandler.instance.isPlayingStream,
+                                                initialData: OrpheusAudioHandler.instance.isPlaying,
+                                                builder: (_, playSnap) => AnimatedEqualizer(
+                                                  isPlaying: playSnap.data ?? false,
+                                                  barCount: 3,
+                                                  barWidth: 3.0,
+                                                  maxHeight: 18.0,
+                                                  minHeight: 4.0,
+                                                  spacing: 2.5,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
+                                  ),
+                                ),
+                                title: Text(
+                                  track.displayTitle,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: isCurrent ? AppTheme.accent : AppTheme.textPrimary,
+                                    fontSize: 13,
+                                    fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  track.displayArtist,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: isCurrent ? AppTheme.accent.withOpacity(0.8) : AppTheme.textSecondary,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                                trailing: IconButton(
+                                  icon: Icon(Icons.more_vert_rounded,
+                                      color: isCurrent ? AppTheme.accent : AppTheme.textSecondary, size: 20),
+                                  onPressed: () => _showTrackOptionsModal(context, track),
+                                ),
+                              ),
                             ),
-                          ),
-                          title: Text(
-                            track.displayTitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppTheme.textPrimary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          subtitle: Text(
-                            track.displayArtist,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.more_vert_rounded,
-                                color: AppTheme.textSecondary, size: 20),
-                            onPressed: () => _showTrackOptionsModal(context, track),
-                          ),
+                          );
+                        },
                         );
                       },
                       childCount: playlistTracks.length,
@@ -1822,44 +1873,92 @@ class _LibraryViewState extends State<LibraryView> {
             coverPath.isNotEmpty &&
             File(coverPath).existsSync();
 
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          onTap: () => _playTracks(tracks, idx),
-          leading: ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: SizedBox(
-              width: 46,
-              height: 46,
-              child: hasArt
-                  ? Image.file(File(coverPath!), fit: BoxFit.cover, cacheWidth: 92)
-                  : const ColoredBox(
-                      color: AppTheme.bgHover,
-                      child: Icon(Icons.music_note_rounded,
-                          color: AppTheme.textHint, size: 20),
+        return StreamBuilder<Track?>(
+          stream: OrpheusAudioHandler.instance.currentTrackStream,
+          initialData: OrpheusAudioHandler.instance.currentTrack,
+          builder: (context, snap) {
+            final isCurrent = snap.data?.trackId == track.trackId;
+
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: isCurrent
+                    ? Border.all(color: AppTheme.accent.withOpacity(0.35), width: 1)
+                    : null,
+              ),
+              child: Material(
+                color: isCurrent ? AppTheme.accent.withOpacity(0.12) : Colors.transparent,
+                borderRadius: BorderRadius.circular(8),
+                child: ListTile(
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  onTap: () => _playTracks(tracks, idx),
+                leading: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: SizedBox(
+                    width: 46,
+                    height: 46,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        hasArt
+                            ? Image.file(File(coverPath!), fit: BoxFit.cover, cacheWidth: 92)
+                            : const ColoredBox(
+                                color: AppTheme.bgHover,
+                                child: Icon(Icons.music_note_rounded,
+                                    color: AppTheme.textHint, size: 20),
+                              ),
+                        if (isCurrent)
+                          Container(
+                            color: Colors.black54,
+                            child: Center(
+                              child: StreamBuilder<bool>(
+                                stream: OrpheusAudioHandler.instance.isPlayingStream,
+                                initialData: OrpheusAudioHandler.instance.isPlaying,
+                                builder: (_, playSnap) => AnimatedEqualizer(
+                                  isPlaying: playSnap.data ?? false,
+                                  barCount: 3,
+                                  barWidth: 3.0,
+                                  maxHeight: 18.0,
+                                  minHeight: 4.0,
+                                  spacing: 2.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
+                  ),
+                ),
+                title: Text(
+                  track.displayTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isCurrent ? AppTheme.accent : AppTheme.textPrimary,
+                    fontSize: 13,
+                    fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  track.displayArtist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isCurrent ? AppTheme.accent.withOpacity(0.8) : AppTheme.textSecondary,
+                    fontSize: 11,
+                  ),
+                ),
+                trailing: IconButton(
+                  icon: Icon(Icons.more_vert_rounded,
+                      color: isCurrent ? AppTheme.accent : AppTheme.textSecondary, size: 20),
+                  onPressed: () => _showTrackOptionsModal(context, track),
+                ),
+              ),
             ),
-          ),
-          title: Text(
-            track.displayTitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppTheme.textPrimary,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          subtitle: Text(
-            track.displayArtist,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
-          ),
-          trailing: IconButton(
-            icon: const Icon(Icons.more_vert_rounded,
-                color: AppTheme.textSecondary, size: 20),
-            onPressed: () => _showTrackOptionsModal(context, track),
-          ),
+          );
+          },
         );
       },
     );
@@ -2037,61 +2136,86 @@ class _TrackRowState extends State<_TrackRow> {
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onDoubleTap: widget.onPlay,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-          decoration: BoxDecoration(
-            color: _hovered ? AppTheme.bgHover : Colors.transparent,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Row(
-            children: [
-              // Index / Play button
-              SizedBox(
-                width: 40,
-                child: _hovered
-                    ? GestureDetector(
-                        onTap: widget.onPlay,
-                        child: const Icon(Icons.play_arrow_rounded, color: AppTheme.accent, size: 18),
-                      )
-                    : Text(
-                        widget.index.toString(),
-                        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-                      ),
+    return StreamBuilder<Track?>(
+      stream: OrpheusAudioHandler.instance.currentTrackStream,
+      initialData: OrpheusAudioHandler.instance.currentTrack,
+      builder: (context, snap) {
+        final isCurrent = snap.data?.trackId == widget.track.trackId;
+
+        return MouseRegion(
+          onEnter: (_) => setState(() => _hovered = true),
+          onExit: (_) => setState(() => _hovered = false),
+          child: GestureDetector(
+            onDoubleTap: widget.onPlay,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+              decoration: BoxDecoration(
+                color: isCurrent
+                    ? AppTheme.accent.withOpacity(0.12)
+                    : (_hovered ? AppTheme.bgHover : Colors.transparent),
+                borderRadius: BorderRadius.circular(6),
+                border: isCurrent
+                    ? Border.all(color: AppTheme.accent.withOpacity(0.35), width: 1)
+                    : null,
               ),
-              // Title
-              Expanded(
-                flex: 3,
-                child: Row(
-                  children: [
-                    if (widget.track.customMetadata.customCoverPath != null) ...[
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(3),
-                        child: Image.file(
-                          File(widget.track.customMetadata.customCoverPath!),
-                          width: 24,
-                          height: 24,
-                          fit: BoxFit.cover,
+              child: Row(
+                children: [
+                  // Index / Play / Equalizer
+                  SizedBox(
+                    width: 40,
+                    child: _hovered
+                        ? GestureDetector(
+                            onTap: widget.onPlay,
+                            child: const Icon(Icons.play_arrow_rounded, color: AppTheme.accent, size: 18),
+                          )
+                        : (isCurrent
+                            ? StreamBuilder<bool>(
+                                stream: OrpheusAudioHandler.instance.isPlayingStream,
+                                initialData: OrpheusAudioHandler.instance.isPlaying,
+                                builder: (_, playSnap) => Center(
+                                  child: AnimatedEqualizer(
+                                    isPlaying: playSnap.data ?? false,
+                                    barCount: 3,
+                                    barWidth: 2.5,
+                                    maxHeight: 14.0,
+                                    minHeight: 3.0,
+                                  ),
+                                ),
+                              )
+                            : Text(
+                                widget.index.toString(),
+                                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                              )),
+                  ),
+                  // Title
+                  Expanded(
+                    flex: 3,
+                    child: Row(
+                      children: [
+                        if (widget.track.customMetadata.customCoverPath != null) ...[
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(3),
+                            child: Image.file(
+                              File(widget.track.customMetadata.customCoverPath!),
+                              width: 24,
+                              height: 24,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        Expanded(
+                          child: Text(
+                            widget.track.displayTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: isCurrent ? AppTheme.accent : AppTheme.textPrimary,
+                              fontSize: 13,
+                              fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
+                            ),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    Expanded(
-                      child: Text(
-                        widget.track.displayTitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ),
                     if (widget.track.downloadSource != null) ...[
                       const SizedBox(width: 4),
                       ConstrainedBox(
@@ -2359,6 +2483,8 @@ class _TrackRowState extends State<_TrackRow> {
         ),
       ),
     );
+      },
+    );
   }
 }
 
@@ -2393,6 +2519,12 @@ class PlaylistCover extends StatelessWidget {
         height: size,
         fit: BoxFit.cover,
       );
+    }
+
+    // 2. "Liked Tracks" special playlist — always uses the heart placeholder
+    //    regardless of whether it contains songs, so its identity is consistent.
+    if (isLiked) {
+      return _buildVinylPlaceholder(true);
     }
 
     // Resolve tracks in order using the database int ID

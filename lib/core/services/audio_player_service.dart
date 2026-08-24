@@ -175,8 +175,7 @@ class AudioPlayerService {
               case AudioInterruptionType.duck:
               case AudioInterruptionType.pause:
               case AudioInterruptionType.unknown:
-                // Release focus immediately so other apps can take over.
-                await _safeSetActive(false);
+                // Pause playback during interruption while preserving the session
                 await pause();
                 break;
             }
@@ -195,8 +194,7 @@ class AudioPlayerService {
       _subscriptions.add(session.becomingNoisyEventStream.listen((_) async {
         if (_disposed) return;
         try {
-          // Headset unplugged or Bluetooth disconnected — pause gracefully.
-          await _safeSetActive(false);
+          // Headset unplugged or Bluetooth disconnected — pause gracefully without destroying session.
           await pause();
         } catch (e, s) {
           debugPrint('Error handling becomingNoisy event: $e\n$s');
@@ -344,8 +342,8 @@ class AudioPlayerService {
     } catch (e) {
       debugPrint('Error pausing audio: $e');
     }
-    // Release audio focus so other apps (TikTok, Instagram, etc.) can resume.
-    await _safeSetActive(false);
+    // We intentionally keep AudioSession active while paused so Android
+    // preserves the ForegroundService, MediaSession, and lockscreen controls.
     _notifyState();
   }
 
@@ -356,7 +354,7 @@ class AudioPlayerService {
     } catch (e) {
       debugPrint('Error stopping audio: $e');
     }
-    // Release audio focus completely.
+    // Release audio focus completely when playback is explicitly stopped.
     await _safeSetActive(false);
     _currentIndex = -1;
     _notifyState();
@@ -367,6 +365,7 @@ class AudioPlayerService {
     if (!Platform.environment.containsKey('FLUTTER_TEST')) {
       await _player.stop();
     }
+    await _safeSetActive(false);
     _queue.clear();
     _originalQueue = null;
     _currentIndex = -1;
@@ -769,6 +768,7 @@ class AudioPlayerService {
 
   Future<void> dispose() async {
     _disposed = true;
+    await _safeSetActive(false);
     for (final sub in _subscriptions) {
       await sub.cancel();
     }

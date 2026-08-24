@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import '../../core/database/local_database.dart';
 import '../../core/models/track.dart';
 import '../../core/services/album_art_fetcher_service.dart';
-import '../../core/services/audio_player_service.dart';
+import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_scanner.dart';
 import '../../core/services/permission_service.dart';
 import '../theme/app_theme.dart';
@@ -147,8 +147,8 @@ class _SettingsViewState extends State<SettingsView> {
     final isMobile = MediaQuery.sizeOf(context).width < 600;
 
     return StreamBuilder<Track?>(
-      stream: AudioPlayerService.instance.currentTrackStream,
-      initialData: AudioPlayerService.instance.currentTrack,
+      stream: OrpheusAudioHandler.instance.currentTrackStream,
+      initialData: OrpheusAudioHandler.instance.currentTrack,
       builder: (context, snap) {
         final hasTrack = snap.data != null && snap.data!.trackId.isNotEmpty;
         final sysPad = MediaQuery.of(context).padding.bottom;
@@ -157,7 +157,7 @@ class _SettingsViewState extends State<SettingsView> {
             ? (hasTrack ? 60.0 + 64.0 + 12.0 : 60.0 + 12.0) + sysPad + 16.0
             : 32.0;
         final hPad = isMobile ? 16.0 : 32.0;
-        final tPad = isMobile ? 24.0 : 36.0;
+        final tPad = isMobile ? (MediaQuery.of(context).padding.top + 16.0) : 36.0;
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(hPad, tPad, hPad, bottomPad),
       child: Column(
@@ -700,7 +700,7 @@ class _SettingsViewState extends State<SettingsView> {
       _isScanning = true;
       _scanDirs.clear();
     });
-    await AudioPlayerService.instance.stopAndReset();
+    await OrpheusAudioHandler.instance.stopAndReset();
     await LocalDatabase.instance.clearDatabase();
     await _loadConfig();
 

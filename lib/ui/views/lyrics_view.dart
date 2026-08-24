@@ -41,7 +41,7 @@ class LyricsView extends StatefulWidget {
 class _LyricsViewState extends State<LyricsView> {
   // ── Services ───────────────────────────────────────────────────────────────
   final _lyricsService = LyricsService.instance;
-  final _player = AudioPlayerService.instance;
+  final _handler = OrpheusAudioHandler.instance;
 
   // ── State ──────────────────────────────────────────────────────────────────
   Future<String?>? _lyricsFuture;
@@ -132,7 +132,7 @@ class _LyricsViewState extends State<LyricsView> {
             return _SyncedLyricsBody(
               lines: _lines.isNotEmpty ? _lines : parsed,
               scrollController: _scrollController,
-              player: _player,
+              handler: _handler,
               onUserScrollStart: () => _userScrolling = true,
               onUserScrollEnd: () {
                 Future.delayed(const Duration(seconds: 3), () {
@@ -169,7 +169,7 @@ class _SyncedLyricsBody extends StatefulWidget {
   const _SyncedLyricsBody({
     required this.lines,
     required this.scrollController,
-    required this.player,
+    required this.handler,
     required this.onUserScrollStart,
     required this.onUserScrollEnd,
     required this.onActiveLine,
@@ -177,7 +177,7 @@ class _SyncedLyricsBody extends StatefulWidget {
 
   final List<LyricLine> lines;
   final ScrollController scrollController;
-  final AudioPlayerService player;
+  final OrpheusAudioHandler handler;
   final VoidCallback onUserScrollStart;
   final VoidCallback onUserScrollEnd;
   final ValueChanged<int> onActiveLine;
@@ -212,7 +212,7 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
     }
 
     return StreamBuilder<Duration>(
-      stream: widget.player.positionStream,
+      stream: widget.handler.positionStream,
       builder: (context, snap) {
         final position = snap.data ?? Duration.zero;
         final activeIdx = LrcParser.activeLineIndex(widget.lines, position);
@@ -442,54 +442,64 @@ class _NoLyricsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 360),
-        padding: const EdgeInsets.all(32),
-        decoration: BoxDecoration(
-          color: AppTheme.bgSurface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.divider),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.lyrics_outlined, size: 40, color: AppTheme.textHint),
-            const SizedBox(height: 16),
-            Text(
-              'No lyrics found',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium!
-                  .copyWith(color: AppTheme.textPrimary),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'LRCLIB has no entry for\n"${track.displayTitle}"',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 12,
-                color: AppTheme.textSecondary,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 24),
-            OutlinedButton.icon(
-              onPressed: onRetry,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.accent,
-                side: const BorderSide(color: AppTheme.accentDim),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 360),
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: AppTheme.bgSurface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.divider),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.lyrics_outlined, size: 40, color: AppTheme.textHint),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No lyrics found',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium!
+                          .copyWith(color: AppTheme.textPrimary),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'LRCLIB has no entry for\n"${track.displayTitle}"',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    OutlinedButton.icon(
+                      onPressed: onRetry,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.accent,
+                        side: const BorderSide(color: AppTheme.accentDim),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('Retry'),
+                    ),
+                  ],
                 ),
               ),
-              icon: const Icon(Icons.refresh, size: 16),
-              label: const Text('Retry'),
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -505,58 +515,68 @@ class _LyricsErrorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 360),
-        padding: const EdgeInsets.all(32),
-        decoration: BoxDecoration(
-          color: AppTheme.bgSurface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.divider),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.wifi_off_rounded,
-              size: 40,
-              color: AppTheme.textHint,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Connection error',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium!
-                  .copyWith(color: AppTheme.textPrimary),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Could not reach LRCLIB.\nCheck your internet connection.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 12,
-                color: AppTheme.textSecondary,
-                height: 1.5,
-              ),
-            ),
-            const SizedBox(height: 24),
-            OutlinedButton.icon(
-              onPressed: onRetry,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.accent,
-                side: const BorderSide(color: AppTheme.accentDim),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 360),
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: AppTheme.bgSurface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.divider),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.wifi_off_rounded,
+                      size: 40,
+                      color: AppTheme.textHint,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Connection error',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium!
+                          .copyWith(color: AppTheme.textPrimary),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Could not reach LRCLIB.\nCheck your internet connection.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    OutlinedButton.icon(
+                      onPressed: onRetry,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.accent,
+                        side: const BorderSide(color: AppTheme.accentDim),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('Retry'),
+                    ),
+                  ],
                 ),
               ),
-              icon: const Icon(Icons.refresh, size: 16),
-              label: const Text('Retry'),
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

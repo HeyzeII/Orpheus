@@ -16,6 +16,7 @@ import '../views/home_view.dart';
 import '../views/library_view.dart';
 import '../views/lyrics_view.dart';
 import '../views/settings_view.dart';
+import '../widgets/marquee_text.dart';
 import '../widgets/player_bar.dart';
 import '../widgets/sidebar.dart';
 
@@ -61,7 +62,9 @@ class _DesktopNavigationShellState extends State<DesktopNavigationShell> with Wi
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
-      AudioPlayerService.instance.savePlaybackStateNow();
+      if (OrpheusAudioHandler.hasInstance) {
+        OrpheusAudioHandler.instance.savePlaybackStateNow();
+      }
     }
   }
 
@@ -104,9 +107,9 @@ class _DesktopNavigationShellState extends State<DesktopNavigationShell> with Wi
                           duration: const Duration(milliseconds: 300),
                           opacity: _showLyrics ? 1.0 : 0.0,
                           child: StreamBuilder<Track?>(
-                            stream: AudioPlayerService
+                            stream: OrpheusAudioHandler
                                 .instance.currentTrackStream,
-                            initialData: AudioPlayerService
+                            initialData: OrpheusAudioHandler
                                 .instance.currentTrack,
                             builder: (context, snap) {
                               final track = snap.data;
@@ -282,8 +285,7 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
         // The handler listens to AudioPlayerService streams which may not re-emit.
         // Force a state push via the AudioService.notificationClicked stream by calling
         // play (no-op if already playing) or by refreshing the handler's state manually.
-        final svc = AudioPlayerService.instance;
-        if (svc.isPlaying && OrpheusAudioHandler.hasInstance) {
+        if (OrpheusAudioHandler.hasInstance && OrpheusAudioHandler.instance.isPlaying) {
           OrpheusAudioHandler.instance.play();
         }
       },
@@ -301,7 +303,9 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
-      AudioPlayerService.instance.savePlaybackStateNow();
+      if (OrpheusAudioHandler.hasInstance) {
+        OrpheusAudioHandler.instance.savePlaybackStateNow();
+      }
     }
   }
 
@@ -403,7 +407,7 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
 
               // ── Unified Glassmorphic Floating Pill Panel ────────────────────
               Positioned(
-                bottom: 12,
+                bottom: 12 + MediaQuery.of(context).padding.bottom,
                 left: 12,
                 right: 12,
                 child: _UnifiedBottomPanel(
@@ -478,8 +482,8 @@ class _UnifiedBottomPanel extends StatelessWidget {
             children: [
               // ── Mini-player strip (only when a track is loaded) ─────
               StreamBuilder<Track?>(
-                stream: AudioPlayerService.instance.currentTrackStream,
-                initialData: AudioPlayerService.instance.currentTrack,
+                stream: OrpheusAudioHandler.instance.currentTrackStream,
+                initialData: OrpheusAudioHandler.instance.currentTrack,
                 builder: (context, snap) {
                   final track = snap.data;
                   if (track == null || track.trackId.isEmpty) {
@@ -559,7 +563,7 @@ class _MiniPlayerStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final svc = AudioPlayerService.instance;
+    final handler = OrpheusAudioHandler.instance;
 
     return GestureDetector(
       onTap: onTap,
@@ -579,20 +583,17 @@ class _MiniPlayerStrip extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          track.displayTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        MarqueeText(
+                          text: track.displayTitle,
                           style: const TextStyle(
                             color: AppTheme.textPrimary,
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        Text(
-                          track.displayArtist,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        const SizedBox(height: 2),
+                        MarqueeText(
+                          text: track.displayArtist,
                           style: const TextStyle(
                             color: AppTheme.textSecondary,
                             fontSize: 11,
@@ -603,8 +604,8 @@ class _MiniPlayerStrip extends StatelessWidget {
                   ),
                   // Play/Pause
                   StreamBuilder<bool>(
-                    stream: svc.isPlayingStream,
-                    initialData: svc.isPlaying,
+                    stream: handler.isPlayingStream,
+                    initialData: handler.isPlaying,
                     builder: (context, snap) {
                       final playing = snap.data ?? false;
                       return IconButton(
@@ -615,15 +616,15 @@ class _MiniPlayerStrip extends StatelessWidget {
                           color: AppTheme.accent,
                           size: 28,
                         ),
-                        onPressed: () => playing ? svc.pause() : svc.play(),
+                        onPressed: () => handler.togglePlayPause(),
                       );
                     },
                   ),
                   // Skip next
                   StreamBuilder<Track?>(
-                    stream: svc.currentTrackStream,
+                    stream: handler.currentTrackStream,
                     builder: (context, _) {
-                      final canNext = svc.canSkipNext;
+                      final canNext = handler.canSkipNext;
                       return IconButton(
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints.tightFor(width: 36, height: 40),
@@ -632,7 +633,7 @@ class _MiniPlayerStrip extends StatelessWidget {
                           color: canNext ? AppTheme.textSecondary : AppTheme.textHint.withOpacity(0.3),
                           size: 24,
                         ),
-                        onPressed: canNext ? () => svc.next() : null,
+                        onPressed: canNext ? () => handler.next() : null,
                       );
                     },
                   ),
@@ -644,7 +645,7 @@ class _MiniPlayerStrip extends StatelessWidget {
               left: 16,
               right: 16,
               bottom: 0,
-              child: _MiniProgressStripe(svc: svc),
+              child: _MiniProgressStripe(handler: handler),
             ),
           ],
         ),
@@ -654,17 +655,17 @@ class _MiniPlayerStrip extends StatelessWidget {
 }
 
 class _MiniProgressStripe extends StatelessWidget {
-  const _MiniProgressStripe({required this.svc});
-  final AudioPlayerService svc;
+  const _MiniProgressStripe({required this.handler});
+  final OrpheusAudioHandler handler;
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<Duration>(
-      stream: svc.positionStream,
-      initialData: svc.position,
+      stream: handler.positionStream,
+      initialData: handler.position,
       builder: (_, posSnap) => StreamBuilder<Duration>(
-        stream: svc.durationStream,
-        initialData: svc.duration,
+        stream: handler.durationStream,
+        initialData: handler.duration,
         builder: (_, durSnap) {
           final pos = posSnap.data ?? Duration.zero;
           final dur = durSnap.data ?? Duration.zero;

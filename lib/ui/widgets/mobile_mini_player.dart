@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/track.dart';
 import '../../core/services/audio_handler.dart';
-import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
 import '../views/expanded_player_view.dart';
 
@@ -79,11 +78,12 @@ class MobileMiniPlayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final svc = AudioPlayerService.instance;
+    if (!OrpheusAudioHandler.hasInstance) return const SizedBox.shrink();
+    final handler = OrpheusAudioHandler.instance;
 
     return StreamBuilder<Track?>(
-      stream: svc.currentTrackStream,
-      initialData: svc.currentTrack,
+      stream: handler.currentTrackStream,
+      initialData: handler.currentTrack,
       builder: (context, snap) {
         final track = snap.data;
         if (track == null || track.trackId.isEmpty) return const SizedBox.shrink();
@@ -149,8 +149,8 @@ class MobileMiniPlayer extends StatelessWidget {
 
                         // Play / Pause
                         StreamBuilder<bool>(
-                          stream: svc.isPlayingStream,
-                          initialData: svc.isPlaying,
+                          stream: handler.isPlayingStream,
+                          initialData: handler.isPlaying,
                           builder: (context, playSnap) {
                             final playing = playSnap.data ?? false;
                             return _IconBtn(
@@ -159,7 +159,7 @@ class MobileMiniPlayer extends StatelessWidget {
                                   : Icons.play_arrow_rounded,
                               color: AppTheme.accent,
                               size: 28,
-                              onPressed: () => OrpheusAudioHandler.instance.togglePlayPause(),
+                              onPressed: () => handler.togglePlayPause(),
                             );
                           },
                         ),
@@ -168,17 +168,17 @@ class MobileMiniPlayer extends StatelessWidget {
                         // dims correctly even when the same last track is
                         // still playing (currentTrackStream wouldn't emit).
                         StreamBuilder<bool>(
-                          stream: svc.canSkipNextStream,
-                          initialData: svc.canSkipNext,
+                          stream: handler.canSkipNextStream,
+                          initialData: handler.canSkipNext,
                           builder: (context, snap) {
-                            final canNext = snap.data ?? svc.canSkipNext;
+                            final canNext = snap.data ?? handler.canSkipNext;
                             return Opacity(
                               opacity: canNext ? 1.0 : 0.3,
                               child: _IconBtn(
                                 icon: Icons.skip_next_rounded,
                                 color: AppTheme.textSecondary,
                                 size: 24,
-                                onPressed: canNext ? () => OrpheusAudioHandler.instance.skipToNext() : null,
+                                onPressed: canNext ? () => handler.skipToNext() : null,
                               ),
                             );
                           },
@@ -192,7 +192,7 @@ class MobileMiniPlayer extends StatelessWidget {
                     left: 0,
                     right: 0,
                     bottom: 0,
-                    child: _ProgressStripe(svc: svc),
+                    child: _ProgressStripe(handler: handler),
                   ),
                 ],
               ),
@@ -233,19 +233,19 @@ class _IconBtn extends StatelessWidget {
 /// Extracted into its own widget so the two nested StreamBuilders only
 /// rebuild this thin element, not the whole mini-player card.
 class _ProgressStripe extends StatelessWidget {
-  const _ProgressStripe({required this.svc});
+  const _ProgressStripe({required this.handler});
 
-  final AudioPlayerService svc;
+  final OrpheusAudioHandler handler;
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<Duration>(
-      stream: svc.positionStream,
-      initialData: svc.position,
+      stream: handler.positionStream,
+      initialData: handler.position,
       builder: (context, posSnap) {
         return StreamBuilder<Duration>(
-          stream: svc.durationStream,
-          initialData: svc.duration,
+          stream: handler.durationStream,
+          initialData: handler.duration,
           builder: (context, durSnap) {
             final pos = posSnap.data ?? Duration.zero;
             final dur = durSnap.data ?? Duration.zero;

@@ -74,13 +74,18 @@ void main() {
         builder: () => OrpheusAudioHandler(),
         config: const AudioServiceConfig(
           androidNotificationChannelId: 'com.heyzell.orpheus.channel.playback_v2',
-          androidNotificationChannelName: 'Orpheus — Reproducción',
+          androidNotificationChannelName: 'Orpheus Reproduccion',
           androidNotificationChannelDescription:
-              'Controles de reproducción de música de Orpheus',
-          androidStopForegroundOnPause: false,
-          androidNotificationOngoing: false,
+              'Controles de reproduccion de musica de Orpheus',
+          // Con androidNotificationOngoing: true y androidStopForegroundOnPause: true,
+          // la notificacion es fija e inmune a swipe durante la reproduccion en primer plano,
+          // y se puede pausar/descartar limpiamente sin romper la asercion.
+          androidNotificationOngoing: true,
+          androidStopForegroundOnPause: true,
+          androidShowNotificationBadge: true,
           androidNotificationClickStartsActivity: true,
           androidNotificationIcon: 'mipmap/ic_launcher',
+          preloadArtwork: true,
         ),
       );
       DebugLogger.log('AudioService.init() completado — handler: ${audioHandler.runtimeType}');

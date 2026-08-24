@@ -171,7 +171,12 @@ class _HomeViewState extends State<HomeView> {
     const double bottomPad = kBottomNavigationBarHeight + 66 + 24;
 
     return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(16, 24, 16, bottomPad),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        MediaQuery.of(context).padding.top + 16,
+        16,
+        bottomPad,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

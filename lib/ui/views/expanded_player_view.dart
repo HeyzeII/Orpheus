@@ -1,13 +1,17 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
 import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_toast.dart';
+import '../widgets/marquee_text.dart';
 import 'lyrics_view.dart';
 
 /// The premium Now Playing "Theater View" (Expanded Player) replacing Explore.
@@ -32,8 +36,8 @@ class ExpandedPlayerView extends StatelessWidget {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: StreamBuilder<Track?>(
-          stream: AudioPlayerService.instance.currentTrackStream,
-          initialData: AudioPlayerService.instance.currentTrack,
+          stream: OrpheusAudioHandler.instance.currentTrackStream,
+          initialData: OrpheusAudioHandler.instance.currentTrack,
           builder: (context, snap) {
             final track = snap.data;
             final isMobile = MediaQuery.sizeOf(context).width < 600;
@@ -178,7 +182,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
         padding: EdgeInsets.fromLTRB(16, topPad + 4, 16, bottomPad + 8),
         child: Column(
           children: [
-            // ── Top Bar: Minimize handle + Action buttons (Letras / Cola) ──
+            // ── Top Bar: Minimize button + Header title + 3-dots menu ────────
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -188,36 +192,21 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                   onPressed: () => Navigator.of(context).pop(),
                   tooltip: 'Minimizar',
                 ),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        Icons.lyrics_rounded,
-                        color: _mode == _MobileOverlayMode.lyrics
-                            ? AppTheme.accent
-                            : Colors.white54,
-                        size: 24,
-                      ),
-                      onPressed: () => _toggleMode(_MobileOverlayMode.lyrics),
-                      tooltip: 'Letras',
-                    ),
-                    IconButton(
-                      icon: Icon(
-                        Icons.queue_music_rounded,
-                        color: _mode == _MobileOverlayMode.queue
-                            ? AppTheme.accent
-                            : Colors.white54,
-                        size: 24,
-                      ),
-                      onPressed: () => _toggleMode(_MobileOverlayMode.queue),
-                      tooltip: 'Cola de reproducción',
-                    ),
-                  ],
+                const Text(
+                  'REPRODUCIENDO',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.5,
+                    color: Colors.white54,
+                  ),
                 ),
+                _TrackMoreMenu(track: track, iconSize: 22),
               ],
             ),
 
-            // ── Animated Cover Art Container (aligns top-left & resizes smoothly when lyrics/queue mode is active) ──
+            // ── Animated Cover Art Container ─────────────────────────────────
             AnimatedAlign(
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeOut,
@@ -261,7 +250,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
               ),
             ),
 
-            // ── Expanded space for Lyrics or Queue ──
+            // ── Expanded space for Lyrics or Queue ────────────────────────────
             if (isLyricsOrQueue)
               Expanded(
                 child: AnimatedSwitcher(
@@ -295,48 +284,88 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
             else
               const Spacer(),
 
-            // ── Track Title & Artist ──────────────────────────────────────
+            // ── Track Title & Artist (Left) + Favorite Heart (Right) ──────────
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Text(
-                    track.displayTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        MarqueeText(
+                          text: track.displayTitle,
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        MarqueeText(
+                          text: track.displayArtist,
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                            color: Colors.white.withOpacity(0.65),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    track.displayArtist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w400,
-                      color: Colors.white.withOpacity(0.65),
-                    ),
-                  ),
+                  const SizedBox(width: 12),
+                  _FavoriteHeartButton(track: track, size: 26),
                 ],
               ),
             ),
 
             const SizedBox(height: 12),
 
-            // ── Progress Slider ───────────────────────────────────────────
+            // ── Progress Slider ───────────────────────────────────────────────
             const _ExpandedProgressBar(),
+
+            const SizedBox(height: 8),
+
+            // ── Playback Controls ─────────────────────────────────────────────
+            const _ExpandedPlaybackControls(),
 
             const SizedBox(height: 12),
 
-            // ── Playback Controls ─────────────────────────────────────────
-            const _ExpandedPlaybackControls(),
+            // ── Bottom Utility Row: Lyrics Toggle / Lossless Badge / Queue Toggle ──
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(
+                    icon: Icon(
+                      Icons.lyrics_rounded,
+                      color: _mode == _MobileOverlayMode.lyrics
+                          ? AppTheme.accent
+                          : Colors.white60,
+                      size: 24,
+                    ),
+                    onPressed: () => _toggleMode(_MobileOverlayMode.lyrics),
+                    tooltip: 'Letras',
+                  ),
+                  _AudioHdBadge(track: track),
+                  IconButton(
+                    icon: Icon(
+                      Icons.queue_music_rounded,
+                      color: _mode == _MobileOverlayMode.queue
+                          ? AppTheme.accent
+                          : Colors.white60,
+                      size: 24,
+                    ),
+                    onPressed: () => _toggleMode(_MobileOverlayMode.queue),
+                    tooltip: 'Cola de reproducción',
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -427,28 +456,39 @@ class _ExpandedArtisticCore extends StatelessWidget {
           const SizedBox(height: 40),
 
           // Track Info
-          Text(
-            track.displayTitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            track.displayArtist,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 20,
-              fontWeight: FontWeight.w500,
-              color: Colors.white.withOpacity(0.7),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    MarqueeText(
+                      text: track.displayTitle,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    MarqueeText(
+                      text: track.displayArtist,
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 20,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white.withOpacity(0.7),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              _FavoriteHeartButton(track: track, size: 28),
+              const SizedBox(width: 8),
+              _TrackMoreMenu(track: track, iconSize: 26),
+            ],
           ),
           const SizedBox(height: 32),
 
@@ -471,16 +511,17 @@ class _ExpandedProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final player = AudioPlayerService.instance;
+    if (!OrpheusAudioHandler.hasInstance) return const SizedBox.shrink();
+    final handler = OrpheusAudioHandler.instance;
 
     return StreamBuilder<Duration>(
-      stream: player.positionStream,
+      stream: handler.positionStream,
       builder: (context, posSnap) {
         return StreamBuilder<Duration>(
-          stream: player.durationStream,
+          stream: handler.durationStream,
           builder: (context, durSnap) {
-            final pos = posSnap.data ?? player.position;
-            final dur = durSnap.data ?? player.duration;
+            final pos = posSnap.data ?? handler.position;
+            final dur = durSnap.data ?? handler.duration;
             final maxVal = dur.inMilliseconds.toDouble();
             final curVal = (pos.inMilliseconds.toDouble()).clamp(
               0.0,
@@ -559,65 +600,48 @@ class _ExpandedPlaybackControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final player = AudioPlayerService.instance;
+    if (!OrpheusAudioHandler.hasInstance) return const SizedBox.shrink();
+    final handler = OrpheusAudioHandler.instance;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         // Shuffle
         StreamBuilder<bool>(
-          stream: player.shuffleStream,
+          stream: handler.shuffleStream,
           builder: (_, snap) {
-            final on = snap.data ?? player.shuffleEnabled;
+            final on = snap.data ?? handler.shuffleEnabled;
             return IconButton(
               icon: Icon(Icons.shuffle_rounded,
                   color: on ? AppTheme.accent : Colors.white54, size: 26),
-              onPressed: player.toggleShuffle,
+              onPressed: handler.toggleShuffle,
             );
           },
         ),
         const SizedBox(width: 16),
         // Previous
         StreamBuilder<Track?>(
-          stream: player.currentTrackStream,
+          stream: handler.currentTrackStream,
           builder: (_, __) {
-            final canPrev = player.canSkipPrevious;
+            final canPrev = handler.canSkipPrevious;
             return IconButton(
               icon: Icon(
                 Icons.skip_previous_rounded,
                 color: canPrev ? Colors.white : Colors.white24,
                 size: 38,
               ),
-              onPressed: canPrev
-                  ? () {
-                      if (OrpheusAudioHandler.hasInstance) {
-                        OrpheusAudioHandler.instance.skipToPrevious();
-                      } else {
-                        player.previous();
-                      }
-                    }
-                  : null,
+              onPressed: canPrev ? handler.skipToPrevious : null,
             );
           },
         ),
         const SizedBox(width: 16),
         // Play / Pause (prominent circle)
         StreamBuilder<bool>(
-          stream: player.isPlayingStream,
+          stream: handler.isPlayingStream,
           builder: (_, snap) {
-            final playing = snap.data ?? player.isPlaying;
+            final playing = snap.data ?? handler.isPlaying;
             return GestureDetector(
-              onTap: () {
-                if (OrpheusAudioHandler.hasInstance) {
-                  OrpheusAudioHandler.instance.togglePlayPause();
-                } else {
-                  if (player.isPlaying) {
-                    player.pause();
-                  } else {
-                    player.play();
-                  }
-                }
-              },
+              onTap: handler.togglePlayPause,
               child: Container(
                 width: 64,
                 height: 64,
@@ -637,10 +661,10 @@ class _ExpandedPlaybackControls extends StatelessWidget {
         const SizedBox(width: 16),
         // Next — uses canSkipNextStream for accurate disabled state
         StreamBuilder<bool>(
-          stream: player.canSkipNextStream,
-          initialData: player.canSkipNext,
+          stream: handler.canSkipNextStream,
+          initialData: handler.canSkipNext,
           builder: (_, snap) {
-            final canNext = snap.data ?? player.canSkipNext;
+            final canNext = snap.data ?? handler.canSkipNext;
             return Opacity(
               opacity: canNext ? 1.0 : 0.3,
               child: IconButton(
@@ -649,15 +673,7 @@ class _ExpandedPlaybackControls extends StatelessWidget {
                   color: Colors.white,
                   size: 38,
                 ),
-                onPressed: canNext
-                    ? () {
-                        if (OrpheusAudioHandler.hasInstance) {
-                          OrpheusAudioHandler.instance.skipToNext();
-                        } else {
-                          player.next();
-                        }
-                      }
-                    : null,
+                onPressed: canNext ? handler.skipToNext : null,
               ),
             );
           },
@@ -665,9 +681,9 @@ class _ExpandedPlaybackControls extends StatelessWidget {
         const SizedBox(width: 16),
         // Repeat
         StreamBuilder<PlayerRepeatMode>(
-          stream: player.repeatStream,
+          stream: handler.repeatStream,
           builder: (_, snap) {
-            final mode = snap.data ?? player.repeatMode;
+            final mode = snap.data ?? handler.repeatMode;
             final on = mode != PlayerRepeatMode.off;
             final isSingle = mode == PlayerRepeatMode.single;
             return IconButton(
@@ -676,7 +692,7 @@ class _ExpandedPlaybackControls extends StatelessWidget {
                 color: on ? AppTheme.accent : Colors.white54,
                 size: 26,
               ),
-              onPressed: player.toggleRepeat,
+              onPressed: handler.toggleRepeat,
             );
           },
         ),
@@ -783,14 +799,15 @@ class _QueueTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final player = AudioPlayerService.instance;
+    if (!OrpheusAudioHandler.hasInstance) return const SizedBox.shrink();
+    final handler = OrpheusAudioHandler.instance;
     return StreamBuilder<List<Track>>(
-      stream: player.queueStream,
-      initialData: player.queue,
+      stream: handler.queueTracksStream,
+      initialData: handler.queueTracks,
       builder: (context, snap) {
-        final queue = snap.data ?? player.queue;
-        final currentIndex = player.currentIndex;
-        final currentTrack = player.currentTrack;
+        final queue = snap.data ?? handler.queueTracks;
+        final currentIndex = handler.currentIndex;
+        final currentTrack = handler.currentTrack;
 
         if (queue.isEmpty && currentTrack == null) {
           return const Center(
@@ -916,7 +933,7 @@ class _QueueTab extends StatelessWidget {
                 ),
                 if (queue.isNotEmpty)
                   TextButton.icon(
-                    onPressed: player.clearQueue,
+                    onPressed: OrpheusAudioHandler.instance.clearQueue,
                     icon: const Icon(Icons.clear_all_rounded, size: 16, color: Colors.white70),
                     label: const Text('Limpiar',
                         style: TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'Inter')),
@@ -972,6 +989,418 @@ class _QueueTab extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+class _FavoriteHeartButton extends StatelessWidget {
+  const _FavoriteHeartButton({required this.track, this.size = 26});
+
+  final Track track;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<Set<String>>(
+      valueListenable: LocalDatabase.instance.likedTrackIdsNotifier,
+      builder: (context, likedIds, _) {
+        final isLiked = likedIds.contains(track.trackId);
+        return IconButton(
+          padding: EdgeInsets.zero,
+          constraints: BoxConstraints.tightFor(
+            width: size + 14,
+            height: size + 14,
+          ),
+          icon: Icon(
+            isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+            size: size,
+            color: isLiked ? Colors.redAccent : Colors.white70,
+          ),
+          onPressed: () async {
+            final db = LocalDatabase.instance;
+            final likedPlaylist = await db.getPlaylistById('__liked__');
+            if (likedPlaylist == null) return;
+            if (isLiked) {
+              await db.removeTrackFromPlaylist(
+                playlist: likedPlaylist,
+                trackId: track.trackId,
+              );
+            } else {
+              await db.addTrackToPlaylist(
+                playlist: likedPlaylist,
+                trackId: track.trackId,
+              );
+            }
+          },
+        );
+      },
+    );
+  }
+}
+
+class _TrackMoreMenu extends StatefulWidget {
+  const _TrackMoreMenu({required this.track, this.iconSize = 22});
+
+  final Track track;
+  final double iconSize;
+
+  @override
+  State<_TrackMoreMenu> createState() => _TrackMoreMenuState();
+}
+
+class _TrackMoreMenuState extends State<_TrackMoreMenu> {
+  List<Playlist> _playlists = [];
+  StreamSubscription? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchPlaylists();
+    _sub = LocalDatabase.instance.watchPlaylists().listen((_) => _fetchPlaylists());
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetchPlaylists() async {
+    final list = await LocalDatabase.instance.getAllPlaylists();
+    if (mounted) setState(() => _playlists = list);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final customPlaylists = _playlists.where((p) => !p.isDefault).toList();
+
+    return PopupMenuButton<dynamic>(
+      icon: Icon(
+        Icons.more_vert_rounded,
+        size: widget.iconSize,
+        color: Colors.white70,
+      ),
+      color: AppTheme.bgSurface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: AppTheme.divider),
+      ),
+      onSelected: (value) {
+        if (value == 'play_next') {
+          OrpheusAudioHandler.instance.playNext(widget.track);
+          AppToast.showText(context, 'Se reproducirá a continuación');
+        } else if (value == 'add_to_queue') {
+          OrpheusAudioHandler.instance.addToQueueTrack(widget.track);
+          AppToast.showText(context, 'Añadida a la cola');
+        } else if (value is Playlist) {
+          LocalDatabase.instance
+              .addTrackToPlaylist(
+            playlist: value,
+            trackId: widget.track.trackId,
+          )
+              .then((_) {
+            if (context.mounted) {
+              AppToast.showAddedToPlaylist(
+                context,
+                track: widget.track,
+                playlist: value,
+              );
+            }
+          });
+        }
+      },
+      itemBuilder: (context) {
+        final items = <PopupMenuEntry<dynamic>>[
+          const PopupMenuItem(
+            value: 'play_next',
+            child: Row(
+              children: [
+                Icon(Icons.playlist_play_rounded, size: 18, color: AppTheme.textSecondary),
+                SizedBox(width: 12),
+                Text('Reproducir siguiente', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+              ],
+            ),
+          ),
+          const PopupMenuItem(
+            value: 'add_to_queue',
+            child: Row(
+              children: [
+                Icon(Icons.queue_music_rounded, size: 18, color: AppTheme.textSecondary),
+                SizedBox(width: 12),
+                Text('Añadir a la cola', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+              ],
+            ),
+          ),
+        ];
+
+        if (customPlaylists.isNotEmpty) {
+          items.add(const PopupMenuDivider());
+          for (final pl in customPlaylists) {
+            items.add(
+              PopupMenuItem(
+                value: pl,
+                child: Row(
+                  children: [
+                    const Icon(Icons.playlist_add_rounded, size: 18, color: AppTheme.accent),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        pl.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+        }
+
+        return items;
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIO HD / Quality Badge (interactive)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Tappable quality badge (e.g. "AUDIO HD" / "HI-FI" / "HQ") that opens a
+/// bottom sheet with a breakdown of the track's audio format and quality tier.
+class _AudioHdBadge extends StatelessWidget {
+  const _AudioHdBadge({required this.track});
+  final Track track;
+
+  /// Returns (badgeLabel, accentColor) based on audioQuality field.
+  (String, Color) get _badgeInfo {
+    switch (track.audioQuality.toUpperCase()) {
+      case 'HI-FI':
+      case 'HIFI':
+        return ('HI-FI', const Color(0xFF00D4FF));
+      case 'HQ':
+        return ('AUDIO HD', const Color(0xFF7C6AF7));
+      case 'VIDEO':
+        return ('VIDEO', const Color(0xFFF7A26A));
+      case 'STREAM':
+        return ('STREAM', Colors.white38);
+      default:
+        return ('AUDIO HD', const Color(0xFF7C6AF7));
+    }
+  }
+
+  String get _formatLabel {
+    switch (track.fileType) {
+      case FileType.flac:
+        return 'FLAC';
+      case FileType.mp3:
+        return 'MP3';
+      case FileType.wav:
+        return 'WAV';
+      case FileType.m4a:
+        return 'M4A / AAC';
+      case FileType.mp4:
+        return 'MP4';
+      default:
+        return track.fileType.name.toUpperCase();
+    }
+  }
+
+  String get _qualityDescription {
+    switch (track.audioQuality.toUpperCase()) {
+      case 'HI-FI':
+      case 'HIFI':
+        return 'Calidad sin pérdidas (Lossless). Fidelidad máxima con compresión '
+            'sin pérdida de datos — ideal para audiófilos y equipos de alta gama.';
+      case 'HQ':
+        return 'Alta calidad (HD). Compresión con alta tasa de bits, '
+            'adecuada para la gran mayoría de sistemas de escucha.';
+      case 'VIDEO':
+        return 'Pista de audio extraída de vídeo. La calidad depende del '
+            'bitrate del contenedor de vídeo original.';
+      case 'STREAM':
+        return 'Calidad estándar de streaming. Optimizada para ancho de banda '
+            'reducido; puede presentar ligeras pérdidas perceptibles.';
+      default:
+        return 'Formato de audio local importado desde tu biblioteca.';
+    }
+  }
+
+  void _showInfoSheet(BuildContext context) {
+    final (label, accent) = _badgeInfo;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) {
+        return Container(
+          margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A2E),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle pill
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 24),
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+
+              // Badge + Title row
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: accent.withValues(alpha: 0.7), width: 1.2),
+                      borderRadius: BorderRadius.circular(6),
+                      color: accent.withValues(alpha: 0.08),
+                    ),
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.4,
+                        color: accent,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  const Text(
+                    'Información de Audio',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 20),
+              const Divider(color: Colors.white10),
+              const SizedBox(height: 16),
+
+              // Format row
+              _InfoRow(
+                icon: Icons.audiotrack_rounded,
+                label: 'Formato',
+                value: _formatLabel,
+                accent: accent,
+              ),
+              const SizedBox(height: 12),
+              _InfoRow(
+                icon: Icons.high_quality_rounded,
+                label: 'Calidad',
+                value: track.audioQuality,
+                accent: accent,
+              ),
+
+              const SizedBox(height: 20),
+              const Divider(color: Colors.white10),
+              const SizedBox(height: 14),
+
+              // Description
+              Text(
+                _qualityDescription,
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 13,
+                  color: Colors.white60,
+                  height: 1.6,
+                ),
+              ),
+
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, accent) = _badgeInfo;
+    return GestureDetector(
+      onTap: () => _showInfoSheet(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          border: Border.all(color: accent.withValues(alpha: 0.5), width: 1),
+          borderRadius: BorderRadius.circular(4),
+          color: accent.withValues(alpha: 0.06),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 9,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+            color: accent.withValues(alpha: 0.85),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Simple two-column info row for the audio quality sheet.
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.accent,
+  });
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: accent.withValues(alpha: 0.7)),
+        const SizedBox(width: 10),
+        Text(
+          '$label:',
+          style: const TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 13,
+            color: Colors.white54,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          value,
+          style: const TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+      ],
     );
   }
 }

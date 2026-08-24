@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
 import '../../core/services/audio_handler.dart';
-import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_toast.dart';
 import '../views/expanded_player_view.dart';
@@ -66,9 +65,11 @@ class _TrackInfo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!OrpheusAudioHandler.hasInstance) return const SizedBox.shrink();
+    final handler = OrpheusAudioHandler.instance;
     return StreamBuilder<Track?>(
-      stream: AudioPlayerService.instance.currentTrackStream,
-      initialData: AudioPlayerService.instance.currentTrack,
+      stream: handler.currentTrackStream,
+      initialData: handler.currentTrack,
       builder: (context, snap) {
         final track = snap.data;
 
@@ -252,17 +253,9 @@ class _TrackActionsState extends State<_TrackActions> {
               ),
               onSelected: (value) {
                 if (value == 'play_next') {
-                  if (OrpheusAudioHandler.hasInstance) {
-                    OrpheusAudioHandler.instance.playNext(widget.track);
-                  } else {
-                    AudioPlayerService.instance.playNext(widget.track);
-                  }
+                  OrpheusAudioHandler.instance.playNext(widget.track);
                 } else if (value == 'add_to_queue') {
-                  if (OrpheusAudioHandler.hasInstance) {
-                    OrpheusAudioHandler.instance.addToQueueTrack(widget.track);
-                  } else {
-                    AudioPlayerService.instance.addToQueue(widget.track);
-                  }
+                  OrpheusAudioHandler.instance.addToQueue(widget.track);
                 } else if (value is Playlist) {
                   LocalDatabase.instance.addTrackToPlaylist(
                     playlist: value,
@@ -359,7 +352,8 @@ class _PlaybackControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final player = AudioPlayerService.instance;
+    if (!OrpheusAudioHandler.hasInstance) return const SizedBox.shrink();
+    final handler = OrpheusAudioHandler.instance;
 
     return SizedBox(
       width: 420,
@@ -372,13 +366,13 @@ class _PlaybackControls extends StatelessWidget {
             children: [
               // Shuffle
               StreamBuilder<bool>(
-                stream: player.shuffleStream,
+                stream: handler.shuffleStream,
                 builder: (_, snap) {
-                  final on = snap.data ?? player.shuffleEnabled;
+                  final on = snap.data ?? handler.shuffleEnabled;
                   return _IconBtn(
                     icon: Icons.shuffle_rounded,
                     active: on,
-                    onTap: player.toggleShuffle,
+                    onTap: handler.toggleShuffle,
                     tooltip: 'Aleatoria',
                   );
                 },
@@ -388,34 +382,18 @@ class _PlaybackControls extends StatelessWidget {
               _IconBtn(
                 icon: Icons.skip_previous_rounded,
                 size: 22,
-                onTap: () {
-                  if (OrpheusAudioHandler.hasInstance) {
-                    OrpheusAudioHandler.instance.skipToPrevious();
-                  } else {
-                    player.previous();
-                  }
-                },
+                onTap: handler.skipToPrevious,
                 tooltip: 'Anterior',
               ),
               const SizedBox(width: 10),
               // Play / Pause (premium circle button)
               StreamBuilder<bool>(
-                stream: player.isPlayingStream,
+                stream: handler.isPlayingStream,
                 builder: (_, snap) {
-                  final playing = snap.data ?? player.isPlaying;
+                  final playing = snap.data ?? handler.isPlaying;
                   return _PlayButton(
                     isPlaying: playing,
-                    onTap: () {
-                      if (OrpheusAudioHandler.hasInstance) {
-                        OrpheusAudioHandler.instance.togglePlayPause();
-                      } else {
-                        if (player.isPlaying) {
-                          player.pause();
-                        } else {
-                          player.play();
-                        }
-                      }
-                    },
+                    onTap: handler.togglePlayPause,
                   );
                 },
               ),
@@ -424,27 +402,21 @@ class _PlaybackControls extends StatelessWidget {
               _IconBtn(
                 icon: Icons.skip_next_rounded,
                 size: 22,
-                onTap: () {
-                  if (OrpheusAudioHandler.hasInstance) {
-                    OrpheusAudioHandler.instance.skipToNext();
-                  } else {
-                    player.next();
-                  }
-                },
+                onTap: handler.skipToNext,
                 tooltip: 'Siguiente',
               ),
               const SizedBox(width: 12),
               // Repeat
               StreamBuilder<PlayerRepeatMode>(
-                stream: player.repeatStream,
+                stream: handler.repeatStream,
                 builder: (_, snap) {
-                  final mode = snap.data ?? player.repeatMode;
+                  final mode = snap.data ?? handler.repeatMode;
                   final on = mode != PlayerRepeatMode.off;
                   final isSingle = mode == PlayerRepeatMode.single;
                   return _IconBtn(
                     icon: isSingle ? Icons.repeat_one_rounded : Icons.repeat_rounded,
                     active: on,
-                    onTap: player.toggleRepeat,
+                    onTap: handler.toggleRepeat,
                     tooltip: isSingle ? 'Repetir una' : (on ? 'Repetir todo' : 'Repetir'),
                   );
                 },
@@ -547,20 +519,21 @@ class _IconBtnState extends State<_IconBtn> {
 
 /// Seek bar combining position and duration streams.
 class _ProgressBar extends StatelessWidget {
-  _ProgressBar();
-
-  final player = AudioPlayerService.instance;
+  const _ProgressBar();
 
   @override
   Widget build(BuildContext context) {
+    if (!OrpheusAudioHandler.hasInstance) return const SizedBox.shrink();
+    final handler = OrpheusAudioHandler.instance;
+
     return StreamBuilder<Duration>(
-      stream: player.positionStream,
+      stream: handler.positionStream,
       builder: (context, posSnap) {
         return StreamBuilder<Duration>(
-          stream: player.durationStream,
+          stream: handler.durationStream,
           builder: (context, durSnap) {
-            final pos = posSnap.data ?? player.position;
-            final dur = durSnap.data ?? player.duration;
+            final pos = posSnap.data ?? handler.position;
+            final dur = durSnap.data ?? handler.duration;
             final maxVal = dur.inMilliseconds.toDouble();
             final curVal = (pos.inMilliseconds.toDouble()).clamp(
               0.0,
@@ -594,11 +567,7 @@ class _ProgressBar extends StatelessWidget {
                       onChanged: maxVal > 0
                           ? (val) {
                               final dur = Duration(milliseconds: val.toInt());
-                              if (OrpheusAudioHandler.hasInstance) {
-                                OrpheusAudioHandler.instance.seek(dur);
-                              } else {
-                                AudioPlayerService.instance.seek(dur);
-                              }
+                              handler.seek(dur);
                             }
                           : null,
                     ),
@@ -646,12 +615,13 @@ class _VolumeControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final player = AudioPlayerService.instance;
+    if (!OrpheusAudioHandler.hasInstance) return const SizedBox.shrink();
+    final handler = OrpheusAudioHandler.instance;
 
     return StreamBuilder<double>(
-      stream: player.volumeStream,
+      stream: handler.volumeStream,
       builder: (_, snap) {
-        final vol = snap.data ?? player.volume;
+        final vol = snap.data ?? handler.volume;
 
         return Row(
           mainAxisAlignment: MainAxisAlignment.end,
@@ -686,7 +656,7 @@ class _VolumeControl extends StatelessWidget {
                   value: vol.clamp(0.0, 1.0),
                   min: 0,
                   max: 1,
-                  onChanged: (v) => player.setVolume(v),
+                  onChanged: (v) => handler.setVolume(v),
                 ),
               ),
             ),
