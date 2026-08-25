@@ -27,6 +27,9 @@ class MainActivity : AudioServiceActivity() {
         // Android's createNotificationChannel() is idempotent: if the channel already exists
         // it is a no-op, so our IMPORTANCE_DEFAULT + VISIBILITY_PUBLIC settings are preserved.
         ensureNotificationChannel()
+        // Ensure R8 and AAPT2 never strip notification drawables in release builds
+        val _heartFilled = R.drawable.ic_heart_filled
+        val _heartOutline = R.drawable.ic_heart_outline
     }
 
     /**

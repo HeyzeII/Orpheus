@@ -1419,7 +1419,9 @@ class _LibraryViewState extends State<LibraryView> {
                           stream: OrpheusAudioHandler.instance.currentTrackStream,
                           initialData: OrpheusAudioHandler.instance.currentTrack,
                           builder: (context, snap) {
-                            final isCurrent = snap.data?.trackId == track.trackId;
+                            final currentIdx = OrpheusAudioHandler.instance.currentIndex;
+                            final isCurrent = snap.data?.trackId == track.trackId &&
+                                (currentIdx == idx || currentIdx < 0);
 
                             return Container(
                               margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -1877,7 +1879,9 @@ class _LibraryViewState extends State<LibraryView> {
           stream: OrpheusAudioHandler.instance.currentTrackStream,
           initialData: OrpheusAudioHandler.instance.currentTrack,
           builder: (context, snap) {
-            final isCurrent = snap.data?.trackId == track.trackId;
+            final currentIdx = OrpheusAudioHandler.instance.currentIndex;
+            final isCurrent = snap.data?.trackId == track.trackId &&
+                (currentIdx == idx || currentIdx < 0);
 
             return Container(
               margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -2140,7 +2144,9 @@ class _TrackRowState extends State<_TrackRow> {
       stream: OrpheusAudioHandler.instance.currentTrackStream,
       initialData: OrpheusAudioHandler.instance.currentTrack,
       builder: (context, snap) {
-        final isCurrent = snap.data?.trackId == widget.track.trackId;
+        final currentIdx = OrpheusAudioHandler.instance.currentIndex;
+        final isCurrent = snap.data?.trackId == widget.track.trackId &&
+            (currentIdx == (widget.index - 1) || currentIdx < 0);
 
         return MouseRegion(
           onEnter: (_) => setState(() => _hovered = true),

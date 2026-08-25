@@ -39,7 +39,7 @@ class _AnimatedEqualizerState extends State<AnimatedEqualizer>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1400),
     );
     if (widget.isPlaying) {
       _controller.repeat();
@@ -77,10 +77,14 @@ class _AnimatedEqualizerState extends State<AnimatedEqualizer>
           children: List.generate(widget.barCount, (i) {
             double heightFraction;
             if (widget.isPlaying) {
-              // Stagger phase offsets per bar for realistic audio pulsing
-              final phase = i * (math.pi / 2.2);
-              final raw = (math.sin(t + phase) + math.cos(t * 1.5 + phase * 0.7) + 2) / 4;
-              heightFraction = raw.clamp(0.0, 1.0);
+              // Stagger phase offsets per bar for realistic audio pulsing.
+              // Both fundamental and 2nd harmonic are exactly 2π-periodic,
+              // producing a 100% seamless, mathematically continuous loop without any jumps.
+              final phase = i * (math.pi / (widget.barCount > 1 ? widget.barCount : 1));
+              final wave1 = math.sin(t + phase);
+              final wave2 = 0.5 * math.sin(2 * t + phase * 2);
+              final raw = ((wave1 + wave2) / 1.5 + 1.0) / 2.0;
+              heightFraction = raw.clamp(0.08, 1.0);
             } else {
               // Resting height when paused
               heightFraction = (i % 2 == 0) ? 0.25 : 0.4;

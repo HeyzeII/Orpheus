@@ -138,11 +138,22 @@ class OrpheusApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Orpheus',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.build(),
-      home: const MainLayout(),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarDividerColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.light,
+        systemNavigationBarContrastEnforced: false,
+      ),
+      child: MaterialApp(
+        title: 'Orpheus',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.build(),
+        home: const MainLayout(),
+      ),
     );
   }
 }

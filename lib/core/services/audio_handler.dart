@@ -39,7 +39,11 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
         MediaControl.skipToPrevious,
         MediaControl.play,
         MediaControl.skipToNext,
-        MediaControl.stop,
+        MediaControl.custom(
+          androidIcon: 'drawable/ic_heart_outline',
+          label: 'Añadir a Me gusta',
+          name: 'toggle_like',
+        ),
       ],
       systemActions: const {
         MediaAction.seek,
@@ -210,17 +214,16 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
       // 2. Control dinámico de "Me gusta"
       final likeControl = MediaControl.custom(
-        androidIcon: isLiked ? 'drawable/ic_heart_filled' : 'drawable/ic_heart_empty',
+        androidIcon: isLiked ? 'drawable/ic_heart_filled' : 'drawable/ic_heart_outline',
         label: isLiked ? 'Quitar de Me gusta' : 'Añadir a Me gusta',
         name: 'toggle_like',
       );
 
-      // 3. Controles dinámicos nativos
+      // 3. Controles dinámicos nativos: Anterior, Play/Pause, Siguiente, Me gusta
       final controls = [
         MediaControl.skipToPrevious,
         if (isPlaying) MediaControl.pause else MediaControl.play,
         MediaControl.skipToNext,
-        MediaControl.stop,
         likeControl,
       ];
 
@@ -445,6 +448,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
             } else {
               await db.addTrackToPlaylist(playlist: likedPlaylist, trackId: currentTrack.trackId);
             }
+            _emitAtomicState();
           }
         }
       } catch (e, s) {
