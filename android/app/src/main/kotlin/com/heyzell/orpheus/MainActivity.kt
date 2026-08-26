@@ -21,6 +21,14 @@ class MainActivity : AudioServiceActivity() {
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
+        // Configure native window edge-to-edge transparent navigation
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+            window.isStatusBarContrastEnforced = false
+        }
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+
         // Pre-create the notification channel BEFORE AudioService.init() runs from Dart.
         // audio_service 0.18.x hard-codes IMPORTANCE_LOW in AudioService.java:691, which is
         // silently hidden on MIUI / HyperOS / One UI / ColorOS OEMs.

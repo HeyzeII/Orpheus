@@ -454,6 +454,57 @@ class LocalDatabase {
     }
   }
 
+  /// Optimistically toggles the liked status of [trackId].
+  ///
+  /// Immediately updates [likedTrackIdsNotifier] for 0ms latency UI response,
+  /// then performs the asynchronous database persist in the background.
+  Future<bool> toggleLikeOptimistic(String trackId) async {
+    final currentlyLiked = likedTrackIdsNotifier.value.contains(trackId);
+    final targetLiked = !currentlyLiked;
+
+    // 1. Instant optimistic update
+    final optimisticSet = Set<String>.from(likedTrackIdsNotifier.value);
+    if (targetLiked) {
+      optimisticSet.add(trackId);
+    } else {
+      optimisticSet.remove(trackId);
+    }
+    likedTrackIdsNotifier.value = optimisticSet;
+
+    // 2. Background DB operation
+    try {
+      final likedPlaylist = await getPlaylistById('__liked__');
+      if (likedPlaylist != null) {
+        final track = await getTrackByTrackId(trackId);
+        final intId = track?.id ?? trackId.hashCode;
+        if (targetLiked) {
+          if (!likedPlaylist.trackIds.contains(intId)) {
+            final updated = List<int>.from(likedPlaylist.trackIds)..add(intId);
+            likedPlaylist.trackIds = updated;
+            await savePlaylist(likedPlaylist);
+          }
+        } else {
+          if (likedPlaylist.trackIds.contains(intId)) {
+            final updated = List<int>.from(likedPlaylist.trackIds)..remove(intId);
+            likedPlaylist.trackIds = updated;
+            await savePlaylist(likedPlaylist);
+          }
+        }
+      }
+      return targetLiked;
+    } catch (e) {
+      // Rollback on failure
+      final rollbackSet = Set<String>.from(likedTrackIdsNotifier.value);
+      if (currentlyLiked) {
+        rollbackSet.add(trackId);
+      } else {
+        rollbackSet.remove(trackId);
+      }
+      likedTrackIdsNotifier.value = rollbackSet;
+      rethrow;
+    }
+  }
+
   /// Removes [trackId] from [playlist] if present.
   Future<void> removeTrackFromPlaylist({
     required Playlist playlist,

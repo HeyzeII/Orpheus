@@ -177,6 +177,11 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
       value: const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarDividerColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.light,
+        systemNavigationBarContrastEnforced: false,
       ),
       child: Padding(
         padding: EdgeInsets.fromLTRB(16, topPad + 4, 16, bottomPad + 8),
@@ -993,45 +998,81 @@ class _QueueTab extends StatelessWidget {
   }
 }
 
-class _FavoriteHeartButton extends StatelessWidget {
+class _FavoriteHeartButton extends StatefulWidget {
   const _FavoriteHeartButton({required this.track, this.size = 26});
 
   final Track track;
   final double size;
 
   @override
+  State<_FavoriteHeartButton> createState() => _FavoriteHeartButtonState();
+}
+
+class _FavoriteHeartButtonState extends State<_FavoriteHeartButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animController;
+  late Animation<double> _scaleAnimation;
+  bool? _optimisticLiked;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _scaleAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 1.28).chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 50,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.28, end: 1.0).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 50,
+      ),
+    ]).animate(_animController);
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<Set<String>>(
       valueListenable: LocalDatabase.instance.likedTrackIdsNotifier,
       builder: (context, likedIds, _) {
-        final isLiked = likedIds.contains(track.trackId);
-        return IconButton(
-          padding: EdgeInsets.zero,
-          constraints: BoxConstraints.tightFor(
-            width: size + 14,
-            height: size + 14,
+        final dbLiked = likedIds.contains(widget.track.trackId);
+        final isLiked = _optimisticLiked ?? dbLiked;
+
+        return ScaleTransition(
+          scale: _scaleAnimation,
+          child: IconButton(
+            padding: EdgeInsets.zero,
+            constraints: BoxConstraints.tightFor(
+              width: widget.size + 14,
+              height: widget.size + 14,
+            ),
+            icon: Icon(
+              isLiked ? Icons.favorite : Icons.favorite_border,
+              size: widget.size,
+              color: isLiked ? Colors.redAccent : Colors.white70,
+            ),
+            onPressed: () {
+              final nextLiked = !isLiked;
+              setState(() => _optimisticLiked = nextLiked);
+              _animController.forward(from: 0.0);
+              LocalDatabase.instance
+                  .toggleLikeOptimistic(widget.track.trackId)
+                  .then((_) {
+                if (mounted) setState(() => _optimisticLiked = null);
+              }).catchError((_) {
+                if (mounted) setState(() => _optimisticLiked = null);
+              });
+            },
           ),
-          icon: Icon(
-            isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-            size: size,
-            color: isLiked ? Colors.redAccent : Colors.white70,
-          ),
-          onPressed: () async {
-            final db = LocalDatabase.instance;
-            final likedPlaylist = await db.getPlaylistById('__liked__');
-            if (likedPlaylist == null) return;
-            if (isLiked) {
-              await db.removeTrackFromPlaylist(
-                playlist: likedPlaylist,
-                trackId: track.trackId,
-              );
-            } else {
-              await db.addTrackToPlaylist(
-                playlist: likedPlaylist,
-                trackId: track.trackId,
-              );
-            }
-          },
         );
       },
     );

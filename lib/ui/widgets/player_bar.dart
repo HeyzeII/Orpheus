@@ -227,19 +227,12 @@ class _TrackActionsState extends State<_TrackActions> {
             final isLiked = likedIds.contains(widget.track.trackId);
             return IconButton(
               icon: Icon(
-                isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                isLiked ? Icons.favorite : Icons.favorite_border,
                 size: 18,
                 color: isLiked ? Colors.redAccent : AppTheme.textSecondary,
               ),
-              onPressed: () async {
-                final db = LocalDatabase.instance;
-                final likedPlaylist = await db.getPlaylistById('__liked__');
-                if (likedPlaylist == null) return;
-                if (isLiked) {
-                  await db.removeTrackFromPlaylist(playlist: likedPlaylist, trackId: widget.track.trackId);
-                } else {
-                  await db.addTrackToPlaylist(playlist: likedPlaylist, trackId: widget.track.trackId);
-                }
+              onPressed: () {
+                LocalDatabase.instance.toggleLikeOptimistic(widget.track.trackId);
               },
             );
           },

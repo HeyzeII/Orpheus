@@ -179,16 +179,9 @@ class _LibraryViewState extends State<LibraryView> {
     await handler.loadQueue(tracks, initialIndex: 0);
   }
 
-  // Favorite toggle
+  // Favorite toggle (Optimistic)
   Future<void> _toggleLike(Track track) async {
-    final db = LocalDatabase.instance;
-    final likedPlaylist = await db.getPlaylistById('__liked__');
-    if (likedPlaylist == null) return;
-    if (db.likedTrackIdsNotifier.value.contains(track.trackId)) {
-      await db.removeTrackFromPlaylist(playlist: likedPlaylist, trackId: track.trackId);
-    } else {
-      await db.addTrackToPlaylist(playlist: likedPlaylist, trackId: track.trackId);
-    }
+    await LocalDatabase.instance.toggleLikeOptimistic(track.trackId);
   }
 
   // Add track to custom playlist
@@ -1728,23 +1721,16 @@ class _LibraryViewState extends State<LibraryView> {
                     ),
                     ListTile(
                       leading: Icon(
-                        isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                        isLiked ? Icons.favorite : Icons.favorite_border,
                         color: isLiked ? Colors.redAccent : AppTheme.textPrimary,
                       ),
                       title: Text(
                         isLiked ? 'Quitar de Me gusta' : 'Añadir a Me gusta',
                         style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
                       ),
-                      onTap: () async {
+                      onTap: () {
                         Navigator.pop(ctx);
-                        final likedPlaylist = await db.getPlaylistById('__liked__');
-                        if (likedPlaylist != null) {
-                          if (isLiked) {
-                            await db.removeTrackFromPlaylist(playlist: likedPlaylist, trackId: track.trackId);
-                          } else {
-                            await db.addTrackToPlaylist(playlist: likedPlaylist, trackId: track.trackId);
-                          }
-                        }
+                        db.toggleLikeOptimistic(track.trackId);
                       },
                     ),
                     ListTile(

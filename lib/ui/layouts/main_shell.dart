@@ -345,6 +345,7 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
       systemNavigationBarColor: Colors.transparent,
       systemNavigationBarIconBrightness: Brightness.light,
       systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarContrastEnforced: false,
     );
 
     // Height of the unified bottom panel (mini-player tile + nav bar row)
