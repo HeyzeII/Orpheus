@@ -2293,7 +2293,7 @@ class _TrackRowState extends State<_TrackRow> {
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
                             icon: Icon(
-                              isCurrentlyLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                              isCurrentlyLiked ? Icons.favorite : Icons.favorite_border,
                               size: 16,
                               color: isCurrentlyLiked ? Colors.redAccent : AppTheme.textSecondary,
                             ),
@@ -2601,7 +2601,7 @@ class PlaylistCover extends StatelessWidget {
           ),
           child: Center(
             child: Icon(
-              isLiked ? Icons.favorite_rounded : Icons.music_note_rounded,
+              isLiked ? Icons.favorite : Icons.music_note_rounded,
               color: isLiked ? Colors.redAccent.withAlpha(180) : AppTheme.accent.withAlpha(160),
               size: size * 0.3,
             ),
@@ -2616,7 +2616,7 @@ class PlaylistCover extends StatelessWidget {
       color: AppTheme.bgHover,
       child: Center(
         child: Icon(
-          isLiked ? Icons.favorite_rounded : Icons.music_note_rounded,
+          isLiked ? Icons.favorite : Icons.music_note_rounded,
           color: isLiked ? Colors.redAccent.withAlpha(140) : AppTheme.textHint,
           size: iconSize ?? (size * 0.3),
         ),

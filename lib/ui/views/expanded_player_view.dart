@@ -1012,25 +1012,32 @@ class _FavoriteHeartButtonState extends State<_FavoriteHeartButton>
     with SingleTickerProviderStateMixin {
   late AnimationController _animController;
   late Animation<double> _scaleAnimation;
-  bool? _optimisticLiked;
 
   @override
   void initState() {
     super.initState();
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 220),
     );
     _scaleAnimation = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 1.28).chain(CurveTween(curve: Curves.easeOutBack)),
-        weight: 50,
+        tween: Tween<double>(begin: 1.0, end: 1.32).chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 45,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: 1.28, end: 1.0).chain(CurveTween(curve: Curves.easeInOut)),
-        weight: 50,
+        tween: Tween<double>(begin: 1.32, end: 1.0).chain(CurveTween(curve: Curves.easeInOut)),
+        weight: 55,
       ),
     ]).animate(_animController);
+  }
+
+  @override
+  void didUpdateWidget(_FavoriteHeartButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.track.trackId != oldWidget.track.trackId) {
+      _animController.value = 0.0;
+    }
   }
 
   @override
@@ -1044,8 +1051,7 @@ class _FavoriteHeartButtonState extends State<_FavoriteHeartButton>
     return ValueListenableBuilder<Set<String>>(
       valueListenable: LocalDatabase.instance.likedTrackIdsNotifier,
       builder: (context, likedIds, _) {
-        final dbLiked = likedIds.contains(widget.track.trackId);
-        final isLiked = _optimisticLiked ?? dbLiked;
+        final isLiked = likedIds.contains(widget.track.trackId);
 
         return ScaleTransition(
           scale: _scaleAnimation,
@@ -1061,16 +1067,8 @@ class _FavoriteHeartButtonState extends State<_FavoriteHeartButton>
               color: isLiked ? Colors.redAccent : Colors.white70,
             ),
             onPressed: () {
-              final nextLiked = !isLiked;
-              setState(() => _optimisticLiked = nextLiked);
               _animController.forward(from: 0.0);
-              LocalDatabase.instance
-                  .toggleLikeOptimistic(widget.track.trackId)
-                  .then((_) {
-                if (mounted) setState(() => _optimisticLiked = null);
-              }).catchError((_) {
-                if (mounted) setState(() => _optimisticLiked = null);
-              });
+              LocalDatabase.instance.toggleLikeOptimistic(widget.track.trackId);
             },
           ),
         );

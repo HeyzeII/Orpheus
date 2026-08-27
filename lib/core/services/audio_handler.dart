@@ -439,17 +439,8 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       try {
         final currentTrack = AudioPlayerService.instance.currentTrack;
         if (currentTrack != null) {
-          final db = LocalDatabase.instance;
-          final likedPlaylist = await db.getPlaylistById('__liked__');
-          if (likedPlaylist != null) {
-            final isLiked = db.likedTrackIdsNotifier.value.contains(currentTrack.trackId);
-            if (isLiked) {
-              await db.removeTrackFromPlaylist(playlist: likedPlaylist, trackId: currentTrack.trackId);
-            } else {
-              await db.addTrackToPlaylist(playlist: likedPlaylist, trackId: currentTrack.trackId);
-            }
-            _emitAtomicState();
-          }
+          await LocalDatabase.instance.toggleLikeOptimistic(currentTrack.trackId);
+          _emitAtomicState();
         }
       } catch (e, s) {
         debugPrint('Error toggling like from customAction: $e\n$s');
