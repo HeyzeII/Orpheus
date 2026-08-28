@@ -595,8 +595,9 @@ class AudioPlayerService {
       final state = local.PlaybackState()
         ..trackId = trackId
         ..positionMs = posMs
-        ..queueTrackIds = queueIds;
-      
+        ..queueTrackIds = queueIds
+        ..shuffleModeEnabled = _shuffle;
+
       await _db.savePlaybackState(state);    
     } catch (_) {
       // Non-fatal: persistence failures should never interrupt playback.
@@ -660,6 +661,15 @@ class AudioPlayerService {
 
       // Give media_kit's native engine a moment to load metadata/duration
       await Future.delayed(const Duration(milliseconds: 300));
+
+      // Restore shuffle preference (no queue reshuffle needed — queue is
+      // already in persisted order; we just mark the flag so the handler
+      // renders the correct icon and future skips respect shuffle).
+      if (saved.shuffleModeEnabled) {
+        _shuffle = true;
+        _originalQueue = List<Track>.from(_queue);
+        _shuffleController.add(true);
+      }
 
       // Seek to the saved position once the duration becomes available.
       if (saved.positionMs > 0) {

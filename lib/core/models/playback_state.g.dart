@@ -27,8 +27,13 @@ const PlaybackStateSchema = CollectionSchema(
       name: r'queueTrackIds',
       type: IsarType.stringList,
     ),
-    r'trackId': PropertySchema(
+    r'shuffleModeEnabled': PropertySchema(
       id: 2,
+      name: r'shuffleModeEnabled',
+      type: IsarType.bool,
+    ),
+    r'trackId': PropertySchema(
+      id: 3,
       name: r'trackId',
       type: IsarType.string,
     )
@@ -77,7 +82,8 @@ void _playbackStateSerialize(
 ) {
   writer.writeLong(offsets[0], object.positionMs);
   writer.writeStringList(offsets[1], object.queueTrackIds);
-  writer.writeString(offsets[2], object.trackId);
+  writer.writeBool(offsets[2], object.shuffleModeEnabled);
+  writer.writeString(offsets[3], object.trackId);
 }
 
 PlaybackState _playbackStateDeserialize(
@@ -90,7 +96,8 @@ PlaybackState _playbackStateDeserialize(
   object.id = id;
   object.positionMs = reader.readLong(offsets[0]);
   object.queueTrackIds = reader.readStringList(offsets[1]) ?? [];
-  object.trackId = reader.readStringOrNull(offsets[2]);
+  object.shuffleModeEnabled = reader.readBool(offsets[2]);
+  object.trackId = reader.readStringOrNull(offsets[3]);
   return object;
 }
 
@@ -106,6 +113,8 @@ P _playbackStateDeserializeProp<P>(
     case 1:
       return (reader.readStringList(offset) ?? []) as P;
     case 2:
+      return (reader.readBool(offset)) as P;
+    case 3:
       return (reader.readStringOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -544,6 +553,16 @@ extension PlaybackStateQueryFilter
   }
 
   QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      shuffleModeEnabledEqualTo(bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'shuffleModeEnabled',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
       trackIdIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(const FilterCondition.isNull(
@@ -719,6 +738,20 @@ extension PlaybackStateQuerySortBy
     });
   }
 
+  QueryBuilder<PlaybackState, PlaybackState, QAfterSortBy>
+      sortByShuffleModeEnabled() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'shuffleModeEnabled', Sort.asc);
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterSortBy>
+      sortByShuffleModeEnabledDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'shuffleModeEnabled', Sort.desc);
+    });
+  }
+
   QueryBuilder<PlaybackState, PlaybackState, QAfterSortBy> sortByTrackId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'trackId', Sort.asc);
@@ -759,6 +792,20 @@ extension PlaybackStateQuerySortThenBy
     });
   }
 
+  QueryBuilder<PlaybackState, PlaybackState, QAfterSortBy>
+      thenByShuffleModeEnabled() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'shuffleModeEnabled', Sort.asc);
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterSortBy>
+      thenByShuffleModeEnabledDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'shuffleModeEnabled', Sort.desc);
+    });
+  }
+
   QueryBuilder<PlaybackState, PlaybackState, QAfterSortBy> thenByTrackId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'trackId', Sort.asc);
@@ -784,6 +831,13 @@ extension PlaybackStateQueryWhereDistinct
       distinctByQueueTrackIds() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'queueTrackIds');
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QDistinct>
+      distinctByShuffleModeEnabled() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'shuffleModeEnabled');
     });
   }
 
@@ -813,6 +867,13 @@ extension PlaybackStateQueryProperty
       queueTrackIdsProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'queueTrackIds');
+    });
+  }
+
+  QueryBuilder<PlaybackState, bool, QQueryOperations>
+      shuffleModeEnabledProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'shuffleModeEnabled');
     });
   }
 

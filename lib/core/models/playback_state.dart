@@ -26,4 +26,7 @@ class PlaybackState {
 
   /// Ordered list of [Track.trackId] strings that formed the queue.
   List<String> queueTrackIds = [];
+
+  /// Whether shuffle mode was active when the state was last captured.
+  bool shuffleModeEnabled = false;
 }

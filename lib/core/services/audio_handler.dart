@@ -44,6 +44,11 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
           label: 'Añadir a Me gusta',
           name: 'toggle_like',
         ),
+        MediaControl.custom(
+          androidIcon: 'drawable/ic_shuffle_off',
+          label: 'Modo aleatorio',
+          name: 'toggle_shuffle',
+        ),
       ],
       systemActions: const {
         MediaAction.seek,
@@ -193,6 +198,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       final position = player.position;
       final isLiked = currentTrack != null &&
           LocalDatabase.instance.likedTrackIdsNotifier.value.contains(currentTrack.trackId);
+      final isShuffled = player.shuffleEnabled;
 
       // 1. Sincronización atómica de MediaItem
       if (currentTrack == null) {
@@ -219,12 +225,20 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
         name: 'toggle_like',
       );
 
-      // 3. Controles dinámicos nativos: Anterior, Play/Pause, Siguiente, Me gusta
+      // 3. Control dinámico de Shuffle
+      final shuffleControl = MediaControl.custom(
+        androidIcon: isShuffled ? 'drawable/ic_shuffle_on' : 'drawable/ic_shuffle_off',
+        label: isShuffled ? 'Desactivar modo aleatorio' : 'Modo aleatorio',
+        name: 'toggle_shuffle',
+      );
+
+      // 4. Controles dinámicos nativos: Anterior, Play/Pause, Siguiente, Me gusta, Shuffle
       final controls = [
         MediaControl.skipToPrevious,
         if (isPlaying) MediaControl.pause else MediaControl.play,
         MediaControl.skipToNext,
         likeControl,
+        shuffleControl,
       ];
 
       // processingState es ready mientras haya una pista cargada (reproduciendo o en pausa)
@@ -263,6 +277,14 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
           (currentVal.controls.length > 1 &&
               newState.controls.length > 1 &&
               currentVal.controls[1].label != newState.controls[1].label) ||
+          // Detect like icon change (4th control, index 3)
+          (currentVal.controls.length > 3 &&
+              newState.controls.length > 3 &&
+              currentVal.controls[3].label != newState.controls[3].label) ||
+          // Detect shuffle icon change (5th control, index 4)
+          (currentVal.controls.length > 4 &&
+              newState.controls.length > 4 &&
+              currentVal.controls[4].label != newState.controls[4].label) ||
           // Siempre emitir si hay posición nueva (ya throttleada a 800 ms)
           // para que Android vea updatePosition fresco y no mate el servicio.
           (isPlaying &&
@@ -444,6 +466,14 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
         }
       } catch (e, s) {
         debugPrint('Error toggling like from customAction: $e\n$s');
+      }
+    } else if (name == 'toggle_shuffle') {
+      try {
+        AudioPlayerService.instance.toggleShuffle();
+        _emitAtomicState();
+        DebugLogger.log('OrpheusAudioHandler: toggle_shuffle -> shuffleEnabled=${AudioPlayerService.instance.shuffleEnabled}');
+      } catch (e, s) {
+        debugPrint('Error toggling shuffle from customAction: $e\n$s');
       }
     }
     return super.customAction(name, extras);
