@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:palette_generator/palette_generator.dart';
 
 import '../../core/models/track.dart';
 import '../../core/services/audio_handler.dart';
@@ -50,10 +53,14 @@ class _LyricsViewState extends State<LyricsView> {
 
   final _scrollController = ScrollController();
 
+  // ── Palette for ambient background ────────────────────────────────────────
+  Color? _dominantColor;
+
   @override
   void initState() {
     super.initState();
     _loadLyrics();
+    _extractPalette();
   }
 
   @override
@@ -62,7 +69,9 @@ class _LyricsViewState extends State<LyricsView> {
     if (old.track.trackId != widget.track.trackId) {
       _lines = const [];
       _activeIndex = -1;
+      _dominantColor = null;
       _loadLyrics();
+      _extractPalette();
     }
   }
 
@@ -77,20 +86,51 @@ class _LyricsViewState extends State<LyricsView> {
     setState(() => _lines = lines);
   }
 
+  Future<void> _extractPalette() async {
+    final coverPath = widget.track.customMetadata.customCoverPath;
+    if (coverPath == null || coverPath.isEmpty || !File(coverPath).existsSync()) {
+      return;
+    }
+    try {
+      final pg = await PaletteGenerator.fromImageProvider(
+        FileImage(File(coverPath)),
+        maximumColorCount: 16,
+      );
+      if (mounted) {
+        setState(() {
+          _dominantColor =
+              pg.darkMutedColor?.color ?? pg.dominantColor?.color;
+        });
+      }
+    } catch (_) {
+      // Palette extraction is non-critical; silently ignore errors.
+    }
+  }
+
   // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final coverPath = widget.track.customMetadata.customCoverPath;
+    final hasArt =
+        coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
+
+    // Ambient background: blended dominant color or fallback gradient
+    final ambientBg = _dominantColor != null
+        ? Color.lerp(_dominantColor!, Colors.black, 0.55)!
+        : const Color(0xFF0D1117);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 500),
       decoration: BoxDecoration(
-        color: widget.transparentBackground ? Colors.transparent : null,
+        color: widget.transparentBackground ? Colors.transparent : ambientBg,
         gradient: widget.transparentBackground
             ? null
-            : const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFF0D1117), AppTheme.bgDeep],
-                stops: [0.0, 1.0],
+            : LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [ambientBg, AppTheme.bgDeep],
+                stops: const [0.0, 1.0],
               ),
       ),
       child: FutureBuilder<String?>(
@@ -132,6 +172,7 @@ class _LyricsViewState extends State<LyricsView> {
               lines: _lines.isNotEmpty ? _lines : parsed,
               scrollController: _scrollController,
               handler: _handler,
+              coverPath: hasArt ? coverPath : null,
               onUserScrollStart: () {},
               onUserScrollEnd: () {},
               onActiveLine: (idx) {
@@ -168,6 +209,7 @@ class _SyncedLyricsBody extends StatefulWidget {
     required this.onUserScrollStart,
     required this.onUserScrollEnd,
     required this.onActiveLine,
+    this.coverPath,
   });
 
   final List<LyricLine> lines;
@@ -176,6 +218,7 @@ class _SyncedLyricsBody extends StatefulWidget {
   final VoidCallback onUserScrollStart;
   final VoidCallback onUserScrollEnd;
   final ValueChanged<int> onActiveLine;
+  final String? coverPath;
 
   @override
   State<_SyncedLyricsBody> createState() => _SyncedLyricsBodyState();
@@ -186,18 +229,21 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
   bool _isUserScrolling = false;
   final List<GlobalKey> _lineKeys = [];
 
+  /// Scrolls to [index] using the absolute key position.
   void _scrollToActive(int index) {
     if (index < 0 || index >= _lineKeys.length) return;
-    final key = _lineKeys[index];
-    final context = key.currentContext;
-    if (context != null) {
-      Scrollable.ensureVisible(
-        context,
-        alignment: 0.35,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOutCubic,
-      );
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final key = _lineKeys[index];
+      final ctx = key.currentContext;
+      if (ctx != null && widget.scrollController.hasClients) {
+        Scrollable.ensureVisible(
+          ctx,
+          alignment: 0.35,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOutCubic,
+        );
+      }
+    });
   }
 
   @override
@@ -251,7 +297,8 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
                 child: ListView.builder(
                   controller: widget.scrollController,
                   padding: const EdgeInsets.only(
-                    top: 24,
+                    // Leave room for the miniature thumbnail at the top
+                    top: 76,
                     bottom: 120,
                     left: 20,
                     right: 20,
@@ -278,6 +325,23 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
               ),
             ),
 
+            // ── Miniature cover thumbnail (top-left) ───────────────────────
+            if (widget.coverPath != null)
+              Positioned(
+                top: 12,
+                left: 16,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.file(
+                    File(widget.coverPath!),
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                    cacheWidth: 96,
+                  ),
+                ),
+              ),
+
             // Floating "Resincronizar" Button
             if (_isUserScrolling)
               Positioned(
@@ -297,7 +361,7 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: AppTheme.accent.withOpacity(0.45),
+                            color: AppTheme.accent.withValues(alpha: 0.45),
                             blurRadius: 14,
                             spreadRadius: 1,
                             offset: const Offset(0, 3),
@@ -365,8 +429,8 @@ class _LyricLineItem extends StatelessWidget {
     } else {
       textColor = Colors.white;
       fontWeight = FontWeight.w500;
-      fontSize = 20;
-      opacity = 0.5;
+      fontSize = 18;
+      opacity = 0.45;
     }
 
     return GestureDetector(

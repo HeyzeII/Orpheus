@@ -147,7 +147,10 @@ class _DesktopHorizontalLayout extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 enum _MobileOverlayMode { artwork, lyrics, queue }
 
-class _MobileVerticalLayout extends StatelessWidget {
+// Lyrics sub-state: peek (artwork still visible) vs. expanded (full-screen)
+enum _LyricsPhase { hidden, peek, expanded }
+
+class _MobileVerticalLayout extends StatefulWidget {
   const _MobileVerticalLayout({
     required this.track,
     required this.mode,
@@ -158,11 +161,46 @@ class _MobileVerticalLayout extends StatelessWidget {
   final _MobileOverlayMode mode;
   final ValueChanged<_MobileOverlayMode> onModeChanged;
 
+  @override
+  State<_MobileVerticalLayout> createState() => _MobileVerticalLayoutState();
+}
+
+class _MobileVerticalLayoutState extends State<_MobileVerticalLayout>
+    with SingleTickerProviderStateMixin {
+  // Phase only relevant when mode == lyrics
+  _LyricsPhase _lyricsPhase = _LyricsPhase.hidden;
+  Timer? _peekTimer;
+
+  @override
+  void didUpdateWidget(_MobileVerticalLayout old) {
+    super.didUpdateWidget(old);
+    if (widget.mode == _MobileOverlayMode.lyrics &&
+        old.mode != _MobileOverlayMode.lyrics) {
+      // Just entered lyrics mode: start in peek, auto-expand after 1 s
+      setState(() => _lyricsPhase = _LyricsPhase.peek);
+      _peekTimer?.cancel();
+      _peekTimer = Timer(const Duration(milliseconds: 900), () {
+        if (mounted && widget.mode == _MobileOverlayMode.lyrics) {
+          setState(() => _lyricsPhase = _LyricsPhase.expanded);
+        }
+      });
+    } else if (widget.mode != _MobileOverlayMode.lyrics) {
+      _peekTimer?.cancel();
+      setState(() => _lyricsPhase = _LyricsPhase.hidden);
+    }
+  }
+
+  @override
+  void dispose() {
+    _peekTimer?.cancel();
+    super.dispose();
+  }
+
   void _toggleMode(_MobileOverlayMode target) {
-    if (mode == target) {
-      onModeChanged(_MobileOverlayMode.artwork);
+    if (widget.mode == target) {
+      widget.onModeChanged(_MobileOverlayMode.artwork);
     } else {
-      onModeChanged(target);
+      widget.onModeChanged(target);
     }
   }
 
@@ -178,14 +216,21 @@ class _MobileVerticalLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final track = widget.track;
     final coverPath = track.customMetadata.customCoverPath;
     final hasArt =
         coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
     final topPad = MediaQuery.of(context).padding.top;
     final bottomPad = MediaQuery.of(context).padding.bottom;
-    final isLyrics = mode == _MobileOverlayMode.lyrics;
-    final isQueue = mode == _MobileOverlayMode.queue;
+
+    final isLyrics = widget.mode == _MobileOverlayMode.lyrics;
+    final isQueue = widget.mode == _MobileOverlayMode.queue;
     final isOverlay = isLyrics || isQueue;
+
+    // Controls visibility depends on lyrics phase
+    final hideControls =
+        isLyrics && _lyricsPhase == _LyricsPhase.expanded;
+    final bool showArtwork = !isQueue && !hideControls;
 
     String headerTitle = 'REPRODUCIENDO';
     if (isLyrics) headerTitle = 'LETRAS';
@@ -205,7 +250,7 @@ class _MobileVerticalLayout extends StatelessWidget {
         padding: EdgeInsets.fromLTRB(16, topPad + 4, 16, bottomPad + 8),
         child: Column(
           children: [
-            // ── Top Bar: Minimize button + Header title + 3-dots menu ────────
+            // ── Top Bar ───────────────────────────────────────────────────────
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -214,36 +259,98 @@ class _MobileVerticalLayout extends StatelessWidget {
                       size: 32, color: Colors.white70),
                   onPressed: () {
                     if (isOverlay) {
-                      onModeChanged(_MobileOverlayMode.artwork);
+                      widget.onModeChanged(_MobileOverlayMode.artwork);
                     } else {
                       Navigator.of(context).pop();
                     }
                   },
                   tooltip: isOverlay ? 'Cerrar' : 'Minimizar',
                 ),
-                Text(
-                  headerTitle,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5,
-                    color: Colors.white54,
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  child: Text(
+                    headerTitle,
+                    key: ValueKey(headerTitle),
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.5,
+                      color: Colors.white54,
+                    ),
                   ),
                 ),
                 _TrackMoreMenu(track: track, iconSize: 22),
               ],
             ),
 
-            // ── Main Content Area ─────────────────────────────────────────────
-            if (isLyrics)
+            // ── Animated Cover Art (collapses when lyrics are expanded) ───────
+            if (showArtwork)
+              AnimatedSize(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.fastOutSlowIn,
+                child: GestureDetector(
+                  onHorizontalDragEnd: _handleSwipe,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 350),
+                    curve: Curves.fastOutSlowIn,
+                    width: hideControls ? 48 : 280,
+                    height: hideControls ? 48 : 280,
+                    margin: EdgeInsets.only(
+                      top: hideControls ? 0 : 16,
+                      bottom: hideControls ? 8 : 16,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(hideControls ? 10 : 16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          blurRadius: hideControls ? 12 : 36,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                      image: hasArt
+                          ? DecorationImage(
+                              image: FileImage(File(coverPath)),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
+                      color: hasArt ? null : const Color(0xFF282828),
+                    ),
+                    child: hasArt
+                        ? null
+                        : Center(
+                            child: Icon(Icons.music_note_rounded,
+                                size: hideControls ? 22 : 72,
+                                color: Colors.white24),
+                          ),
+                  ),
+                ),
+              ),
+
+            // ── Queue / Lyrics expanded pane ──────────────────────────────────
+            if (isQueue)
               Expanded(
                 child: Container(
-                  key: const ValueKey('mobile_lyrics_fullscreen_pane'),
-                  margin: const EdgeInsets.only(top: 8, bottom: 8),
+                  key: const ValueKey('mobile_queue_fullscreen_pane'),
+                  margin: const EdgeInsets.only(top: 4, bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.25),
+                    color: Colors.black.withValues(alpha: 0.25),
                     borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const _QueueTab(),
+                ),
+              )
+            else if (isLyrics)
+              Expanded(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.fastOutSlowIn,
+                  key: const ValueKey('mobile_lyrics_pane'),
+                  margin: EdgeInsets.only(
+                    top: hideControls ? 4 : 0,
+                    bottom: 8,
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
@@ -254,24 +361,10 @@ class _MobileVerticalLayout extends StatelessWidget {
                   ),
                 ),
               )
-            else if (isQueue)
-              Expanded(
-                child: Container(
-                  key: const ValueKey('mobile_queue_fullscreen_pane'),
-                  margin: const EdgeInsets.only(top: 8, bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.25),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const _QueueTab(),
-                ),
-              )
             else ...[
               // ── Normal Artwork View ─────────────────────────────────────────
               const Spacer(flex: 1),
 
-              // Animated Cover Art Container with horizontal swipe gesture
               GestureDetector(
                 onHorizontalDragEnd: _handleSwipe,
                 child: Container(
@@ -282,7 +375,7 @@ class _MobileVerticalLayout extends StatelessWidget {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.55),
+                        color: Colors.black.withValues(alpha: 0.55),
                         blurRadius: 36,
                         offset: const Offset(0, 10),
                       ),
@@ -305,85 +398,139 @@ class _MobileVerticalLayout extends StatelessWidget {
               ),
 
               const Spacer(flex: 1),
+            ],
 
-              // Track Title & Artist (Left) + Favorite Heart (Right)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+            // ── Track Title & Artist + Heart (hidden in expanded lyrics) ──────
+            AnimatedSize(
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.fastOutSlowIn,
+              child: hideControls
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          MarqueeText(
-                            text: track.displayTitle,
-                            style: const TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                MarqueeText(
+                                  text: track.displayTitle,
+                                  style: const TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                MarqueeText(
+                                  text: track.displayArtist,
+                                  style: TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w400,
+                                    color: Colors.white.withValues(alpha: 0.65),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          MarqueeText(
-                            text: track.displayArtist,
-                            style: TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 14,
-                              fontWeight: FontWeight.w400,
-                              color: Colors.white.withOpacity(0.65),
-                            ),
-                          ),
+                          const SizedBox(width: 12),
+                          _FavoriteHeartButton(track: track, size: 26),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    _FavoriteHeartButton(track: track, size: 26),
-                  ],
-                ),
-              ),
+            ),
 
-              const SizedBox(height: 12),
-
-              // Progress Slider
-              const _ExpandedProgressBar(),
-
-              const SizedBox(height: 8),
-
-              // Playback Controls
-              const _ExpandedPlaybackControls(),
-
-              const SizedBox(height: 12),
-            ],
-
-            // ── Bottom Utility Row: Lyrics Toggle / Lossless Badge / Queue Toggle ──
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    icon: Icon(
-                      Icons.lyrics_rounded,
-                      color: isLyrics ? AppTheme.accent : Colors.white60,
-                      size: 24,
+            // ── Progress + Playback Controls (hidden in expanded lyrics) ──────
+            AnimatedSize(
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.fastOutSlowIn,
+              child: hideControls
+                  ? const SizedBox.shrink()
+                  : const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(height: 12),
+                        _ExpandedProgressBar(),
+                        SizedBox(height: 8),
+                        _ExpandedPlaybackControls(),
+                        SizedBox(height: 12),
+                      ],
                     ),
-                    onPressed: () => _toggleMode(_MobileOverlayMode.lyrics),
-                    tooltip: 'Letras',
-                  ),
-                  _AudioHdBadge(track: track),
-                  IconButton(
-                    icon: Icon(
-                      Icons.queue_music_rounded,
-                      color: isQueue ? AppTheme.accent : Colors.white60,
-                      size: 24,
-                    ),
-                    onPressed: () => _toggleMode(_MobileOverlayMode.queue),
-                    tooltip: 'Cola de reproducción',
-                  ),
-                ],
+            ),
+
+            // ── Bottom Utility Row with gradient overlay ───────────────────────
+            _BottomUtilityRow(
+              track: track,
+              isLyrics: isLyrics,
+              isQueue: isQueue,
+              onLyricsTap: () => _toggleMode(_MobileOverlayMode.lyrics),
+              onQueueTap: () => _toggleMode(_MobileOverlayMode.queue),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Bottom utility row with fade-up gradient ──────────────────────────────────
+class _BottomUtilityRow extends StatelessWidget {
+  const _BottomUtilityRow({
+    required this.track,
+    required this.isLyrics,
+    required this.isQueue,
+    required this.onLyricsTap,
+    required this.onQueueTap,
+  });
+
+  final Track track;
+  final bool isLyrics;
+  final bool isQueue;
+  final VoidCallback onLyricsTap;
+  final VoidCallback onQueueTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.transparent,
+            Colors.black.withValues(alpha: 0.45),
+          ],
+          stops: const [0.0, 1.0],
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            IconButton(
+              icon: Icon(
+                Icons.lyrics_rounded,
+                color: isLyrics ? AppTheme.accent : Colors.white60,
+                size: 24,
               ),
+              onPressed: onLyricsTap,
+              tooltip: 'Letras',
+            ),
+            _AudioHdBadge(track: track),
+            IconButton(
+              icon: Icon(
+                Icons.queue_music_rounded,
+                color: isQueue ? AppTheme.accent : Colors.white60,
+                size: 24,
+              ),
+              onPressed: onQueueTap,
+              tooltip: 'Cola de reproducción',
             ),
           ],
         ),
