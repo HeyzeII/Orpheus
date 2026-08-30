@@ -32,10 +32,14 @@ class LyricsView extends StatefulWidget {
     super.key,
     required this.track,
     this.transparentBackground = false,
+    this.showThumbnail = true,
+    this.onUserScrollStart,
   });
 
   final Track track;
   final bool transparentBackground;
+  final bool showThumbnail;
+  final VoidCallback? onUserScrollStart;
 
   @override
   State<LyricsView> createState() => _LyricsViewState();
@@ -173,7 +177,10 @@ class _LyricsViewState extends State<LyricsView> {
               scrollController: _scrollController,
               handler: _handler,
               coverPath: hasArt ? coverPath : null,
-              onUserScrollStart: () {},
+              showThumbnail: widget.showThumbnail,
+              onUserScrollStart: () {
+                widget.onUserScrollStart?.call();
+              },
               onUserScrollEnd: () {},
               onActiveLine: (idx) {
                 if (idx != _activeIndex) {
@@ -210,6 +217,7 @@ class _SyncedLyricsBody extends StatefulWidget {
     required this.onUserScrollEnd,
     required this.onActiveLine,
     this.coverPath,
+    this.showThumbnail = true,
   });
 
   final List<LyricLine> lines;
@@ -219,6 +227,7 @@ class _SyncedLyricsBody extends StatefulWidget {
   final VoidCallback onUserScrollEnd;
   final ValueChanged<int> onActiveLine;
   final String? coverPath;
+  final bool showThumbnail;
 
   @override
   State<_SyncedLyricsBody> createState() => _SyncedLyricsBodyState();
@@ -296,9 +305,8 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
                 blendMode: BlendMode.dstIn,
                 child: ListView.builder(
                   controller: widget.scrollController,
-                  padding: const EdgeInsets.only(
-                    // Leave room for the miniature thumbnail at the top
-                    top: 76,
+                  padding: EdgeInsets.only(
+                    top: widget.showThumbnail && widget.coverPath != null ? 76 : 24,
                     bottom: 120,
                     left: 20,
                     right: 20,
@@ -326,7 +334,7 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
             ),
 
             // ── Miniature cover thumbnail (top-left) ───────────────────────
-            if (widget.coverPath != null)
+            if (widget.showThumbnail && widget.coverPath != null)
               Positioned(
                 top: 12,
                 left: 16,

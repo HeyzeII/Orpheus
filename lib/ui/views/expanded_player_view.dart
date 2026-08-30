@@ -165,8 +165,7 @@ class _MobileVerticalLayout extends StatefulWidget {
   State<_MobileVerticalLayout> createState() => _MobileVerticalLayoutState();
 }
 
-class _MobileVerticalLayoutState extends State<_MobileVerticalLayout>
-    with SingleTickerProviderStateMixin {
+class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
   // Phase only relevant when mode == lyrics
   _LyricsPhase _lyricsPhase = _LyricsPhase.hidden;
   Timer? _peekTimer;
@@ -176,7 +175,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout>
     super.didUpdateWidget(old);
     if (widget.mode == _MobileOverlayMode.lyrics &&
         old.mode != _MobileOverlayMode.lyrics) {
-      // Just entered lyrics mode: start in peek, auto-expand after 1 s
+      // Just entered lyrics mode: start in peek, auto-expand after 900ms
       setState(() => _lyricsPhase = _LyricsPhase.peek);
       _peekTimer?.cancel();
       _peekTimer = Timer(const Duration(milliseconds: 900), () {
@@ -225,12 +224,11 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout>
 
     final isLyrics = widget.mode == _MobileOverlayMode.lyrics;
     final isQueue = widget.mode == _MobileOverlayMode.queue;
+    final isArtwork = widget.mode == _MobileOverlayMode.artwork;
     final isOverlay = isLyrics || isQueue;
 
-    // Controls visibility depends on lyrics phase
-    final hideControls =
-        isLyrics && _lyricsPhase == _LyricsPhase.expanded;
-    final bool showArtwork = !isQueue && !hideControls;
+    final isLyricsExpanded = isLyrics && _lyricsPhase == _LyricsPhase.expanded;
+    final isLyricsPeek = isLyrics && _lyricsPhase == _LyricsPhase.peek;
 
     String headerTitle = 'REPRODUCIENDO';
     if (isLyrics) headerTitle = 'LETRAS';
@@ -284,85 +282,9 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout>
               ],
             ),
 
-            // ── Animated Cover Art (collapses when lyrics are expanded) ───────
-            if (showArtwork)
-              AnimatedSize(
-                duration: const Duration(milliseconds: 350),
-                curve: Curves.fastOutSlowIn,
-                child: GestureDetector(
-                  onHorizontalDragEnd: _handleSwipe,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 350),
-                    curve: Curves.fastOutSlowIn,
-                    width: hideControls ? 48 : 280,
-                    height: hideControls ? 48 : 280,
-                    margin: EdgeInsets.only(
-                      top: hideControls ? 0 : 16,
-                      bottom: hideControls ? 8 : 16,
-                    ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(hideControls ? 10 : 16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.55),
-                          blurRadius: hideControls ? 12 : 36,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                      image: hasArt
-                          ? DecorationImage(
-                              image: FileImage(File(coverPath)),
-                              fit: BoxFit.cover,
-                            )
-                          : null,
-                      color: hasArt ? null : const Color(0xFF282828),
-                    ),
-                    child: hasArt
-                        ? null
-                        : Center(
-                            child: Icon(Icons.music_note_rounded,
-                                size: hideControls ? 22 : 72,
-                                color: Colors.white24),
-                          ),
-                  ),
-                ),
-              ),
-
-            // ── Queue / Lyrics expanded pane ──────────────────────────────────
-            if (isQueue)
-              Expanded(
-                child: Container(
-                  key: const ValueKey('mobile_queue_fullscreen_pane'),
-                  margin: const EdgeInsets.only(top: 4, bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const _QueueTab(),
-                ),
-              )
-            else if (isLyrics)
-              Expanded(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 350),
-                  curve: Curves.fastOutSlowIn,
-                  key: const ValueKey('mobile_lyrics_pane'),
-                  margin: EdgeInsets.only(
-                    top: hideControls ? 4 : 0,
-                    bottom: 8,
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: LyricsView(
-                      track: track,
-                      transparentBackground: true,
-                    ),
-                  ),
-                ),
-              )
-            else ...[
-              // ── Normal Artwork View ─────────────────────────────────────────
+            // ── Main Body Content ─────────────────────────────────────────────
+            if (isArtwork) ...[
+              // 1. Normal Artwork View: exactly ONE cover art
               const Spacer(flex: 1),
 
               GestureDetector(
@@ -398,69 +320,176 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout>
               ),
 
               const Spacer(flex: 1),
-            ],
 
-            // ── Track Title & Artist + Heart (hidden in expanded lyrics) ──────
-            AnimatedSize(
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.fastOutSlowIn,
-              child: hideControls
-                  ? const SizedBox.shrink()
-                  : Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
+              // Title & Artist + Favorite Heart
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                MarqueeText(
-                                  text: track.displayTitle,
-                                  style: const TextStyle(
-                                    fontFamily: 'Inter',
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                MarqueeText(
-                                  text: track.displayArtist,
-                                  style: TextStyle(
-                                    fontFamily: 'Inter',
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w400,
-                                    color: Colors.white.withValues(alpha: 0.65),
-                                  ),
-                                ),
-                              ],
+                          MarqueeText(
+                            text: track.displayTitle,
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          _FavoriteHeartButton(track: track, size: 26),
+                          const SizedBox(height: 4),
+                          MarqueeText(
+                            text: track.displayArtist,
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 14,
+                              fontWeight: FontWeight.w400,
+                              color: Colors.white.withValues(alpha: 0.65),
+                            ),
+                          ),
                         ],
                       ),
                     ),
-            ),
+                    const SizedBox(width: 12),
+                    _FavoriteHeartButton(track: track, size: 26),
+                  ],
+                ),
+              ),
 
-            // ── Progress + Playback Controls (hidden in expanded lyrics) ──────
-            AnimatedSize(
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.fastOutSlowIn,
-              child: hideControls
-                  ? const SizedBox.shrink()
-                  : const Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(height: 12),
-                        _ExpandedProgressBar(),
-                        SizedBox(height: 8),
-                        _ExpandedPlaybackControls(),
-                        SizedBox(height: 12),
-                      ],
+              const SizedBox(height: 12),
+              const _ExpandedProgressBar(),
+              const SizedBox(height: 8),
+              const _ExpandedPlaybackControls(),
+              const SizedBox(height: 12),
+            ] else if (isQueue) ...[
+              // 2. Queue View
+              Expanded(
+                child: Container(
+                  key: const ValueKey('mobile_queue_fullscreen_pane'),
+                  margin: const EdgeInsets.only(top: 4, bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const _QueueTab(),
+                ),
+              ),
+            ] else if (isLyrics) ...[
+              // 3. Lyrics View (Peek -> Full Screen)
+
+              // Peek header: compact artwork & title in peek phase
+              AnimatedSize(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.fastOutSlowIn,
+                child: isLyricsPeek
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: SizedBox(
+                                width: 56,
+                                height: 56,
+                                child: hasArt
+                                    ? Image.file(
+                                        File(coverPath),
+                                        fit: BoxFit.cover,
+                                        cacheWidth: 112,
+                                      )
+                                    : const ColoredBox(
+                                        color: Color(0xFF282828),
+                                        child: Icon(Icons.music_note_rounded,
+                                            size: 24, color: Colors.white24),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    track.displayTitle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontFamily: 'Inter',
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    track.displayArtist,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontFamily: 'Inter',
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w400,
+                                      color: Colors.white.withValues(alpha: 0.6),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            _FavoriteHeartButton(track: track, size: 22),
+                          ],
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+
+              // Lyrics body
+              Expanded(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.fastOutSlowIn,
+                  key: const ValueKey('mobile_lyrics_pane'),
+                  margin: EdgeInsets.only(
+                    top: isLyricsExpanded ? 4 : 0,
+                    bottom: 8,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: LyricsView(
+                      track: track,
+                      transparentBackground: true,
+                      showThumbnail: isLyricsExpanded,
+                      onUserScrollStart: () {
+                        if (_lyricsPhase == _LyricsPhase.peek) {
+                          setState(() => _lyricsPhase = _LyricsPhase.expanded);
+                        }
+                      },
                     ),
-            ),
+                  ),
+                ),
+              ),
+
+              // Peek controls: progress & playback controls in peek phase
+              AnimatedSize(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.fastOutSlowIn,
+                child: isLyricsPeek
+                    ? const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _ExpandedProgressBar(),
+                          SizedBox(height: 4),
+                          _ExpandedPlaybackControls(),
+                          SizedBox(height: 8),
+                        ],
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
 
             // ── Bottom Utility Row with gradient overlay ───────────────────────
             _BottomUtilityRow(
