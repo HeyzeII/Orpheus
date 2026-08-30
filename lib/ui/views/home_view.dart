@@ -6,6 +6,7 @@ import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
 import '../../core/services/audio_handler.dart';
 import '../theme/app_theme.dart';
+import '../widgets/animated_equalizer.dart';
 
 /// Dynamic Home View — Displays user greeting, quick picks, recently played tracks,
 /// and a library teaser query from [LocalDatabase].
@@ -457,57 +458,107 @@ class _HorizontalCarousel extends StatelessWidget {
               coverPath.isNotEmpty &&
               File(coverPath).existsSync();
 
-          return GestureDetector(
-            onTap: () => onTap(track),
-            child: SizedBox(
-              width: 130,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Square cover art
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: SizedBox(
-                      width: 130,
-                      height: 130,
-                      child: hasArt
-                          ? Image.file(File(coverPath!),
-                              fit: BoxFit.cover, cacheWidth: 260)
-                          : const ColoredBox(
-                              color: AppTheme.bgHover,
-                              child: Center(
-                                child: Icon(Icons.album_rounded,
-                                    color: AppTheme.textHint, size: 42),
-                              ),
+          return StreamBuilder<Track?>(
+            stream: OrpheusAudioHandler.instance.currentTrackStream,
+            initialData: OrpheusAudioHandler.instance.currentTrack,
+            builder: (context, snap) {
+              final isCurrent = snap.data?.trackId == track.trackId;
+
+              return GestureDetector(
+                onTap: () => onTap(track),
+                child: SizedBox(
+                  width: 130,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Square cover art with equalizer overlay when playing
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: isCurrent
+                              ? Border.all(color: AppTheme.accent.withOpacity(0.50), width: 1.5)
+                              : null,
+                          boxShadow: isCurrent
+                              ? [
+                                  BoxShadow(
+                                    color: AppTheme.accent.withOpacity(0.25),
+                                    blurRadius: 14,
+                                    spreadRadius: 1,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: SizedBox(
+                            width: 130,
+                            height: 130,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                hasArt
+                                    ? Image.file(File(coverPath!),
+                                        fit: BoxFit.cover, cacheWidth: 260)
+                                    : const ColoredBox(
+                                        color: AppTheme.bgHover,
+                                        child: Center(
+                                          child: Icon(Icons.album_rounded,
+                                              color: AppTheme.textHint, size: 42),
+                                        ),
+                                      ),
+                                if (isCurrent)
+                                  Container(
+                                    color: Colors.black54,
+                                    child: Center(
+                                      child: StreamBuilder<bool>(
+                                        stream: OrpheusAudioHandler.instance.isPlayingStream,
+                                        initialData: OrpheusAudioHandler.instance.isPlaying,
+                                        builder: (_, playSnap) => AnimatedEqualizer(
+                                          isPlaying: playSnap.data ?? false,
+                                          barCount: 4,
+                                          barWidth: 3.5,
+                                          maxHeight: 22.0,
+                                          minHeight: 5.0,
+                                          spacing: 3.0,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
-                    ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      // Title
+                      Text(
+                        track.displayTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isCurrent ? AppTheme.accent : AppTheme.textPrimary,
+                          fontSize: 12,
+                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      // Artist
+                      Text(
+                        track.displayArtist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isCurrent ? AppTheme.accent.withOpacity(0.8) : AppTheme.textSecondary,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 6),
-                  // Title
-                  Text(
-                    track.displayTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppTheme.textPrimary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  // Artist
-                  Text(
-                    track.displayArtist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           );
         },
       ),

@@ -10,6 +10,7 @@ import '../../core/models/models.dart';
 import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/animated_equalizer.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/marquee_text.dart';
 import 'lyrics_view.dart';
@@ -912,7 +913,18 @@ class _QueueTab extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
                 ),
-                trailing: const Icon(Icons.volume_up_rounded, color: AppTheme.accent, size: 22),
+                trailing: StreamBuilder<bool>(
+                  stream: OrpheusAudioHandler.instance.isPlayingStream,
+                  initialData: OrpheusAudioHandler.instance.isPlaying,
+                  builder: (_, playSnap) => AnimatedEqualizer(
+                    isPlaying: playSnap.data ?? false,
+                    barCount: 3,
+                    barWidth: 2.8,
+                    maxHeight: 16.0,
+                    minHeight: 4.0,
+                    spacing: 2.5,
+                  ),
+                ),
               ),
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 8),

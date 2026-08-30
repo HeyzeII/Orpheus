@@ -1412,23 +1412,48 @@ class _LibraryViewState extends State<LibraryView> {
                           stream: OrpheusAudioHandler.instance.currentTrackStream,
                           initialData: OrpheusAudioHandler.instance.currentTrack,
                           builder: (context, snap) {
+                            final currentTrack = snap.data;
+                            final isPlayingThisTrack = currentTrack != null && currentTrack.trackId == track.trackId;
+                            final queue = AudioPlayerService.instance.queue;
                             final currentIdx = OrpheusAudioHandler.instance.currentIndex;
-                            final isCurrent = snap.data?.trackId == track.trackId &&
-                                (currentIdx == idx || currentIdx < 0);
 
-                            return Container(
+                            // Disambiguate duplicate songs in playlist when the queue matches this playlist
+                            final isExactIndexInQueue = currentIdx >= 0 &&
+                                currentIdx < queue.length &&
+                                currentIdx == idx &&
+                                queue[currentIdx].trackId == track.trackId;
+
+                            final isCurrent = isPlayingThisTrack &&
+                                (isExactIndexInQueue ||
+                                    queue.length != playlistTracks.length ||
+                                    playlistTracks.where((t) => t.trackId == track.trackId).length <= 1);
+
+                            return AnimatedContainer(
+                              duration: const Duration(milliseconds: 250),
+                              curve: Curves.easeInOut,
                               margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                               decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(8),
+                                color: isCurrent ? AppTheme.accent.withOpacity(0.12) : Colors.transparent,
+                                borderRadius: BorderRadius.circular(10),
                                 border: isCurrent
-                                    ? Border.all(color: AppTheme.accent.withOpacity(0.35), width: 1)
+                                    ? Border.all(color: AppTheme.accent.withOpacity(0.40), width: 1.2)
+                                    : null,
+                                boxShadow: isCurrent
+                                    ? [
+                                        BoxShadow(
+                                          color: AppTheme.accent.withOpacity(0.18),
+                                          blurRadius: 12,
+                                          spreadRadius: 0.5,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ]
                                     : null,
                               ),
                               child: Material(
-                                color: isCurrent ? AppTheme.accent.withOpacity(0.12) : Colors.transparent,
-                                borderRadius: BorderRadius.circular(8),
+                                color: Colors.transparent,
+                                borderRadius: BorderRadius.circular(10),
                                 child: ListTile(
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                                   onTap: () => _playTracks(playlistTracks, idx),
                                 leading: ClipRRect(
@@ -1865,23 +1890,35 @@ class _LibraryViewState extends State<LibraryView> {
           stream: OrpheusAudioHandler.instance.currentTrackStream,
           initialData: OrpheusAudioHandler.instance.currentTrack,
           builder: (context, snap) {
-            final currentIdx = OrpheusAudioHandler.instance.currentIndex;
-            final isCurrent = snap.data?.trackId == track.trackId &&
-                (currentIdx == idx || currentIdx < 0);
+            final currentTrack = snap.data;
+            final isCurrent = currentTrack != null && currentTrack.trackId == track.trackId;
 
-            return Container(
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
               margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
+                color: isCurrent ? AppTheme.accent.withOpacity(0.12) : Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
                 border: isCurrent
-                    ? Border.all(color: AppTheme.accent.withOpacity(0.35), width: 1)
+                    ? Border.all(color: AppTheme.accent.withOpacity(0.40), width: 1.2)
+                    : null,
+                boxShadow: isCurrent
+                    ? [
+                        BoxShadow(
+                          color: AppTheme.accent.withOpacity(0.18),
+                          blurRadius: 12,
+                          spreadRadius: 0.5,
+                          offset: const Offset(0, 2),
+                        ),
+                      ]
                     : null,
               ),
               child: Material(
-                color: isCurrent ? AppTheme.accent.withOpacity(0.12) : Colors.transparent,
-                borderRadius: BorderRadius.circular(8),
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(10),
                 child: ListTile(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   onTap: () => _playTracks(tracks, idx),
                 leading: ClipRRect(
@@ -2130,24 +2167,33 @@ class _TrackRowState extends State<_TrackRow> {
       stream: OrpheusAudioHandler.instance.currentTrackStream,
       initialData: OrpheusAudioHandler.instance.currentTrack,
       builder: (context, snap) {
-        final currentIdx = OrpheusAudioHandler.instance.currentIndex;
-        final isCurrent = snap.data?.trackId == widget.track.trackId &&
-            (currentIdx == (widget.index - 1) || currentIdx < 0);
+        final currentTrack = snap.data;
+        final isCurrent = currentTrack != null && currentTrack.trackId == widget.track.trackId;
 
         return MouseRegion(
           onEnter: (_) => setState(() => _hovered = true),
           onExit: (_) => setState(() => _hovered = false),
           child: GestureDetector(
             onDoubleTap: widget.onPlay,
-            child: Container(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
               decoration: BoxDecoration(
                 color: isCurrent
                     ? AppTheme.accent.withOpacity(0.12)
                     : (_hovered ? AppTheme.bgHover : Colors.transparent),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(8),
                 border: isCurrent
-                    ? Border.all(color: AppTheme.accent.withOpacity(0.35), width: 1)
+                    ? Border.all(color: AppTheme.accent.withOpacity(0.40), width: 1.2)
+                    : null,
+                boxShadow: isCurrent
+                    ? [
+                        BoxShadow(
+                          color: AppTheme.accent.withOpacity(0.16),
+                          blurRadius: 10,
+                          spreadRadius: 0.5,
+                        ),
+                      ]
                     : null,
               ),
               child: Row(
