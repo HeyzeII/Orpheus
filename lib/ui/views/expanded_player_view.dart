@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
 import '../../core/services/audio_handler.dart';
-import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_equalizer.dart';
 import '../widgets/app_toast.dart';
@@ -282,216 +281,237 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
               ],
             ),
 
-            // ── Main Body Content ─────────────────────────────────────────────
-            if (isArtwork) ...[
-              // 1. Normal Artwork View: exactly ONE cover art
-              const Spacer(flex: 1),
-
-              GestureDetector(
-                onHorizontalDragEnd: _handleSwipe,
-                child: Container(
-                  width: 280,
-                  height: 280,
-                  margin: const EdgeInsets.symmetric(vertical: 16),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        blurRadius: 36,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                    image: hasArt
-                        ? DecorationImage(
-                            image: FileImage(File(coverPath)),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                    color: hasArt ? null : const Color(0xFF282828),
-                  ),
-                  child: hasArt
-                      ? null
-                      : const Center(
-                          child: Icon(Icons.music_note_rounded,
-                              size: 72, color: Colors.white24),
-                        ),
-                ),
-              ),
-
-              const Spacer(flex: 1),
-
-              // Title & Artist + Favorite Heart
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          MarqueeText(
-                            text: track.displayTitle,
-                            style: const TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          MarqueeText(
-                            text: track.displayArtist,
-                            style: TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 14,
-                              fontWeight: FontWeight.w400,
-                              color: Colors.white.withValues(alpha: 0.65),
-                            ),
-                          ),
-                        ],
-                      ),
+            // ── Main Body Content with Tidal-style organic transitions ────────
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 400),
+                switchInCurve: Curves.easeInOutCubic,
+                switchOutCurve: Curves.easeInOutCubic,
+                transitionBuilder: (child, animation) {
+                  return FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 0.03),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
                     ),
-                    const SizedBox(width: 12),
-                    _FavoriteHeartButton(track: track, size: 26),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 12),
-              const _ExpandedProgressBar(),
-              const SizedBox(height: 8),
-              const _ExpandedPlaybackControls(),
-              const SizedBox(height: 12),
-            ] else if (isQueue) ...[
-              // 2. Queue View
-              Expanded(
-                child: Container(
-                  key: const ValueKey('mobile_queue_fullscreen_pane'),
-                  margin: const EdgeInsets.only(top: 4, bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const _QueueTab(),
-                ),
-              ),
-            ] else if (isLyrics) ...[
-              // 3. Lyrics View (Peek -> Full Screen)
-
-              // Peek header: compact artwork & title in peek phase
-              AnimatedSize(
-                duration: const Duration(milliseconds: 350),
-                curve: Curves.fastOutSlowIn,
-                child: isLyricsPeek
-                    ? Padding(
-                        padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-                        child: Row(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: SizedBox(
-                                width: 56,
-                                height: 56,
-                                child: hasArt
-                                    ? Image.file(
-                                        File(coverPath),
-                                        fit: BoxFit.cover,
-                                        cacheWidth: 112,
-                                      )
-                                    : const ColoredBox(
-                                        color: Color(0xFF282828),
-                                        child: Icon(Icons.music_note_rounded,
-                                            size: 24, color: Colors.white24),
-                                      ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    track.displayTitle,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontFamily: 'Inter',
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    track.displayArtist,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontFamily: 'Inter',
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w400,
-                                      color: Colors.white.withValues(alpha: 0.6),
-                                    ),
+                  );
+                },
+                child: isArtwork
+                    ? Column(
+                        key: const ValueKey('mobile_artwork_view'),
+                        children: [
+                          const Spacer(flex: 1),
+                          GestureDetector(
+                            onHorizontalDragEnd: _handleSwipe,
+                            child: Container(
+                              width: 280,
+                              height: 280,
+                              margin: const EdgeInsets.symmetric(vertical: 16),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.55),
+                                    blurRadius: 36,
+                                    offset: const Offset(0, 10),
                                   ),
                                 ],
+                                image: hasArt
+                                    ? DecorationImage(
+                                        image: FileImage(File(coverPath)),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : null,
+                                color: hasArt ? null : const Color(0xFF282828),
                               ),
+                              child: hasArt
+                                  ? null
+                                  : const Center(
+                                      child: Icon(Icons.music_note_rounded,
+                                          size: 72, color: Colors.white24),
+                                    ),
                             ),
-                            _FavoriteHeartButton(track: track, size: 22),
-                          ],
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-
-              // Lyrics body
-              Expanded(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 350),
-                  curve: Curves.fastOutSlowIn,
-                  key: const ValueKey('mobile_lyrics_pane'),
-                  margin: EdgeInsets.only(
-                    top: isLyricsExpanded ? 4 : 0,
-                    bottom: 8,
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: LyricsView(
-                      track: track,
-                      transparentBackground: true,
-                      showThumbnail: isLyricsExpanded,
-                      onUserScrollStart: () {
-                        if (_lyricsPhase == _LyricsPhase.peek) {
-                          setState(() => _lyricsPhase = _LyricsPhase.expanded);
-                        }
-                      },
-                    ),
-                  ),
-                ),
-              ),
-
-              // Peek controls: progress & playback controls in peek phase
-              AnimatedSize(
-                duration: const Duration(milliseconds: 350),
-                curve: Curves.fastOutSlowIn,
-                child: isLyricsPeek
-                    ? const Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _ExpandedProgressBar(),
-                          SizedBox(height: 4),
-                          _ExpandedPlaybackControls(),
-                          SizedBox(height: 8),
+                          ),
+                          const Spacer(flex: 1),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      MarqueeText(
+                                        text: track.displayTitle,
+                                        style: const TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      MarqueeText(
+                                        text: track.displayArtist,
+                                        style: TextStyle(
+                                          fontFamily: 'Inter',
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w400,
+                                          color: Colors.white.withValues(alpha: 0.65),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                _FavoriteHeartButton(track: track, size: 26),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          const _ExpandedProgressBar(),
+                          const SizedBox(height: 8),
+                          const _ExpandedPlaybackControls(),
+                          const SizedBox(height: 12),
                         ],
                       )
-                    : const SizedBox.shrink(),
-              ),
-            ],
+                    : isQueue
+                        ? Container(
+                            key: const ValueKey('mobile_queue_fullscreen_pane'),
+                            margin: const EdgeInsets.only(top: 4, bottom: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.25),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: const _QueueTab(),
+                          )
+                        : Column(
+                            key: const ValueKey('mobile_lyrics_container'),
+                            children: [
+                              // Peek header: compact artwork & title in peek phase
+                              AnimatedSize(
+                                duration: const Duration(milliseconds: 400),
+                                curve: Curves.easeInOutCubic,
+                                child: isLyricsPeek
+                                    ? Padding(
+                                        padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                                        child: Row(
+                                          children: [
+                                            ClipRRect(
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: SizedBox(
+                                                width: 56,
+                                                height: 56,
+                                                child: hasArt
+                                                    ? Image.file(
+                                                        File(coverPath),
+                                                        fit: BoxFit.cover,
+                                                        cacheWidth: 112,
+                                                      )
+                                                    : const ColoredBox(
+                                                        color: Color(0xFF282828),
+                                                        child: Icon(
+                                                            Icons.music_note_rounded,
+                                                            size: 24,
+                                                            color: Colors.white24),
+                                                      ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    track.displayTitle,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      fontFamily: 'Inter',
+                                                      fontSize: 15,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    track.displayArtist,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      fontFamily: 'Inter',
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.w400,
+                                                      color: Colors.white
+                                                          .withValues(alpha: 0.6),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            _FavoriteHeartButton(track: track, size: 22),
+                                          ],
+                                        ),
+                                      )
+                                    : const SizedBox.shrink(),
+                              ),
 
-            // ── Bottom Utility Row with gradient overlay ───────────────────────
+                              // Lyrics body
+                              Expanded(
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 400),
+                                  curve: Curves.easeInOutCubic,
+                                  key: const ValueKey('mobile_lyrics_pane'),
+                                  margin: EdgeInsets.only(
+                                    top: isLyricsExpanded ? 4 : 0,
+                                    bottom: 4,
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: LyricsView(
+                                      track: track,
+                                      transparentBackground: true,
+                                      showThumbnail: isLyricsExpanded,
+                                      onUserScrollStart: () {
+                                        if (_lyricsPhase == _LyricsPhase.peek) {
+                                          setState(() =>
+                                              _lyricsPhase = _LyricsPhase.expanded);
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              // Peek controls: progress & playback controls in peek phase
+                              AnimatedSize(
+                                duration: const Duration(milliseconds: 400),
+                                curve: Curves.easeInOutCubic,
+                                child: isLyricsPeek
+                                    ? const Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          _ExpandedProgressBar(),
+                                          SizedBox(height: 4),
+                                          _ExpandedPlaybackControls(),
+                                          SizedBox(height: 8),
+                                        ],
+                                      )
+                                    : const SizedBox.shrink(),
+                              ),
+                            ],
+                          ),
+              ),
+            ),
+
+            // ── Bottom Utility Row with extended gradient overlay ──────────────
             _BottomUtilityRow(
               track: track,
               isLyrics: isLyrics,
@@ -506,7 +526,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
   }
 }
 
-// ── Bottom utility row with fade-up gradient ──────────────────────────────────
+// ── Bottom utility row with luxurious fade-up gradient ─────────────────────────
 class _BottomUtilityRow extends StatelessWidget {
   const _BottomUtilityRow({
     required this.track,
@@ -525,20 +545,22 @@ class _BottomUtilityRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      padding: const EdgeInsets.only(top: 24, bottom: 4),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
             Colors.transparent,
-            Colors.black.withValues(alpha: 0.45),
+            Colors.black.withValues(alpha: 0.20),
+            Colors.black.withValues(alpha: 0.65),
+            Colors.black.withValues(alpha: 0.90),
           ],
-          stops: const [0.0, 1.0],
+          stops: const [0.0, 0.30, 0.70, 1.0],
         ),
-        borderRadius: BorderRadius.circular(12),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 24),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -546,7 +568,7 @@ class _BottomUtilityRow extends StatelessWidget {
               icon: Icon(
                 Icons.lyrics_rounded,
                 color: isLyrics ? AppTheme.accent : Colors.white60,
-                size: 24,
+                size: 26,
               ),
               onPressed: onLyricsTap,
               tooltip: 'Letras',
@@ -556,7 +578,7 @@ class _BottomUtilityRow extends StatelessWidget {
               icon: Icon(
                 Icons.queue_music_rounded,
                 color: isQueue ? AppTheme.accent : Colors.white60,
-                size: 24,
+                size: 26,
               ),
               onPressed: onQueueTap,
               tooltip: 'Cola de reproducción',
@@ -977,7 +999,7 @@ class _QueueTab extends StatefulWidget {
 class _QueueTabState extends State<_QueueTab> {
   final _scrollController = ScrollController();
   final _currentTrackKey = GlobalKey();
-  int _lastIndex = -1;
+  bool _hasInitialScrolled = false;
 
   @override
   void initState() {
@@ -988,13 +1010,14 @@ class _QueueTabState extends State<_QueueTab> {
   }
 
   void _scrollToCurrentTrack() {
-    if (!mounted) return;
+    if (!mounted || _hasInitialScrolled) return;
     final ctx = _currentTrackKey.currentContext;
     if (ctx != null) {
+      _hasInitialScrolled = true;
       Scrollable.ensureVisible(
         ctx,
-        alignment: 0.35,
-        duration: const Duration(milliseconds: 350),
+        alignment: 0.50,
+        duration: const Duration(milliseconds: 400),
         curve: Curves.easeInOutCubic,
       );
     }
@@ -1040,8 +1063,7 @@ class _QueueTabState extends State<_QueueTab> {
         final currentIndex = handler.currentIndex;
         final currentTrack = handler.currentTrack;
 
-        if (currentIndex != _lastIndex) {
-          _lastIndex = currentIndex;
+        if (!_hasInitialScrolled && currentTrack != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _scrollToCurrentTrack();
           });

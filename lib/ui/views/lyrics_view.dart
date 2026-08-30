@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:palette_generator/palette_generator.dart';
 
 import '../../core/models/track.dart';
@@ -283,7 +284,15 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
             NotificationListener<ScrollNotification>(
               onNotification: (n) {
                 if (n is ScrollStartNotification && n.dragDetails != null) {
-                  setState(() => _isUserScrolling = true);
+                  if (!_isUserScrolling) {
+                    setState(() => _isUserScrolling = true);
+                  }
+                  widget.onUserScrollStart();
+                } else if (n is UserScrollNotification &&
+                    n.direction != ScrollDirection.idle) {
+                  if (!_isUserScrolling) {
+                    setState(() => _isUserScrolling = true);
+                  }
                   widget.onUserScrollStart();
                 }
                 return false;
@@ -305,9 +314,10 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
                 blendMode: BlendMode.dstIn,
                 child: ListView.builder(
                   controller: widget.scrollController,
+                  physics: const BouncingScrollPhysics(),
                   padding: EdgeInsets.only(
-                    top: widget.showThumbnail && widget.coverPath != null ? 76 : 24,
-                    bottom: 120,
+                    top: widget.showThumbnail && widget.coverPath != null ? 104 : 28,
+                    bottom: 140,
                     left: 20,
                     right: 20,
                   ),
@@ -333,29 +343,49 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
               ),
             ),
 
-            // ── Miniature cover thumbnail (top-left) ───────────────────────
+            // ── Miniature cover thumbnail (top-left, 72x72 with translucent border) ──
             if (widget.showThumbnail && widget.coverPath != null)
               Positioned(
                 top: 12,
                 left: 16,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.file(
-                    File(widget.coverPath!),
-                    width: 48,
-                    height: 48,
-                    fit: BoxFit.cover,
-                    cacheWidth: 96,
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(11),
+                    child: Image.file(
+                      File(widget.coverPath!),
+                      fit: BoxFit.cover,
+                      cacheWidth: 144,
+                    ),
                   ),
                 ),
               ),
 
-            // Floating "Resincronizar" Button
-            if (_isUserScrolling)
-              Positioned(
-                bottom: 16,
-                left: 0,
-                right: 0,
+            // ── Floating "Resincronizar" Button ────────────────────────────
+            AnimatedPositioned(
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeInOutCubic,
+              bottom: _isUserScrolling ? 24 : -70,
+              left: 0,
+              right: 0,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 300),
+                opacity: _isUserScrolling ? 1.0 : 0.0,
                 child: Center(
                   child: GestureDetector(
                     onTap: () {
@@ -363,31 +393,32 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
                       _scrollToActive(_activeIndex);
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                       decoration: BoxDecoration(
                         color: AppTheme.accent,
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: BorderRadius.circular(24),
                         boxShadow: [
                           BoxShadow(
                             color: AppTheme.accent.withValues(alpha: 0.45),
-                            blurRadius: 14,
+                            blurRadius: 16,
                             spreadRadius: 1,
-                            offset: const Offset(0, 3),
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.sync_rounded, size: 16, color: Colors.black),
-                          SizedBox(width: 6),
+                          Icon(Icons.sync_rounded, size: 18, color: Colors.black),
+                          SizedBox(width: 8),
                           Text(
                             'Resincronizar',
                             style: TextStyle(
                               color: Colors.black,
                               fontWeight: FontWeight.bold,
-                              fontSize: 12,
+                              fontSize: 13,
                               fontFamily: 'Inter',
+                              letterSpacing: 0.2,
                             ),
                           ),
                         ],
@@ -396,6 +427,7 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
                   ),
                 ),
               ),
+            ),
           ],
         );
       },
@@ -404,7 +436,7 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// Single lyric line widget
+// Single lyric line widget (34sp active, 22sp secondary)
 // ════════════════════════════════════════════════════════════════════════════
 
 class _LyricLineItem extends StatelessWidget {
@@ -427,18 +459,18 @@ class _LyricLineItem extends StatelessWidget {
     final FontWeight fontWeight;
     final double fontSize;
     final double opacity;
-    final double lineHeight = isActive ? 1.4 : 1.35;
+    final double lineHeight = isActive ? 1.35 : 1.30;
 
     if (isActive) {
       textColor = Colors.white;
-      fontWeight = FontWeight.w700;
-      fontSize = 24;
+      fontWeight = FontWeight.w800;
+      fontSize = 34;
       opacity = 1.0;
     } else {
       textColor = Colors.white;
       fontWeight = FontWeight.w500;
-      fontSize = 18;
-      opacity = 0.45;
+      fontSize = 22;
+      opacity = 0.50;
     }
 
     return GestureDetector(
@@ -446,17 +478,17 @@ class _LyricLineItem extends StatelessWidget {
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 14),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic,
             alignment: Alignment.centerLeft,
             child: AnimatedOpacity(
               opacity: opacity,
               duration: const Duration(milliseconds: 300),
               child: AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOut,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: fontSize,
@@ -466,8 +498,8 @@ class _LyricLineItem extends StatelessWidget {
                   shadows: isActive
                       ? [
                           Shadow(
-                            color: AppTheme.accent.withAlpha(0x66),
-                            blurRadius: 12,
+                            color: AppTheme.accent.withValues(alpha: 0.40),
+                            blurRadius: 16,
                           ),
                         ]
                       : null,
