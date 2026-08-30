@@ -239,7 +239,37 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
   bool _isUserScrolling = false;
   final List<GlobalKey> _lineKeys = [];
 
-  /// Scrolls to [index] using the absolute key position.
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final pos = AudioPlayerService.instance.position;
+      final idx = LrcParser.activeLineIndex(widget.lines, pos);
+      if (idx >= 0) {
+        _activeIndex = idx;
+        _scrollToActive(idx);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(_SyncedLyricsBody old) {
+    super.didUpdateWidget(old);
+    if (old.lines != widget.lines) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final pos = AudioPlayerService.instance.position;
+        final idx = LrcParser.activeLineIndex(widget.lines, pos);
+        if (idx >= 0) {
+          _activeIndex = idx;
+          if (!_isUserScrolling) {
+            _scrollToActive(idx);
+          }
+        }
+      });
+    }
+  }
+
+  /// Scrolls to [index] using the absolute key position with vertical centering (alignment: 0.40).
   void _scrollToActive(int index) {
     if (index < 0 || index >= _lineKeys.length) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -248,8 +278,8 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
       if (ctx != null && widget.scrollController.hasClients) {
         Scrollable.ensureVisible(
           ctx,
-          alignment: 0.35,
-          duration: const Duration(milliseconds: 400),
+          alignment: 0.40,
+          duration: const Duration(milliseconds: 350),
           curve: Curves.easeInOutCubic,
         );
       }
@@ -316,7 +346,7 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
                   controller: widget.scrollController,
                   physics: const BouncingScrollPhysics(),
                   padding: EdgeInsets.only(
-                    top: widget.showThumbnail && widget.coverPath != null ? 104 : 28,
+                    top: widget.showThumbnail && widget.coverPath != null ? 140 : 28,
                     bottom: 140,
                     left: 20,
                     right: 20,
@@ -343,34 +373,34 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
               ),
             ),
 
-            // ── Miniature cover thumbnail (top-left, 72x72 with translucent border) ──
+            // ── Miniature cover thumbnail (top-left, 108x108 with translucent border) ──
             if (widget.showThumbnail && widget.coverPath != null)
               Positioned(
                 top: 12,
                 left: 16,
                 child: Container(
-                  width: 72,
-                  height: 72,
+                  width: 108,
+                  height: 108,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: Colors.white.withValues(alpha: 0.18),
                       width: 1.2,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.45),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
+                        color: Colors.black.withValues(alpha: 0.40),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
                       ),
                     ],
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(11),
+                    borderRadius: BorderRadius.circular(13),
                     child: Image.file(
                       File(widget.coverPath!),
                       fit: BoxFit.cover,
-                      cacheWidth: 144,
+                      cacheWidth: 216,
                     ),
                   ),
                 ),

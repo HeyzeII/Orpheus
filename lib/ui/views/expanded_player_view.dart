@@ -112,8 +112,8 @@ class _BlurredImageBackground extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  const Color(0xFF141414).withOpacity(0.55),
-                  const Color(0xFF141414).withOpacity(0.92),
+                  const Color(0xFF141414).withValues(alpha: 0.55),
+                  const Color(0xFF141414).withValues(alpha: 0.92),
                 ],
               ),
             ),
@@ -174,10 +174,10 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
     super.didUpdateWidget(old);
     if (widget.mode == _MobileOverlayMode.lyrics &&
         old.mode != _MobileOverlayMode.lyrics) {
-      // Just entered lyrics mode: start in peek, auto-expand after 900ms
+      // Just entered lyrics mode: start in peek, auto-expand smoothly after 1.1s
       setState(() => _lyricsPhase = _LyricsPhase.peek);
       _peekTimer?.cancel();
-      _peekTimer = Timer(const Duration(milliseconds: 900), () {
+      _peekTimer = Timer(const Duration(milliseconds: 1100), () {
         if (mounted && widget.mode == _MobileOverlayMode.lyrics) {
           setState(() => _lyricsPhase = _LyricsPhase.expanded);
         }
@@ -244,7 +244,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
         systemNavigationBarContrastEnforced: false,
       ),
       child: Padding(
-        padding: EdgeInsets.fromLTRB(16, topPad + 4, 16, bottomPad + 8),
+        padding: EdgeInsets.fromLTRB(16, topPad + 4, 16, bottomPad + 4),
         child: Column(
           children: [
             // ── Top Bar ───────────────────────────────────────────────────────
@@ -292,7 +292,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                     opacity: animation,
                     child: SlideTransition(
                       position: Tween<Offset>(
-                        begin: const Offset(0, 0.03),
+                        begin: const Offset(0, 0.02),
                         end: Offset.zero,
                       ).animate(animation),
                       child: child,
@@ -376,18 +376,14 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                           const _ExpandedProgressBar(),
                           const SizedBox(height: 8),
                           const _ExpandedPlaybackControls(),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 8),
                         ],
                       )
                     : isQueue
                         ? Container(
                             key: const ValueKey('mobile_queue_fullscreen_pane'),
                             margin: const EdgeInsets.only(top: 4, bottom: 4),
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.25),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                             child: const _QueueTab(),
                           )
                         : Column(
@@ -395,69 +391,74 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                             children: [
                               // Peek header: compact artwork & title in peek phase
                               AnimatedSize(
-                                duration: const Duration(milliseconds: 400),
+                                duration: const Duration(milliseconds: 650),
                                 curve: Curves.easeInOutCubic,
                                 child: isLyricsPeek
-                                    ? Padding(
-                                        padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-                                        child: Row(
-                                          children: [
-                                            ClipRRect(
-                                              borderRadius: BorderRadius.circular(8),
-                                              child: SizedBox(
-                                                width: 56,
-                                                height: 56,
-                                                child: hasArt
-                                                    ? Image.file(
-                                                        File(coverPath),
-                                                        fit: BoxFit.cover,
-                                                        cacheWidth: 112,
-                                                      )
-                                                    : const ColoredBox(
-                                                        color: Color(0xFF282828),
-                                                        child: Icon(
-                                                            Icons.music_note_rounded,
-                                                            size: 24,
-                                                            color: Colors.white24),
+                                    ? AnimatedOpacity(
+                                        duration: const Duration(milliseconds: 500),
+                                        curve: Curves.easeInOutCubic,
+                                        opacity: isLyricsPeek ? 1.0 : 0.0,
+                                        child: Padding(
+                                          padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                                          child: Row(
+                                            children: [
+                                              ClipRRect(
+                                                borderRadius: BorderRadius.circular(8),
+                                                child: SizedBox(
+                                                  width: 56,
+                                                  height: 56,
+                                                  child: hasArt
+                                                      ? Image.file(
+                                                          File(coverPath),
+                                                          fit: BoxFit.cover,
+                                                          cacheWidth: 112,
+                                                        )
+                                                      : const ColoredBox(
+                                                          color: Color(0xFF282828),
+                                                          child: Icon(
+                                                              Icons.music_note_rounded,
+                                                              size: 24,
+                                                              color: Colors.white24),
+                                                        ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Text(
+                                                      track.displayTitle,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: const TextStyle(
+                                                        fontFamily: 'Inter',
+                                                        fontSize: 15,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: Colors.white,
                                                       ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Text(
-                                                    track.displayTitle,
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: const TextStyle(
-                                                      fontFamily: 'Inter',
-                                                      fontSize: 15,
-                                                      fontWeight: FontWeight.bold,
-                                                      color: Colors.white,
                                                     ),
-                                                  ),
-                                                  const SizedBox(height: 2),
-                                                  Text(
-                                                    track.displayArtist,
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: TextStyle(
-                                                      fontFamily: 'Inter',
-                                                      fontSize: 12,
-                                                      fontWeight: FontWeight.w400,
-                                                      color: Colors.white
-                                                          .withValues(alpha: 0.6),
+                                                    const SizedBox(height: 2),
+                                                    Text(
+                                                      track.displayArtist,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        fontFamily: 'Inter',
+                                                        fontSize: 12,
+                                                        fontWeight: FontWeight.w400,
+                                                        color: Colors.white
+                                                            .withValues(alpha: 0.6),
+                                                      ),
                                                     ),
-                                                  ),
-                                                ],
+                                                  ],
+                                                ),
                                               ),
-                                            ),
-                                            _FavoriteHeartButton(track: track, size: 22),
-                                          ],
+                                              _FavoriteHeartButton(track: track, size: 22),
+                                            ],
+                                          ),
                                         ),
                                       )
                                     : const SizedBox.shrink(),
@@ -466,7 +467,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                               // Lyrics body
                               Expanded(
                                 child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 400),
+                                  duration: const Duration(milliseconds: 650),
                                   curve: Curves.easeInOutCubic,
                                   key: const ValueKey('mobile_lyrics_pane'),
                                   margin: EdgeInsets.only(
@@ -492,17 +493,22 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
 
                               // Peek controls: progress & playback controls in peek phase
                               AnimatedSize(
-                                duration: const Duration(milliseconds: 400),
+                                duration: const Duration(milliseconds: 650),
                                 curve: Curves.easeInOutCubic,
                                 child: isLyricsPeek
-                                    ? const Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          _ExpandedProgressBar(),
-                                          SizedBox(height: 4),
-                                          _ExpandedPlaybackControls(),
-                                          SizedBox(height: 8),
-                                        ],
+                                    ? AnimatedOpacity(
+                                        duration: const Duration(milliseconds: 500),
+                                        curve: Curves.easeInOutCubic,
+                                        opacity: isLyricsPeek ? 1.0 : 0.0,
+                                        child: const Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            _ExpandedProgressBar(),
+                                            SizedBox(height: 4),
+                                            _ExpandedPlaybackControls(),
+                                            SizedBox(height: 4),
+                                          ],
+                                        ),
                                       )
                                     : const SizedBox.shrink(),
                               ),
@@ -511,7 +517,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
               ),
             ),
 
-            // ── Bottom Utility Row with extended gradient overlay ──────────────
+            // ── Bottom Utility Row (100% transparent, floating over ambient background) ──
             _BottomUtilityRow(
               track: track,
               isLyrics: isLyrics,
@@ -526,7 +532,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
   }
 }
 
-// ── Bottom utility row with luxurious fade-up gradient ─────────────────────────
+// ── Bottom utility row (100% transparent floating bar) ─────────────────────────
 class _BottomUtilityRow extends StatelessWidget {
   const _BottomUtilityRow({
     required this.track,
@@ -544,47 +550,31 @@ class _BottomUtilityRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.only(top: 24, bottom: 4),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.transparent,
-            Colors.black.withValues(alpha: 0.20),
-            Colors.black.withValues(alpha: 0.65),
-            Colors.black.withValues(alpha: 0.90),
-          ],
-          stops: const [0.0, 0.30, 0.70, 1.0],
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            IconButton(
-              icon: Icon(
-                Icons.lyrics_rounded,
-                color: isLyrics ? AppTheme.accent : Colors.white60,
-                size: 26,
-              ),
-              onPressed: onLyricsTap,
-              tooltip: 'Letras',
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          IconButton(
+            icon: Icon(
+              Icons.lyrics_rounded,
+              color: isLyrics ? AppTheme.accent : Colors.white70,
+              size: 26,
             ),
-            _AudioHdBadge(track: track),
-            IconButton(
-              icon: Icon(
-                Icons.queue_music_rounded,
-                color: isQueue ? AppTheme.accent : Colors.white60,
-                size: 26,
-              ),
-              onPressed: onQueueTap,
-              tooltip: 'Cola de reproducción',
+            onPressed: onLyricsTap,
+            tooltip: 'Letras',
+          ),
+          _AudioHdBadge(track: track),
+          IconButton(
+            icon: Icon(
+              Icons.queue_music_rounded,
+              color: isQueue ? AppTheme.accent : Colors.white70,
+              size: 26,
             ),
-          ],
-        ),
+            onPressed: onQueueTap,
+            tooltip: 'Cola de reproducción',
+          ),
+        ],
       ),
     );
   }
@@ -647,7 +637,7 @@ class _ExpandedArtisticCore extends StatelessWidget {
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.4),
+                          color: Colors.black.withValues(alpha: 0.40),
                           blurRadius: 40,
                           offset: const Offset(0, 20),
                         ),
@@ -695,7 +685,7 @@ class _ExpandedArtisticCore extends StatelessWidget {
                         fontFamily: 'Inter',
                         fontSize: 20,
                         fontWeight: FontWeight.w500,
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.70),
                       ),
                     ),
                   ],
@@ -754,7 +744,7 @@ class _ExpandedProgressBar extends StatelessWidget {
                     style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 12,
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.60),
                       fontFeatures: const [ui.FontFeature.tabularFigures()],
                     ),
                   ),
@@ -768,7 +758,7 @@ class _ExpandedProgressBar extends StatelessWidget {
                       overlayShape:
                           const RoundSliderOverlayShape(overlayRadius: 16.0),
                       activeTrackColor: AppTheme.accent,
-                      inactiveTrackColor: Colors.white.withOpacity(0.2),
+                      inactiveTrackColor: Colors.white.withValues(alpha: 0.20),
                       thumbColor: Colors.white,
                     ),
                     child: Slider(
@@ -790,7 +780,7 @@ class _ExpandedProgressBar extends StatelessWidget {
                     style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 12,
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.60),
                       fontFeatures: const [ui.FontFeature.tabularFigures()],
                     ),
                   ),
@@ -839,7 +829,7 @@ class _ExpandedPlaybackControls extends StatelessWidget {
         // Previous
         StreamBuilder<Track?>(
           stream: handler.currentTrackStream,
-          builder: (_, __) {
+          builder: (context, _) {
             final canPrev = handler.canSkipPrevious;
             return IconButton(
               icon: Icon(
@@ -1001,23 +991,27 @@ class _QueueTabState extends State<_QueueTab> {
   final _currentTrackKey = GlobalKey();
   bool _hasInitialScrolled = false;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollToCurrentTrack();
-    });
-  }
-
-  void _scrollToCurrentTrack() {
+  void _scrollToCurrentTrack([int historyLength = 0]) {
     if (!mounted || _hasInitialScrolled) return;
+    _hasInitialScrolled = true;
+
+    if (_scrollController.hasClients) {
+      final viewportHeight = _scrollController.position.viewportDimension;
+      if (historyLength > 0 && viewportHeight > 0) {
+        final double historyOffset = 40.0 + (historyLength * 56.0) + 17.0;
+        final double currentTrackCenter = historyOffset + 32.0 + 28.0;
+        final double targetOffset = (currentTrackCenter - (viewportHeight * 0.40))
+            .clamp(0.0, _scrollController.position.maxScrollExtent);
+        _scrollController.jumpTo(targetOffset);
+      }
+    }
+
     final ctx = _currentTrackKey.currentContext;
-    if (ctx != null) {
-      _hasInitialScrolled = true;
+    if (ctx != null && _scrollController.hasClients) {
       Scrollable.ensureVisible(
         ctx,
-        alignment: 0.50,
-        duration: const Duration(milliseconds: 400),
+        alignment: 0.40,
+        duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOutCubic,
       );
     }
@@ -1063,9 +1057,16 @@ class _QueueTabState extends State<_QueueTab> {
         final currentIndex = handler.currentIndex;
         final currentTrack = handler.currentTrack;
 
+        final historyTracks = (currentIndex > 0 && currentIndex < queue.length)
+            ? queue.sublist(0, currentIndex)
+            : <Track>[];
+        final upcomingTracks = (currentIndex >= 0 && currentIndex < queue.length - 1)
+            ? queue.sublist(currentIndex + 1)
+            : (currentIndex < 0 ? queue : <Track>[]);
+
         if (!_hasInitialScrolled && currentTrack != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            _scrollToCurrentTrack();
+            _scrollToCurrentTrack(historyTracks.length);
           });
         }
 
@@ -1075,13 +1076,6 @@ class _QueueTabState extends State<_QueueTab> {
                 style: TextStyle(color: Colors.white54, fontSize: 15)),
           );
         }
-
-        final historyTracks = (currentIndex > 0 && currentIndex < queue.length)
-            ? queue.sublist(0, currentIndex)
-            : <Track>[];
-        final upcomingTracks = (currentIndex >= 0 && currentIndex < queue.length - 1)
-            ? queue.sublist(currentIndex + 1)
-            : (currentIndex < 0 ? queue : <Track>[]);
 
         return ListView(
           controller: _scrollController,
@@ -1111,7 +1105,7 @@ class _QueueTabState extends State<_QueueTab> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.45),
+                      color: Colors.white.withValues(alpha: 0.45),
                       fontSize: 13,
                       fontWeight: FontWeight.w400,
                     ),
@@ -1120,11 +1114,11 @@ class _QueueTabState extends State<_QueueTab> {
                     historyTracks[i].displayArtist,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 11),
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11),
                   ),
                   trailing: Icon(
                     Icons.history_rounded,
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.white.withValues(alpha: 0.3),
                     size: 18,
                   ),
                 ),
@@ -1257,7 +1251,7 @@ class _QueueTabState extends State<_QueueTab> {
                       track.displayArtist,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11),
+                      style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
                     ),
                     trailing: const Icon(
                       Icons.drag_handle_rounded,
