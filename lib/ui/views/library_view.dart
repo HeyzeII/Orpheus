@@ -1450,7 +1450,7 @@ class _LibraryViewState extends State<LibraryView> {
                                     : null,
                               ),
                               child: Material(
-                                color: Colors.transparent,
+                                type: MaterialType.transparency,
                                 borderRadius: BorderRadius.circular(10),
                                 child: ListTile(
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -1915,7 +1915,7 @@ class _LibraryViewState extends State<LibraryView> {
                     : null,
               ),
               child: Material(
-                color: Colors.transparent,
+                type: MaterialType.transparency,
                 borderRadius: BorderRadius.circular(10),
                 child: ListTile(
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

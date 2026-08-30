@@ -22,15 +22,25 @@ import 'lyrics_view.dart';
 /// - **Mobile  (< 600 px):** full-screen vertical Tidal-style layout:
 ///   collapse button → square cover art → title/artist → progress slider →
 ///   playback controls → bottom swipeable tab bar (Letras / Cola).
-class ExpandedPlayerView extends StatelessWidget {
+class ExpandedPlayerView extends StatefulWidget {
   const ExpandedPlayerView({super.key});
+
+  @override
+  State<ExpandedPlayerView> createState() => _ExpandedPlayerViewState();
+}
+
+class _ExpandedPlayerViewState extends State<ExpandedPlayerView> {
+  _MobileOverlayMode _mobileMode = _MobileOverlayMode.artwork;
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) {
+        if (didPop) return;
+        if (_mobileMode != _MobileOverlayMode.artwork) {
+          setState(() => _mobileMode = _MobileOverlayMode.artwork);
+        } else {
           Navigator.of(context).pop();
         }
       },
@@ -51,10 +61,14 @@ class ExpandedPlayerView extends StatelessWidget {
                 // 2. Layout switch
                 if (track != null)
                   isMobile
-                      ? _MobileVerticalLayout(track: track)
+                      ? _MobileVerticalLayout(
+                          track: track,
+                          mode: _mobileMode,
+                          onModeChanged: (mode) => setState(() => _mobileMode = mode),
+                        )
                       : _DesktopHorizontalLayout(track: track),
 
-                // 3. Collapse button — top-right on desktop, top-center on mobile
+                // 3. Collapse button — top-right on desktop
                 if (!isMobile)
                   Positioned(
                     top: 40,
@@ -133,25 +147,23 @@ class _DesktopHorizontalLayout extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 enum _MobileOverlayMode { artwork, lyrics, queue }
 
-class _MobileVerticalLayout extends StatefulWidget {
-  const _MobileVerticalLayout({required this.track});
+class _MobileVerticalLayout extends StatelessWidget {
+  const _MobileVerticalLayout({
+    required this.track,
+    required this.mode,
+    required this.onModeChanged,
+  });
+
   final Track track;
-
-  @override
-  State<_MobileVerticalLayout> createState() => _MobileVerticalLayoutState();
-}
-
-class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
-  _MobileOverlayMode _mode = _MobileOverlayMode.artwork;
+  final _MobileOverlayMode mode;
+  final ValueChanged<_MobileOverlayMode> onModeChanged;
 
   void _toggleMode(_MobileOverlayMode target) {
-    setState(() {
-      if (_mode == target) {
-        _mode = _MobileOverlayMode.artwork;
-      } else {
-        _mode = target;
-      }
-    });
+    if (mode == target) {
+      onModeChanged(_MobileOverlayMode.artwork);
+    } else {
+      onModeChanged(target);
+    }
   }
 
   void _handleSwipe(DragEndDetails details) {
@@ -166,13 +178,18 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
 
   @override
   Widget build(BuildContext context) {
-    final track = widget.track;
     final coverPath = track.customMetadata.customCoverPath;
     final hasArt =
         coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
     final topPad = MediaQuery.of(context).padding.top;
     final bottomPad = MediaQuery.of(context).padding.bottom;
-    final isLyricsOrQueue = _mode != _MobileOverlayMode.artwork;
+    final isLyrics = mode == _MobileOverlayMode.lyrics;
+    final isQueue = mode == _MobileOverlayMode.queue;
+    final isOverlay = isLyrics || isQueue;
+
+    String headerTitle = 'REPRODUCIENDO';
+    if (isLyrics) headerTitle = 'LETRAS';
+    if (isQueue) headerTitle = 'COLA DE REPRODUCCIÓN';
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
@@ -195,12 +212,18 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                 IconButton(
                   icon: const Icon(Icons.keyboard_arrow_down_rounded,
                       size: 32, color: Colors.white70),
-                  onPressed: () => Navigator.of(context).pop(),
-                  tooltip: 'Minimizar',
+                  onPressed: () {
+                    if (isOverlay) {
+                      onModeChanged(_MobileOverlayMode.artwork);
+                    } else {
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  tooltip: isOverlay ? 'Cerrar' : 'Minimizar',
                 ),
-                const Text(
-                  'REPRODUCIENDO',
-                  style: TextStyle(
+                Text(
+                  headerTitle,
+                  style: const TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
@@ -212,30 +235,56 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
               ],
             ),
 
-            // ── Animated Cover Art Container ─────────────────────────────────
-            AnimatedAlign(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
-              alignment: isLyricsOrQueue ? Alignment.topLeft : Alignment.topCenter,
-              child: GestureDetector(
-                onHorizontalDragEnd: _handleSwipe,
-                onTap: isLyricsOrQueue ? () => setState(() => _mode = _MobileOverlayMode.artwork) : null,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOut,
-                  width: isLyricsOrQueue ? 72 : 280,
-                  height: isLyricsOrQueue ? 72 : 280,
-                  margin: EdgeInsets.only(
-                    top: isLyricsOrQueue ? 0 : 16,
-                    bottom: isLyricsOrQueue ? 4 : 16,
-                  ),
+            // ── Main Content Area ─────────────────────────────────────────────
+            if (isLyrics)
+              Expanded(
+                child: Container(
+                  key: const ValueKey('mobile_lyrics_fullscreen_pane'),
+                  margin: const EdgeInsets.only(top: 8, bottom: 8),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.black.withOpacity(0.25),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: LyricsView(
+                      track: track,
+                      transparentBackground: true,
+                    ),
+                  ),
+                ),
+              )
+            else if (isQueue)
+              Expanded(
+                child: Container(
+                  key: const ValueKey('mobile_queue_fullscreen_pane'),
+                  margin: const EdgeInsets.only(top: 8, bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.25),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const _QueueTab(),
+                ),
+              )
+            else ...[
+              // ── Normal Artwork View ─────────────────────────────────────────
+              const Spacer(flex: 1),
+
+              // Animated Cover Art Container with horizontal swipe gesture
+              GestureDetector(
+                onHorizontalDragEnd: _handleSwipe,
+                child: Container(
+                  width: 280,
+                  height: 280,
+                  margin: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.5),
-                        blurRadius: isLyricsOrQueue ? 12 : 36,
-                        offset: const Offset(0, 8),
+                        color: Colors.black.withOpacity(0.55),
+                        blurRadius: 36,
+                        offset: const Offset(0, 10),
                       ),
                     ],
                     image: hasArt
@@ -248,97 +297,65 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                   ),
                   child: hasArt
                       ? null
-                      : Center(
+                      : const Center(
                           child: Icon(Icons.music_note_rounded,
-                              size: isLyricsOrQueue ? 28 : 72, color: Colors.white24),
+                              size: 72, color: Colors.white24),
                         ),
                 ),
               ),
-            ),
 
-            // ── Expanded space for Lyrics or Queue ────────────────────────────
-            if (isLyricsOrQueue)
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: _mode == _MobileOverlayMode.lyrics
-                      ? Container(
-                          key: const ValueKey('mobile_lyrics_pane'),
-                          margin: EdgeInsets.zero,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: LyricsView(
-                                track: track, transparentBackground: true),
-                          ),
-                        )
-                      : Container(
-                          key: const ValueKey('mobile_queue_pane'),
-                          margin: EdgeInsets.zero,
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.35),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: const _QueueTab(),
-                        ),
-                ),
-              )
-            else
-              const Spacer(),
+              const Spacer(flex: 1),
 
-            // ── Track Title & Artist (Left) + Favorite Heart (Right) ──────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        MarqueeText(
-                          text: track.displayTitle,
-                          style: const TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
+              // Track Title & Artist (Left) + Favorite Heart (Right)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          MarqueeText(
+                            text: track.displayTitle,
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        MarqueeText(
-                          text: track.displayArtist,
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                            color: Colors.white.withOpacity(0.65),
+                          const SizedBox(height: 4),
+                          MarqueeText(
+                            text: track.displayArtist,
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 14,
+                              fontWeight: FontWeight.w400,
+                              color: Colors.white.withOpacity(0.65),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  _FavoriteHeartButton(track: track, size: 26),
-                ],
+                    const SizedBox(width: 12),
+                    _FavoriteHeartButton(track: track, size: 26),
+                  ],
+                ),
               ),
-            ),
 
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-            // ── Progress Slider ───────────────────────────────────────────────
-            const _ExpandedProgressBar(),
+              // Progress Slider
+              const _ExpandedProgressBar(),
 
-            const SizedBox(height: 8),
+              const SizedBox(height: 8),
 
-            // ── Playback Controls ─────────────────────────────────────────────
-            const _ExpandedPlaybackControls(),
+              // Playback Controls
+              const _ExpandedPlaybackControls(),
 
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
+            ],
 
             // ── Bottom Utility Row: Lyrics Toggle / Lossless Badge / Queue Toggle ──
             Padding(
@@ -349,9 +366,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                   IconButton(
                     icon: Icon(
                       Icons.lyrics_rounded,
-                      color: _mode == _MobileOverlayMode.lyrics
-                          ? AppTheme.accent
-                          : Colors.white60,
+                      color: isLyrics ? AppTheme.accent : Colors.white60,
                       size: 24,
                     ),
                     onPressed: () => _toggleMode(_MobileOverlayMode.lyrics),
@@ -361,9 +376,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                   IconButton(
                     icon: Icon(
                       Icons.queue_music_rounded,
-                      color: _mode == _MobileOverlayMode.queue
-                          ? AppTheme.accent
-                          : Colors.white60,
+                      color: isQueue ? AppTheme.accent : Colors.white60,
                       size: 24,
                     ),
                     onPressed: () => _toggleMode(_MobileOverlayMode.queue),
@@ -778,8 +791,44 @@ class _ExpandedUtilityPanelState extends State<_ExpandedUtilityPanel>
 
 // ── Queue Tab (Tidal Style) ───────────────────────────────────────────────────
 
-class _QueueTab extends StatelessWidget {
+class _QueueTab extends StatefulWidget {
   const _QueueTab();
+
+  @override
+  State<_QueueTab> createState() => _QueueTabState();
+}
+
+class _QueueTabState extends State<_QueueTab> {
+  final _scrollController = ScrollController();
+  final _currentTrackKey = GlobalKey();
+  int _lastIndex = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToCurrentTrack();
+    });
+  }
+
+  void _scrollToCurrentTrack() {
+    if (!mounted) return;
+    final ctx = _currentTrackKey.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.35,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOutCubic,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   Widget _buildCover(Track track, {double size = 42, bool isPast = false}) {
     final coverPath = track.customMetadata.customCoverPath;
@@ -815,6 +864,13 @@ class _QueueTab extends StatelessWidget {
         final currentIndex = handler.currentIndex;
         final currentTrack = handler.currentTrack;
 
+        if (currentIndex != _lastIndex) {
+          _lastIndex = currentIndex;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _scrollToCurrentTrack();
+          });
+        }
+
         if (queue.isEmpty && currentTrack == null) {
           return const Center(
             child: Text('La cola está vacía',
@@ -830,6 +886,7 @@ class _QueueTab extends StatelessWidget {
             : (currentIndex < 0 ? queue : <Track>[]);
 
         return ListView(
+          controller: _scrollController,
           padding: const EdgeInsets.symmetric(vertical: 4),
           children: [
             // ── 1. HISTORIAL DE REPRODUCCIÓN ──────────────────────────────────
@@ -882,53 +939,62 @@ class _QueueTab extends StatelessWidget {
 
             // ── 2. REPRODUCIENDO ACTUALMENTE ──────────────────────────────────
             if (currentTrack != null) ...[
-              const Padding(
-                padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
-                child: Text(
-                  'REPRODUCIENDO ACTUALMENTE',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textHint,
-                    letterSpacing: 1.2,
-                  ),
+              Padding(
+                key: _currentTrackKey,
+                padding: EdgeInsets.zero,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
+                      child: Text(
+                        'REPRODUCIENDO ACTUALMENTE',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textHint,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ),
+                    ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      leading: _buildCover(currentTrack),
+                      title: Text(
+                        currentTrack.displayTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppTheme.accent,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: Text(
+                        currentTrack.displayArtist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                      ),
+                      trailing: StreamBuilder<bool>(
+                        stream: OrpheusAudioHandler.instance.isPlayingStream,
+                        initialData: OrpheusAudioHandler.instance.isPlaying,
+                        builder: (_, playSnap) => AnimatedEqualizer(
+                          isPlaying: playSnap.data ?? false,
+                          barCount: 3,
+                          barWidth: 2.8,
+                          maxHeight: 16.0,
+                          minHeight: 4.0,
+                          spacing: 2.5,
+                        ),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Divider(color: AppTheme.divider, height: 1),
+                    ),
+                  ],
                 ),
-              ),
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                leading: _buildCover(currentTrack),
-                title: Text(
-                  currentTrack.displayTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppTheme.accent,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                subtitle: Text(
-                  currentTrack.displayArtist,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                ),
-                trailing: StreamBuilder<bool>(
-                  stream: OrpheusAudioHandler.instance.isPlayingStream,
-                  initialData: OrpheusAudioHandler.instance.isPlaying,
-                  builder: (_, playSnap) => AnimatedEqualizer(
-                    isPlaying: playSnap.data ?? false,
-                    barCount: 3,
-                    barWidth: 2.8,
-                    maxHeight: 16.0,
-                    minHeight: 4.0,
-                    spacing: 2.5,
-                  ),
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Divider(color: AppTheme.divider, height: 1),
               ),
             ],
 

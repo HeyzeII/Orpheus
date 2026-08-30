@@ -49,7 +49,6 @@ class _LyricsViewState extends State<LyricsView> {
   int _activeIndex = -1;
 
   final _scrollController = ScrollController();
-  bool _userScrolling = false;
 
   @override
   void initState() {
@@ -133,12 +132,8 @@ class _LyricsViewState extends State<LyricsView> {
               lines: _lines.isNotEmpty ? _lines : parsed,
               scrollController: _scrollController,
               handler: _handler,
-              onUserScrollStart: () => _userScrolling = true,
-              onUserScrollEnd: () {
-                Future.delayed(const Duration(seconds: 3), () {
-                  if (mounted) _userScrolling = false;
-                });
-              },
+              onUserScrollStart: () {},
+              onUserScrollEnd: () {},
               onActiveLine: (idx) {
                 if (idx != _activeIndex) {
                   setState(() => _activeIndex = idx);
@@ -188,6 +183,7 @@ class _SyncedLyricsBody extends StatefulWidget {
 
 class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
   int _activeIndex = -1;
+  bool _isUserScrolling = false;
   final List<GlobalKey> _lineKeys = [];
 
   void _scrollToActive(int index) {
@@ -197,9 +193,9 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
     if (context != null) {
       Scrollable.ensureVisible(
         context,
-        alignment: 0.5,
+        alignment: 0.35,
         duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
+        curve: Curves.easeInOutCubic,
       );
     }
   }
@@ -221,40 +217,114 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
           _activeIndex = activeIdx;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             widget.onActiveLine(activeIdx);
-            _scrollToActive(activeIdx);
+            if (!_isUserScrolling) {
+              _scrollToActive(activeIdx);
+            }
           });
         }
 
-        return NotificationListener<ScrollNotification>(
-          onNotification: (n) {
-            if (n is ScrollStartNotification && n.dragDetails != null) {
-              widget.onUserScrollStart();
-            }
-            if (n is ScrollEndNotification) {
-              widget.onUserScrollEnd();
-            }
-            return false;
-          },
-          child: ListView.builder(
-            controller: widget.scrollController,
-            padding: const EdgeInsets.symmetric(vertical: 240, horizontal: 32),
-            itemCount: widget.lines.length,
-            itemBuilder: (context, i) {
-              final line = widget.lines[i];
-              final isActive = i == activeIdx;
-              final isPast = i < activeIdx;
-
-              return _LyricLineItem(
-                key: _lineKeys[i],
-                line: line,
-                isActive: isActive,
-                isPast: isPast,
-                onTap: () {
-                  OrpheusAudioHandler.instance.seek(line.timestamp);
+        return Stack(
+          children: [
+            NotificationListener<ScrollNotification>(
+              onNotification: (n) {
+                if (n is ScrollStartNotification && n.dragDetails != null) {
+                  setState(() => _isUserScrolling = true);
+                  widget.onUserScrollStart();
+                }
+                return false;
+              },
+              child: ShaderMask(
+                shaderCallback: (Rect bounds) {
+                  return const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.white,
+                      Colors.white,
+                      Colors.transparent,
+                    ],
+                    stops: [0.0, 0.08, 0.88, 1.0],
+                  ).createShader(bounds);
                 },
-              );
-            },
-          ),
+                blendMode: BlendMode.dstIn,
+                child: ListView.builder(
+                  controller: widget.scrollController,
+                  padding: const EdgeInsets.only(
+                    top: 24,
+                    bottom: 120,
+                    left: 20,
+                    right: 20,
+                  ),
+                  itemCount: widget.lines.length,
+                  itemBuilder: (context, i) {
+                    final line = widget.lines[i];
+                    final isActive = i == activeIdx;
+                    final isPast = i < activeIdx;
+
+                    return _LyricLineItem(
+                      key: _lineKeys[i],
+                      line: line,
+                      isActive: isActive,
+                      isPast: isPast,
+                      onTap: () {
+                        widget.handler.seek(line.timestamp);
+                        setState(() => _isUserScrolling = false);
+                        _scrollToActive(i);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+
+            // Floating "Resincronizar" Button
+            if (_isUserScrolling)
+              Positioned(
+                bottom: 16,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() => _isUserScrolling = false);
+                      _scrollToActive(_activeIndex);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accent,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.accent.withOpacity(0.45),
+                            blurRadius: 14,
+                            spreadRadius: 1,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.sync_rounded, size: 16, color: Colors.black),
+                          SizedBox(width: 6),
+                          Text(
+                            'Resincronizar',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              fontFamily: 'Inter',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         );
       },
     );
@@ -351,17 +421,33 @@ class _PlainLyricsBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scrollbar(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 48),
-        child: Text(
-          plainText,
-          style: const TextStyle(
-            fontFamily: 'Inter',
-            fontSize: 17,
-            fontWeight: FontWeight.w400,
-            color: AppTheme.textPrimary,
-            height: 1.8,
+    return ShaderMask(
+      shaderCallback: (Rect bounds) {
+        return const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.transparent,
+            Colors.white,
+            Colors.white,
+            Colors.transparent,
+          ],
+          stops: [0.0, 0.06, 0.92, 1.0],
+        ).createShader(bounds);
+      },
+      blendMode: BlendMode.dstIn,
+      child: Scrollbar(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 28),
+          child: Text(
+            plainText,
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 17,
+              fontWeight: FontWeight.w400,
+              color: AppTheme.textPrimary,
+              height: 1.8,
+            ),
           ),
         ),
       ),
