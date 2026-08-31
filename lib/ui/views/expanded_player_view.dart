@@ -988,33 +988,28 @@ class _QueueTab extends StatefulWidget {
 
 class _QueueTabState extends State<_QueueTab> {
   final _scrollController = ScrollController();
-  final _currentTrackKey = GlobalKey();
   bool _hasInitialScrolled = false;
 
-  void _scrollToCurrentTrack([int historyLength = 0]) {
+  /// Mounts the queue with the currently playing track positioned at ~25% from
+  /// the top of the viewport — exactly Tidal-style, without lazy loading failures.
+  void _scrollToCurrentTrack(int historyCount) {
     if (!mounted || _hasInitialScrolled) return;
+    if (!_scrollController.hasClients) return;
     _hasInitialScrolled = true;
 
-    if (_scrollController.hasClients) {
-      final viewportHeight = _scrollController.position.viewportDimension;
-      if (historyLength > 0 && viewportHeight > 0) {
-        final double historyOffset = 40.0 + (historyLength * 56.0) + 17.0;
-        final double currentTrackCenter = historyOffset + 32.0 + 28.0;
-        final double targetOffset = (currentTrackCenter - (viewportHeight * 0.40))
-            .clamp(0.0, _scrollController.position.maxScrollExtent);
-        _scrollController.jumpTo(targetOffset);
-      }
-    }
+    final viewportHeight = _scrollController.position.viewportDimension;
+    final maxScroll = _scrollController.position.maxScrollExtent;
 
-    final ctx = _currentTrackKey.currentContext;
-    if (ctx != null && _scrollController.hasClients) {
-      Scrollable.ensureVisible(
-        ctx,
-        alignment: 0.40,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOutCubic,
-      );
-    }
+    // Accumulated height of the history section:
+    // Header label (~34px) + items (56px each) + Divider (~17px)
+    final double historyHeight = historyCount > 0
+        ? 34.0 + (historyCount * 56.0) + 17.0
+        : 0.0;
+
+    final double targetOffset = historyHeight - (viewportHeight * 0.25);
+    final double clampedOffset = targetOffset.clamp(0.0, maxScroll);
+
+    _scrollController.jumpTo(clampedOffset);
   }
 
   @override
@@ -1132,7 +1127,6 @@ class _QueueTabState extends State<_QueueTab> {
             // ── 2. REPRODUCIENDO ACTUALMENTE ──────────────────────────────────
             if (currentTrack != null) ...[
               Padding(
-                key: _currentTrackKey,
                 padding: EdgeInsets.zero,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

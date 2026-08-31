@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -235,19 +236,39 @@ class _SyncedLyricsBody extends StatefulWidget {
 }
 
 class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
+  // ── Scroll state ──────────────────────────────────────────────────────────
   int _activeIndex = -1;
+
+  /// True while the user is manually scrolling; auto-scroll is suppressed.
   bool _isUserScrolling = false;
-  final List<GlobalKey> _lineKeys = [];
+
+  /// Timer that re-enables auto-scroll 4 seconds after the last manual drag.
+  Timer? _resyncTimer;
+
+  // ── Per-line keys for Scrollable.ensureVisible ────────────────────────────
+  List<GlobalKey> _lineKeys = [];
+
+  // ── Position stream subscription ─────────────────────────────────────────
+  StreamSubscription<Duration>? _positionSub;
+
+  // ── Current lines snapshot (updated via didUpdateWidget) ──────────────────
+  late List<LyricLine> _lines;
 
   @override
   void initState() {
     super.initState();
+    _lines = widget.lines;
+    _lineKeys = List.generate(_lines.length, (_) => GlobalKey());
+
+    // Subscribe directly to the player position stream.
+    _positionSub = AudioPlayerService.instance.positionStream.listen(_onPosition);
+
+    // Jump to the active verse immediately on first render.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final pos = AudioPlayerService.instance.position;
-      final idx = LrcParser.activeLineIndex(widget.lines, pos);
+      final idx = LrcParser.activeLineIndex(_lines, AudioPlayerService.instance.position);
       if (idx >= 0) {
         _activeIndex = idx;
-        _scrollToActive(idx);
+        _scrollToActive(idx, animate: false);
       }
     });
   }
@@ -255,212 +276,253 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
   @override
   void didUpdateWidget(_SyncedLyricsBody old) {
     super.didUpdateWidget(old);
-    if (old.lines != widget.lines) {
+    // Lines changed (new track or late parse result) → rebuild keys and resync.
+    if (!identical(old.lines, widget.lines)) {
+      _lines = widget.lines;
+      _lineKeys = List.generate(_lines.length, (_) => GlobalKey());
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final pos = AudioPlayerService.instance.position;
-        final idx = LrcParser.activeLineIndex(widget.lines, pos);
+        final idx = LrcParser.activeLineIndex(_lines, AudioPlayerService.instance.position);
         if (idx >= 0) {
-          _activeIndex = idx;
-          if (!_isUserScrolling) {
-            _scrollToActive(idx);
-          }
+          if (mounted) setState(() => _activeIndex = idx);
+          if (!_isUserScrolling) _scrollToActive(idx, animate: false);
         }
       });
     }
   }
 
-  /// Scrolls to [index] using the absolute key position with vertical centering (alignment: 0.40).
-  void _scrollToActive(int index) {
+  @override
+  void dispose() {
+    _positionSub?.cancel();
+    _resyncTimer?.cancel();
+    super.dispose();
+  }
+
+  // ── Position listener ─────────────────────────────────────────────────────
+
+  void _onPosition(Duration pos) {
+    if (!mounted) return;
+    final next = LrcParser.activeLineIndex(_lines, pos);
+    if (next != _activeIndex) {
+      setState(() => _activeIndex = next);
+      widget.onActiveLine(next);
+      if (!_isUserScrolling) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || _isUserScrolling) return;
+          _scrollToActive(next);
+        });
+      }
+    }
+  }
+
+  // ── Scroll helpers ────────────────────────────────────────────────────────
+
+  /// Scrolls so that line [index] sits at ~40% from the top of the viewport.
+  /// Includes a two-phase fallback if the target widget is currently offscreen
+  /// due to ListView lazy loading.
+  void _scrollToActive(int index, {bool animate = true}) {
     if (index < 0 || index >= _lineKeys.length) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final key = _lineKeys[index];
-      final ctx = key.currentContext;
-      if (ctx != null && widget.scrollController.hasClients) {
-        Scrollable.ensureVisible(
-          ctx,
-          alignment: 0.40,
-          duration: const Duration(milliseconds: 350),
-          curve: Curves.easeInOutCubic,
-        );
+    final ctx = _lineKeys[index].currentContext;
+    if (ctx != null && widget.scrollController.hasClients) {
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.40,
+        duration: animate ? const Duration(milliseconds: 350) : Duration.zero,
+        curve: Curves.easeInOutCubic,
+      );
+    } else if (widget.scrollController.hasClients && _lines.isNotEmpty) {
+      // Target is offscreen: jump close by index proportion, then fine-align in next frame.
+      final maxScroll = widget.scrollController.position.maxScrollExtent;
+      final approxOffset = ((index / _lines.length) * maxScroll).clamp(0.0, maxScroll);
+      widget.scrollController.jumpTo(approxOffset);
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !widget.scrollController.hasClients) return;
+        final retryCtx = _lineKeys[index].currentContext;
+        if (retryCtx != null) {
+          Scrollable.ensureVisible(
+            retryCtx,
+            alignment: 0.40,
+            duration: animate ? const Duration(milliseconds: 300) : Duration.zero,
+            curve: Curves.easeInOutCubic,
+          );
+        }
+      });
+    }
+  }
+
+  /// Starts (or restarts) the 4-second countdown before auto-scroll resumes.
+  void _startResyncTimer() {
+    _resyncTimer?.cancel();
+    _resyncTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted && _isUserScrolling) {
+        setState(() => _isUserScrolling = false);
+        // Re-engage on the current active line.
+        _scrollToActive(_activeIndex);
       }
     });
   }
 
+  // ── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    if (_lineKeys.length != widget.lines.length) {
-      _lineKeys.clear();
-      _lineKeys.addAll(List.generate(widget.lines.length, (_) => GlobalKey()));
-    }
-
-    return StreamBuilder<Duration>(
-      stream: widget.handler.positionStream,
-      builder: (context, snap) {
-        final position = snap.data ?? Duration.zero;
-        final activeIdx = LrcParser.activeLineIndex(widget.lines, position);
-
-        if (activeIdx != _activeIndex) {
-          _activeIndex = activeIdx;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            widget.onActiveLine(activeIdx);
-            if (!_isUserScrolling) {
-              _scrollToActive(activeIdx);
+    return Stack(
+      children: [
+        // ── Scroll list with fade edges ────────────────────────────────────
+        NotificationListener<ScrollNotification>(
+          onNotification: (n) {
+            // Only react to genuine finger drags (not programmatic scrolls).
+            if (n is ScrollStartNotification && n.dragDetails != null) {
+              if (!_isUserScrolling) {
+                setState(() => _isUserScrolling = true);
+                widget.onUserScrollStart();
+              }
+              _startResyncTimer();
+            } else if (n is UserScrollNotification &&
+                n.direction != ScrollDirection.idle) {
+              if (!_isUserScrolling) {
+                setState(() => _isUserScrolling = true);
+                widget.onUserScrollStart();
+              }
+              _startResyncTimer();
             }
-          });
-        }
+            return false;
+          },
+          child: ShaderMask(
+            shaderCallback: (Rect bounds) {
+              return const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.white,
+                  Colors.white,
+                  Colors.transparent,
+                ],
+                stops: [0.0, 0.08, 0.88, 1.0],
+              ).createShader(bounds);
+            },
+            blendMode: BlendMode.dstIn,
+            child: ListView.builder(
+              controller: widget.scrollController,
+              physics: const BouncingScrollPhysics(),
+              padding: EdgeInsets.only(
+                top: widget.showThumbnail && widget.coverPath != null ? 140 : 28,
+                bottom: 140,
+                left: 20,
+                right: 20,
+              ),
+              itemCount: _lines.length,
+              itemBuilder: (context, i) {
+                final line = _lines[i];
+                final isActive = i == _activeIndex;
+                final isPast = i < _activeIndex;
 
-        return Stack(
-          children: [
-            NotificationListener<ScrollNotification>(
-              onNotification: (n) {
-                if (n is ScrollStartNotification && n.dragDetails != null) {
-                  if (!_isUserScrolling) {
-                    setState(() => _isUserScrolling = true);
-                  }
-                  widget.onUserScrollStart();
-                } else if (n is UserScrollNotification &&
-                    n.direction != ScrollDirection.idle) {
-                  if (!_isUserScrolling) {
-                    setState(() => _isUserScrolling = true);
-                  }
-                  widget.onUserScrollStart();
-                }
-                return false;
-              },
-              child: ShaderMask(
-                shaderCallback: (Rect bounds) {
-                  return const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.white,
-                      Colors.white,
-                      Colors.transparent,
-                    ],
-                    stops: [0.0, 0.08, 0.88, 1.0],
-                  ).createShader(bounds);
-                },
-                blendMode: BlendMode.dstIn,
-                child: ListView.builder(
-                  controller: widget.scrollController,
-                  physics: const BouncingScrollPhysics(),
-                  padding: EdgeInsets.only(
-                    top: widget.showThumbnail && widget.coverPath != null ? 140 : 28,
-                    bottom: 140,
-                    left: 20,
-                    right: 20,
-                  ),
-                  itemCount: widget.lines.length,
-                  itemBuilder: (context, i) {
-                    final line = widget.lines[i];
-                    final isActive = i == activeIdx;
-                    final isPast = i < activeIdx;
-
-                    return _LyricLineItem(
-                      key: _lineKeys[i],
-                      line: line,
-                      isActive: isActive,
-                      isPast: isPast,
-                      onTap: () {
-                        widget.handler.seek(line.timestamp);
-                        setState(() => _isUserScrolling = false);
-                        _scrollToActive(i);
-                      },
-                    );
+                return _LyricLineItem(
+                  key: _lineKeys[i],
+                  line: line,
+                  isActive: isActive,
+                  isPast: isPast,
+                  onTap: () {
+                    AudioPlayerService.instance.seek(line.timestamp);
+                    // Cancel manual scroll state instantly on tap.
+                    _resyncTimer?.cancel();
+                    setState(() => _isUserScrolling = false);
+                    _scrollToActive(i);
                   },
+                );
+              },
+            ),
+          ),
+        ),
+
+        // ── Miniature cover thumbnail (top-left, 108x108 with translucent border) ──
+        if (widget.showThumbnail && widget.coverPath != null)
+          Positioned(
+            top: 12,
+            left: 16,
+            child: Container(
+              width: 108,
+              height: 108,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.40),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(13),
+                child: Image.file(
+                  File(widget.coverPath!),
+                  fit: BoxFit.cover,
+                  cacheWidth: 216,
                 ),
               ),
             ),
+          ),
 
-            // ── Miniature cover thumbnail (top-left, 108x108 with translucent border) ──
-            if (widget.showThumbnail && widget.coverPath != null)
-              Positioned(
-                top: 12,
-                left: 16,
+        // ── Floating "Resincronizar" button (visible while user scrolling) ──
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeInOutCubic,
+          bottom: _isUserScrolling ? 24 : -70,
+          left: 0,
+          right: 0,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 300),
+            opacity: _isUserScrolling ? 1.0 : 0.0,
+            child: Center(
+              child: GestureDetector(
+                onTap: () {
+                  _resyncTimer?.cancel();
+                  setState(() => _isUserScrolling = false);
+                  _scrollToActive(_activeIndex);
+                },
                 child: Container(
-                  width: 108,
-                  height: 108,
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      width: 1.2,
-                    ),
+                    color: AppTheme.accent,
+                    borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.40),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
+                        color: AppTheme.accent.withValues(alpha: 0.45),
+                        blurRadius: 16,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 4),
                       ),
                     ],
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(13),
-                    child: Image.file(
-                      File(widget.coverPath!),
-                      fit: BoxFit.cover,
-                      cacheWidth: 216,
-                    ),
-                  ),
-                ),
-              ),
-
-            // ── Floating "Resincronizar" Button ────────────────────────────
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeInOutCubic,
-              bottom: _isUserScrolling ? 24 : -70,
-              left: 0,
-              right: 0,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 300),
-                opacity: _isUserScrolling ? 1.0 : 0.0,
-                child: Center(
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() => _isUserScrolling = false);
-                      _scrollToActive(_activeIndex);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: AppTheme.accent,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.accent.withValues(alpha: 0.45),
-                            blurRadius: 16,
-                            spreadRadius: 1,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.sync_rounded, size: 18, color: Colors.black),
+                      SizedBox(width: 8),
+                      Text(
+                        'Resincronizar',
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          fontFamily: 'Inter',
+                          letterSpacing: 0.2,
+                        ),
                       ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.sync_rounded, size: 18, color: Colors.black),
-                          SizedBox(width: 8),
-                          Text(
-                            'Resincronizar',
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                              fontFamily: 'Inter',
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    ],
                   ),
                 ),
               ),
             ),
-          ],
-        );
-      },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -505,36 +567,40 @@ class _LyricLineItem extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 350),
-            curve: Curves.easeOutCubic,
-            alignment: Alignment.centerLeft,
-            child: AnimatedOpacity(
-              opacity: opacity,
-              duration: const Duration(milliseconds: 300),
-              child: AnimatedDefaultTextStyle(
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: double.infinity,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.centerLeft,
+              child: AnimatedOpacity(
+                opacity: opacity,
                 duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutCubic,
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: fontSize,
-                  fontWeight: fontWeight,
-                  color: textColor,
-                  height: lineHeight,
-                  shadows: isActive
-                      ? [
-                          Shadow(
-                            color: AppTheme.accent.withValues(alpha: 0.40),
-                            blurRadius: 16,
-                          ),
-                        ]
-                      : null,
+                child: AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: fontSize,
+                    fontWeight: fontWeight,
+                    color: textColor,
+                    height: lineHeight,
+                    shadows: isActive
+                        ? [
+                            Shadow(
+                              color: AppTheme.accent.withValues(alpha: 0.40),
+                              blurRadius: 16,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Text(line.text),
                 ),
-                child: Text(line.text),
               ),
             ),
           ),
