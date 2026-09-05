@@ -326,8 +326,8 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
       Scrollable.ensureVisible(
         ctx,
         alignment: 0.40,
-        duration: animate ? const Duration(milliseconds: 350) : Duration.zero,
-        curve: Curves.easeInOutCubic,
+        duration: animate ? const Duration(milliseconds: 450) : Duration.zero,
+        curve: Curves.easeOutCubic,
       );
     } else if (widget.scrollController.hasClients && _lines.isNotEmpty) {
       // Target is offscreen: jump close by index proportion, then fine-align in next frame.
@@ -342,8 +342,8 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
           Scrollable.ensureVisible(
             retryCtx,
             alignment: 0.40,
-            duration: animate ? const Duration(milliseconds: 300) : Duration.zero,
-            curve: Curves.easeInOutCubic,
+            duration: animate ? const Duration(milliseconds: 450) : Duration.zero,
+            curve: Curves.easeOutCubic,
           );
         }
       });
@@ -574,33 +574,29 @@ class _LyricLineItem extends StatelessWidget {
           cursor: SystemMouseCursors.click,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 14),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 350),
+            child: AnimatedOpacity(
+              opacity: opacity,
+              duration: const Duration(milliseconds: 300),
               curve: Curves.easeOutCubic,
-              alignment: Alignment.centerLeft,
-              child: AnimatedOpacity(
-                opacity: opacity,
+              child: AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 300),
-                child: AnimatedDefaultTextStyle(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOutCubic,
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: fontSize,
-                    fontWeight: fontWeight,
-                    color: textColor,
-                    height: lineHeight,
-                    shadows: isActive
-                        ? [
-                            Shadow(
-                              color: AppTheme.accent.withValues(alpha: 0.40),
-                              blurRadius: 16,
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Text(line.text),
+                curve: Curves.easeOutCubic,
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: fontSize,
+                  fontWeight: fontWeight,
+                  color: textColor,
+                  height: lineHeight,
+                  shadows: isActive
+                      ? [
+                          Shadow(
+                            color: AppTheme.accent.withValues(alpha: 0.40),
+                            blurRadius: 16,
+                          ),
+                        ]
+                      : null,
                 ),
+                child: Text(line.text),
               ),
             ),
           ),

@@ -987,29 +987,45 @@ class _QueueTab extends StatefulWidget {
 }
 
 class _QueueTabState extends State<_QueueTab> {
-  final _scrollController = ScrollController();
-  bool _hasInitialScrolled = false;
+  late ScrollController _scrollController;
 
-  /// Mounts the queue with the currently playing track positioned at ~25% from
-  /// the top of the viewport — exactly Tidal-style, without lazy loading failures.
-  void _scrollToCurrentTrack(int historyCount) {
-    if (!mounted || _hasInitialScrolled) return;
-    if (!_scrollController.hasClients) return;
-    _hasInitialScrolled = true;
+  static const double _itemTileHeight = 56.0;
+  static const double _historyHeaderHeight = 34.0;
+  static const double _dividerHeight = 17.0; // 8 padding + 1 divider + 8 padding
+  static const double _currentHeaderHeight = 34.0;
+  static const double _upcomingHeaderHeight = 42.0;
 
-    final viewportHeight = _scrollController.position.viewportDimension;
-    final maxScroll = _scrollController.position.maxScrollExtent;
+  @override
+  void initState() {
+    super.initState();
+    final handler = OrpheusAudioHandler.hasInstance ? OrpheusAudioHandler.instance : null;
+    final queue = handler?.queueTracks ?? const <Track>[];
+    final currentIndex = handler?.currentIndex ?? -1;
+    final historyCount = (currentIndex > 0 && currentIndex < queue.length) ? currentIndex : 0;
 
-    // Accumulated height of the history section:
-    // Header label (~34px) + items (56px each) + Divider (~17px)
-    final double historyHeight = historyCount > 0
-        ? 34.0 + (historyCount * 56.0) + 17.0
+    final view = WidgetsBinding.instance.platformDispatcher.views.firstOrNull;
+    final viewportHeight = (view != null && view.devicePixelRatio > 0)
+        ? view.physicalSize.height / view.devicePixelRatio
+        : 700.0;
+
+    final double headerHeight = historyCount > 0 ? (_historyHeaderHeight + _dividerHeight) : 0.0;
+    final double totalEstimatedHeight = (queue.length * _itemTileHeight) +
+        (historyCount > 0 ? (_historyHeaderHeight + _dividerHeight) : 0.0) +
+        _currentHeaderHeight +
+        _dividerHeight +
+        _upcomingHeaderHeight +
+        40.0;
+    final double maxOffset = (totalEstimatedHeight - viewportHeight).clamp(0.0, double.infinity);
+
+    final double targetOffset = historyCount > 0
+        ? (headerHeight + (historyCount * _itemTileHeight) - (viewportHeight * 0.25))
         : 0.0;
 
-    final double targetOffset = historyHeight - (viewportHeight * 0.25);
-    final double clampedOffset = targetOffset.clamp(0.0, maxScroll);
-
-    _scrollController.jumpTo(clampedOffset);
+    final double initialOffset = targetOffset.clamp(
+      0.0,
+      maxOffset > 0 ? maxOffset : (targetOffset > 0 ? targetOffset : 0.0),
+    );
+    _scrollController = ScrollController(initialScrollOffset: initialOffset);
   }
 
   @override
@@ -1018,7 +1034,7 @@ class _QueueTabState extends State<_QueueTab> {
     super.dispose();
   }
 
-  Widget _buildCover(Track track, {double size = 42, bool isPast = false}) {
+  Widget _buildCover(Track track, {double size = 40, bool isPast = false}) {
     final coverPath = track.customMetadata.customCoverPath;
     final hasArt = coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
 
@@ -1036,6 +1052,45 @@ class _QueueTabState extends State<_QueueTab> {
                   child: Icon(Icons.music_note_rounded, color: AppTheme.textHint, size: 20),
                 ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildTrackTile({
+    required Track track,
+    required bool isPast,
+    required VoidCallback onTap,
+    required Widget trailing,
+  }) {
+    return SizedBox(
+      height: _itemTileHeight,
+      child: ListTile(
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+        onTap: onTap,
+        leading: _buildCover(track, isPast: isPast),
+        title: Text(
+          track.displayTitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: isPast ? Colors.white.withValues(alpha: 0.45) : Colors.white,
+            fontSize: 13,
+            fontWeight: isPast ? FontWeight.w400 : FontWeight.w500,
+          ),
+        ),
+        subtitle: Text(
+          track.displayArtist,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: isPast
+                ? Colors.white.withValues(alpha: 0.3)
+                : Colors.white.withValues(alpha: 0.5),
+            fontSize: 11,
+          ),
+        ),
+        trailing: trailing,
       ),
     );
   }
@@ -1059,12 +1114,6 @@ class _QueueTabState extends State<_QueueTab> {
             ? queue.sublist(currentIndex + 1)
             : (currentIndex < 0 ? queue : <Track>[]);
 
-        if (!_hasInitialScrolled && currentTrack != null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _scrollToCurrentTrack(historyTracks.length);
-          });
-        }
-
         if (queue.isEmpty && currentTrack == null) {
           return const Center(
             child: Text('La cola está vacía',
@@ -1072,126 +1121,17 @@ class _QueueTabState extends State<_QueueTab> {
           );
         }
 
-        return ListView(
+        return CustomScrollView(
           controller: _scrollController,
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          children: [
+          physics: const BouncingScrollPhysics(),
+          slivers: [
             // ── 1. HISTORIAL DE REPRODUCCIÓN ──────────────────────────────────
             if (historyTracks.isNotEmpty) ...[
-              const Padding(
-                padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
-                child: Text(
-                  'HISTORIAL DE REPRODUCCIÓN',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textHint,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ),
-              for (int i = 0; i < historyTracks.length; i++) ...[
-                ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  onTap: () => OrpheusAudioHandler.instance.skipToQueueItem(i),
-                  leading: _buildCover(historyTracks[i], isPast: true),
-                  title: Text(
-                    historyTracks[i].displayTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.45),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                  subtitle: Text(
-                    historyTracks[i].displayArtist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11),
-                  ),
-                  trailing: Icon(
-                    Icons.history_rounded,
-                    color: Colors.white.withValues(alpha: 0.3),
-                    size: 18,
-                  ),
-                ),
-              ],
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Divider(color: AppTheme.divider, height: 1),
-              ),
-            ],
-
-            // ── 2. REPRODUCIENDO ACTUALMENTE ──────────────────────────────────
-            if (currentTrack != null) ...[
-              Padding(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
-                      child: Text(
-                        'REPRODUCIENDO ACTUALMENTE',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textHint,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                    ),
-                    ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                      leading: _buildCover(currentTrack),
-                      title: Text(
-                        currentTrack.displayTitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppTheme.accent,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      subtitle: Text(
-                        currentTrack.displayArtist,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                      ),
-                      trailing: StreamBuilder<bool>(
-                        stream: OrpheusAudioHandler.instance.isPlayingStream,
-                        initialData: OrpheusAudioHandler.instance.isPlaying,
-                        builder: (_, playSnap) => AnimatedEqualizer(
-                          isPlaying: playSnap.data ?? false,
-                          barCount: 3,
-                          barWidth: 2.8,
-                          maxHeight: 16.0,
-                          minHeight: 4.0,
-                          spacing: 2.5,
-                        ),
-                      ),
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Divider(color: AppTheme.divider, height: 1),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
-            // ── 3. A CONTINUACIÓN ──────────────────────────────────────────────
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Padding(
+              const SliverToBoxAdapter(
+                child: Padding(
                   padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
                   child: Text(
-                    'A CONTINUACIÓN:',
+                    'HISTORIAL DE REPRODUCCIÓN',
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
@@ -1200,61 +1140,168 @@ class _QueueTabState extends State<_QueueTab> {
                     ),
                   ),
                 ),
-                if (queue.isNotEmpty)
-                  TextButton.icon(
-                    onPressed: OrpheusAudioHandler.instance.clearQueue,
-                    icon: const Icon(Icons.clear_all_rounded, size: 16, color: Colors.white70),
-                    label: const Text('Limpiar',
-                        style: TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'Inter')),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      minimumSize: Size.zero,
+              ),
+              SliverFixedExtentList(
+                itemExtent: _itemTileHeight,
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) {
+                    final track = historyTracks[i];
+                    return _buildTrackTile(
+                      track: track,
+                      isPast: true,
+                      onTap: () => OrpheusAudioHandler.instance.skipToQueueItem(i),
+                      trailing: Icon(
+                        Icons.history_rounded,
+                        color: Colors.white.withValues(alpha: 0.3),
+                        size: 18,
+                      ),
+                    );
+                  },
+                  childCount: historyTracks.length,
+                ),
+              ),
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Divider(color: AppTheme.divider, height: 1),
+                ),
+              ),
+            ],
+
+            // ── 2. REPRODUCIENDO ACTUALMENTE ──────────────────────────────────
+            if (currentTrack != null) ...[
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
+                  child: Text(
+                    'REPRODUCIENDO ACTUALMENTE',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textHint,
+                      letterSpacing: 1.2,
                     ),
                   ),
-              ],
+                ),
+              ),
+              SliverFixedExtentList(
+                itemExtent: _itemTileHeight,
+                delegate: SliverChildBuilderDelegate(
+                  (context, _) {
+                    return SizedBox(
+                      height: _itemTileHeight,
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                        leading: _buildCover(currentTrack),
+                        title: Text(
+                          currentTrack.displayTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppTheme.accent,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        subtitle: Text(
+                          currentTrack.displayArtist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                        ),
+                        trailing: StreamBuilder<bool>(
+                          stream: OrpheusAudioHandler.instance.isPlayingStream,
+                          initialData: OrpheusAudioHandler.instance.isPlaying,
+                          builder: (_, playSnap) => AnimatedEqualizer(
+                            isPlaying: playSnap.data ?? false,
+                            barCount: 3,
+                            barWidth: 2.8,
+                            maxHeight: 16.0,
+                            minHeight: 4.0,
+                            spacing: 2.5,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                  childCount: 1,
+                ),
+              ),
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Divider(color: AppTheme.divider, height: 1),
+                ),
+              ),
+            ],
+
+            // ── 3. A CONTINUACIÓN ──────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
+                    child: Text(
+                      'A CONTINUACIÓN:',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textHint,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
+                  if (queue.isNotEmpty)
+                    TextButton.icon(
+                      onPressed: OrpheusAudioHandler.instance.clearQueue,
+                      icon: const Icon(Icons.clear_all_rounded, size: 16, color: Colors.white70),
+                      label: const Text('Limpiar',
+                          style: TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'Inter')),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        minimumSize: Size.zero,
+                      ),
+                    ),
+                ],
+              ),
             ),
 
             if (upcomingTracks.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: Text('No hay canciones a continuación',
-                      style: TextStyle(color: Colors.white38, fontSize: 13)),
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Text('No hay canciones a continuación',
+                        style: TextStyle(color: Colors.white38, fontSize: 13)),
+                  ),
                 ),
               )
             else
-              for (int index = 0; index < upcomingTracks.length; index++) ...[
-                Builder(builder: (context) {
-                  final track = upcomingTracks[index];
-                  final actualIndex = currentIndex + 1 + index;
-                  return ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                    onTap: () => OrpheusAudioHandler.instance.skipToQueueItem(actualIndex),
-                    leading: _buildCover(track),
-                    title: Text(
-                      track.displayTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
+              SliverFixedExtentList(
+                itemExtent: _itemTileHeight,
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final track = upcomingTracks[index];
+                    final actualIndex = currentIndex + 1 + index;
+                    return _buildTrackTile(
+                      track: track,
+                      isPast: false,
+                      onTap: () => OrpheusAudioHandler.instance.skipToQueueItem(actualIndex),
+                      trailing: const Icon(
+                        Icons.drag_handle_rounded,
+                        color: Colors.white38,
+                        size: 20,
                       ),
-                    ),
-                    subtitle: Text(
-                      track.displayArtist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
-                    ),
-                    trailing: const Icon(
-                      Icons.drag_handle_rounded,
-                      color: Colors.white38,
-                      size: 20,
-                    ),
-                  );
-                }),
-              ],
+                    );
+                  },
+                  childCount: upcomingTracks.length,
+                ),
+              ),
+            const SliverToBoxAdapter(
+              child: SizedBox(height: 32),
+            ),
           ],
         );
       },
