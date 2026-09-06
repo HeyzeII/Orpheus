@@ -288,15 +288,27 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                 switchInCurve: Curves.easeInOutCubic,
                 switchOutCurve: Curves.easeInOutCubic,
                 transitionBuilder: (child, animation) {
-                  return FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, 0.02),
-                        end: Offset.zero,
-                      ).animate(animation),
-                      child: child,
-                    ),
+                  // AbsorbPointer on the outgoing view (animation going 1→0)
+                  // prevents it from stealing touch events during the crossfade.
+                  return AnimatedBuilder(
+                    animation: animation,
+                    builder: (context, _) {
+                      final isIncoming = animation.status == AnimationStatus.completed ||
+                          animation.status == AnimationStatus.forward;
+                      return AbsorbPointer(
+                        absorbing: !isIncoming,
+                        child: FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: Tween<Offset>(
+                              begin: const Offset(0, 0.02),
+                              end: Offset.zero,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        ),
+                      );
+                    },
                   );
                 },
                 child: isArtwork

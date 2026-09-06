@@ -55,9 +55,12 @@ class _LyricsViewState extends State<LyricsView> {
   // ── State ──────────────────────────────────────────────────────────────────
   Future<String?>? _lyricsFuture;
   List<LyricLine> _lines = const [];
-  int _activeIndex = -1;
 
   final _scrollController = ScrollController();
+
+  // ── LRC parse memo: avoid re-parsing the same raw string on every build ────
+  String? _cachedRaw;
+  List<LyricLine> _cachedParsed = const [];
 
   // ── Palette for ambient background ────────────────────────────────────────
   Color? _dominantColor;
@@ -74,8 +77,9 @@ class _LyricsViewState extends State<LyricsView> {
     super.didUpdateWidget(old);
     if (old.track.trackId != widget.track.trackId) {
       _lines = const [];
-      _activeIndex = -1;
       _dominantColor = null;
+      _cachedRaw = null;
+      _cachedParsed = const [];
       _loadLyrics();
       _extractPalette();
     }
@@ -90,6 +94,15 @@ class _LyricsViewState extends State<LyricsView> {
   void _onLinesReady(List<LyricLine> lines) {
     if (!mounted) return;
     setState(() => _lines = lines);
+  }
+
+  /// Memoized parse: returns cached result if [raw] hasn't changed.
+  List<LyricLine> _parseMemo(String raw) {
+    if (raw != _cachedRaw) {
+      _cachedRaw = raw;
+      _cachedParsed = LrcParser.parse(raw);
+    }
+    return _cachedParsed;
   }
 
   Future<void> _extractPalette() async {
@@ -162,12 +175,12 @@ class _LyricsViewState extends State<LyricsView> {
             );
           }
 
-          // Parse on first render (or when lyrics change)
-          final parsed = LrcParser.parse(raw);
+          // Memoized parse — only re-runs when the raw string changes.
+          final parsed = _parseMemo(raw);
           final isSynced = parsed.isNotEmpty;
 
           if (isSynced && _lines != parsed) {
-            // Schedule state update outside build
+            // Schedule state update outside build.
             WidgetsBinding.instance.addPostFrameCallback((_) {
               _onLinesReady(parsed);
             });
@@ -184,11 +197,11 @@ class _LyricsViewState extends State<LyricsView> {
                 widget.onUserScrollStart?.call();
               },
               onUserScrollEnd: () {},
-              onActiveLine: (idx) {
-                if (idx != _activeIndex) {
-                  setState(() => _activeIndex = idx);
-                }
-              },
+              // FIX: Remove setState here — _activeIndex in the parent is only
+              // used as a comparison guard. Calling setState on the parent
+              // triggers a redundant rebuild of FutureBuilder → _SyncedLyricsBody
+              // on every verse change. The child already owns the active state.
+              onActiveLine: (_) {},
             );
           }
 
@@ -245,7 +258,13 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
   /// Timer that re-enables auto-scroll 4 seconds after the last manual drag.
   Timer? _resyncTimer;
 
-  // ── Per-line keys for Scrollable.ensureVisible ────────────────────────────
+  // ── Seek-lock: suppresses positionStream for 300ms after a tap-seek ────────
+  /// Prevents the position echo from the old timestamp from overwriting the
+  /// optimistic _activeIndex set by the user's tap.
+  bool _isSeekingLock = false;
+  Timer? _seekLockTimer;
+
+  // ── Per-line GlobalKeys for Scrollable.ensureVisible (height-aware) ───────
   List<GlobalKey> _lineKeys = [];
 
   // ── Position stream subscription ─────────────────────────────────────────
@@ -294,13 +313,17 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
   void dispose() {
     _positionSub?.cancel();
     _resyncTimer?.cancel();
+    _seekLockTimer?.cancel();
     super.dispose();
   }
 
   // ── Position listener ─────────────────────────────────────────────────────
 
   void _onPosition(Duration pos) {
-    if (!mounted) return;
+    // While seek-lock is active, ignore position echoes from the old timestamp.
+    // This prevents the ~4-frame flicker where _activeIndex bounces back to the
+    // previous verse before the player confirms the new seek position.
+    if (!mounted || _isSeekingLock) return;
     final next = LrcParser.activeLineIndex(_lines, pos);
     if (next != _activeIndex) {
       setState(() => _activeIndex = next);
@@ -316,34 +339,43 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
 
   // ── Scroll helpers ────────────────────────────────────────────────────────
 
-  /// Scrolls so that line [index] sits at ~40% from the top of the viewport.
-  /// Includes a two-phase fallback if the target widget is currently offscreen
+  /// Scrolls so that line [index] sits at ~35% from the top of the viewport.
+  ///
+  /// Uses [Scrollable.ensureVisible] with a [GlobalKey] so Flutter computes the
+  /// real rendered height of each verse (handles word-wrap correctly). Falls
+  /// back to a proportional jump + retry if the target is currently offscreen
   /// due to ListView lazy loading.
   void _scrollToActive(int index, {bool animate = true}) {
     if (index < 0 || index >= _lineKeys.length) return;
-    final ctx = _lineKeys[index].currentContext;
+
+    final key = _lineKeys[index];
+    final ctx = key.currentContext;
+
     if (ctx != null && widget.scrollController.hasClients) {
+      // Happy path: element is in the viewport tree — use real geometry.
       Scrollable.ensureVisible(
         ctx,
-        alignment: 0.40,
+        alignment: 0.35,
         duration: animate ? const Duration(milliseconds: 450) : Duration.zero,
-        curve: Curves.easeOutCubic,
+        curve: Curves.easeInOutCubic,
       );
     } else if (widget.scrollController.hasClients && _lines.isNotEmpty) {
-      // Target is offscreen: jump close by index proportion, then fine-align in next frame.
+      // Fallback: element is offscreen (lazy load). Jump to an approximate
+      // position to bring it into the viewport, then re-run ensureVisible once
+      // the element has been laid out in the next frame.
       final maxScroll = widget.scrollController.position.maxScrollExtent;
       final approxOffset = ((index / _lines.length) * maxScroll).clamp(0.0, maxScroll);
       widget.scrollController.jumpTo(approxOffset);
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !widget.scrollController.hasClients) return;
-        final retryCtx = _lineKeys[index].currentContext;
+        final retryCtx = key.currentContext;
         if (retryCtx != null) {
           Scrollable.ensureVisible(
             retryCtx,
-            alignment: 0.40,
+            alignment: 0.35,
             duration: animate ? const Duration(milliseconds: 450) : Duration.zero,
-            curve: Curves.easeOutCubic,
+            curve: Curves.easeInOutCubic,
           );
         }
       });
@@ -424,11 +456,30 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
                   isActive: isActive,
                   isPast: isPast,
                   onTap: () {
+                    debugPrint('LYRIC_TAP: ${line.timestamp}');
+                    // Optimistic update: set index and clear user-scroll before
+                    // the player confirms the new position.
+                    setState(() {
+                      _activeIndex = i;
+                      _isUserScrolling = false;
+                    });
+                    widget.onActiveLine(i);
+
+                    // Seek-lock: silence positionStream for 300ms so the old
+                    // timestamp echo doesn't flicker _activeIndex back.
+                    _seekLockTimer?.cancel();
+                    _isSeekingLock = true;
+                    _seekLockTimer = Timer(const Duration(milliseconds: 300), () {
+                      _isSeekingLock = false;
+                    });
+
                     AudioPlayerService.instance.seek(line.timestamp);
-                    // Cancel manual scroll state instantly on tap.
                     _resyncTimer?.cancel();
-                    setState(() => _isUserScrolling = false);
-                    _scrollToActive(i);
+                    // Use addPostFrameCallback so the newly-active item has been
+                    // built at its full size before ensureVisible measures it.
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _scrollToActive(i);
+                    });
                   },
                 );
               },
@@ -437,13 +488,16 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
         ),
 
         // ── Miniature cover thumbnail (top-left, 108x108 with translucent border) ──
+        // IgnorePointer ensures the thumbnail never blocks tap-to-seek events
+        // on the first few lyric lines that overlap with the 108×108 image area.
         if (widget.showThumbnail && widget.coverPath != null)
           Positioned(
             top: 12,
             left: 16,
-            child: Container(
-              width: 108,
-              height: 108,
+            child: IgnorePointer(
+              child: Container(
+                width: 108,
+                height: 108,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
@@ -458,12 +512,13 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
                   ),
                 ],
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(13),
-                child: Image.file(
-                  File(widget.coverPath!),
-                  fit: BoxFit.cover,
-                  cacheWidth: 216,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(13),
+                  child: Image.file(
+                    File(widget.coverPath!),
+                    fit: BoxFit.cover,
+                    cacheWidth: 216,
+                  ),
                 ),
               ),
             ),
@@ -476,46 +531,49 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
           bottom: _isUserScrolling ? 24 : -70,
           left: 0,
           right: 0,
-          child: AnimatedOpacity(
-            duration: const Duration(milliseconds: 300),
-            opacity: _isUserScrolling ? 1.0 : 0.0,
-            child: Center(
-              child: GestureDetector(
-                onTap: () {
-                  _resyncTimer?.cancel();
-                  setState(() => _isUserScrolling = false);
-                  _scrollToActive(_activeIndex);
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: AppTheme.accent,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.accent.withValues(alpha: 0.45),
-                        blurRadius: 16,
-                        spreadRadius: 1,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.sync_rounded, size: 18, color: Colors.black),
-                      SizedBox(width: 8),
-                      Text(
-                        'Resincronizar',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                          fontFamily: 'Inter',
-                          letterSpacing: 0.2,
+          child: IgnorePointer(
+            ignoring: !_isUserScrolling,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 300),
+              opacity: _isUserScrolling ? 1.0 : 0.0,
+              child: Center(
+                child: GestureDetector(
+                  onTap: () {
+                    _resyncTimer?.cancel();
+                    setState(() => _isUserScrolling = false);
+                    _scrollToActive(_activeIndex);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accent,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.accent.withValues(alpha: 0.45),
+                          blurRadius: 16,
+                          spreadRadius: 1,
+                          offset: const Offset(0, 4),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.sync_rounded, size: 18, color: Colors.black),
+                        SizedBox(width: 8),
+                        Text(
+                          'Resincronizar',
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            fontFamily: 'Inter',
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -528,7 +586,7 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// Single lyric line widget (34sp active, 22sp secondary)
+// Single lyric line widget (AnimatedDefaultTextStyle + AnimatedPadding)
 // ════════════════════════════════════════════════════════════════════════════
 
 class _LyricLineItem extends StatelessWidget {
@@ -547,56 +605,48 @@ class _LyricLineItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color textColor;
-    final FontWeight fontWeight;
-    final double fontSize;
-    final double opacity;
-    final double lineHeight = isActive ? 1.35 : 1.30;
-
-    if (isActive) {
-      textColor = Colors.white;
-      fontWeight = FontWeight.w800;
-      fontSize = 34;
-      opacity = 1.0;
-    } else {
-      textColor = Colors.white;
-      fontWeight = FontWeight.w500;
-      fontSize = 22;
-      opacity = 0.50;
-    }
+    final double opacity = isActive ? 1.0 : 0.40;
+    final FontWeight fontWeight = isActive ? FontWeight.w800 : FontWeight.w500;
+    final double fontSize = isActive ? 30.0 : 22.0;
+    // ── Stable padding: same vertical space for every line so the layout
+    //    height never jumps and word-wrap never reflows during animation.
+    const EdgeInsets stablePadding = EdgeInsets.symmetric(vertical: 10.0);
 
     return GestureDetector(
-      onTap: onTap,
       behavior: HitTestBehavior.opaque,
+      onTap: () {
+        debugPrint('LYRIC_TAP: ${line.timestamp}');
+        onTap();
+      },
       child: SizedBox(
         width: double.infinity,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            child: AnimatedOpacity(
-              opacity: opacity,
-              duration: const Duration(milliseconds: 300),
+        child: Padding(
+          padding: stablePadding,
+          child: AnimatedOpacity(
+            opacity: opacity,
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic,
+            child: AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 350),
               curve: Curves.easeOutCubic,
-              child: AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOutCubic,
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: fontSize,
-                  fontWeight: fontWeight,
-                  color: textColor,
-                  height: lineHeight,
-                  shadows: isActive
-                      ? [
-                          Shadow(
-                            color: AppTheme.accent.withValues(alpha: 0.40),
-                            blurRadius: 16,
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Text(line.text),
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: fontSize,
+                fontWeight: fontWeight,
+                color: Colors.white,
+                height: 1.35,
+                shadows: isActive
+                    ? [
+                        Shadow(
+                          color: AppTheme.accent.withValues(alpha: 0.40),
+                          blurRadius: 16,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Text(
+                line.text,
+                textAlign: TextAlign.left,
               ),
             ),
           ),
