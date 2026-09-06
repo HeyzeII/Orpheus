@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 
 import '../database/local_database.dart';
 import '../models/track.dart';
 import '../utils/string_sanitizer.dart';
+import 'media_cache_service.dart';
 
 /// Singleton service responsible for lazy background fetching of missing album art.
 ///
@@ -128,6 +128,16 @@ class AlbumArtFetcherService {
     final displayArtist = track.displayArtist;
     final displayTitle = track.displayTitle;
 
+    // First check persistent hash cache
+    final cachedCover = await MediaCacheService.instance.getCachedCover(displayArtist, displayTitle);
+    if (cachedCover != null) {
+      track.customMetadata.customCoverPath = cachedCover.path;
+      track.artStatus = FetchStatus.success;
+      await _db.saveTrack(track);
+      debugPrint('[Art Fetcher] ⚡ Portada obtenida de caché persistente para: $displayArtist - $displayTitle');
+      return;
+    }
+
     // Prefer Album + Artist search term, fallback to Artist + Title, fallback to Title.
     // Deduplicate to avoid repeating identical or containing sub-strings.
     String searchTerm = '';
@@ -155,7 +165,7 @@ class AlbumArtFetcherService {
       searchTerm = title.isNotEmpty ? title : (album.isNotEmpty ? album : artist);
     }
 
-    print('[Art Fetcher] Buscando portada para: $displayArtist - $displayTitle (Búsqueda: "$searchTerm")');
+    debugPrint('[Art Fetcher] Buscando portada para: $displayArtist - $displayTitle (Búsqueda: "$searchTerm")');
 
     final url = Uri.parse('https://itunes.apple.com/search')
         .replace(queryParameters: {
@@ -168,14 +178,14 @@ class AlbumArtFetcherService {
       final response = await _client.get(url).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 404) {
-        print('[Art Fetcher] ❌ Portada no encontrada (404) para: $displayArtist - $displayTitle');
+        debugPrint('[Art Fetcher] ❌ Portada no encontrada (404) para: $displayArtist - $displayTitle');
         track.artStatus = FetchStatus.notFound;
         await _db.saveTrack(track);
         return;
       }
 
       if (response.statusCode != 200) {
-        print('[Art Fetcher] ⚠️ Error de red temporal (${response.statusCode}) para: $displayArtist - $displayTitle');
+        debugPrint('[Art Fetcher] ⚠️ Error de red temporal (${response.statusCode}) para: $displayArtist - $displayTitle');
         return;
       }
 
@@ -183,7 +193,7 @@ class AlbumArtFetcherService {
       final results = json['results'] as List<dynamic>?;
 
       if (results == null || results.isEmpty) {
-        print('[Art Fetcher] ❌ Portada no encontrada en iTunes para: $displayArtist - $displayTitle');
+        debugPrint('[Art Fetcher] ❌ Portada no encontrada en iTunes para: $displayArtist - $displayTitle');
         track.artStatus = FetchStatus.notFound;
         await _db.saveTrack(track);
         return;
@@ -192,7 +202,7 @@ class AlbumArtFetcherService {
       final item = results.first as Map<String, dynamic>;
       var artUrlStr = item['artworkUrl100'] as String?;
       if (artUrlStr == null || artUrlStr.isEmpty) {
-        print('[Art Fetcher] ❌ URL de carátula vacía en iTunes para: $displayArtist - $displayTitle');
+        debugPrint('[Art Fetcher] ❌ URL de carátula vacía en iTunes para: $displayArtist - $displayTitle');
         track.artStatus = FetchStatus.notFound;
         await _db.saveTrack(track);
         return;
@@ -204,27 +214,23 @@ class AlbumArtFetcherService {
       // Download actual image bytes
       final imgResponse = await _client.get(Uri.parse(artUrlStr)).timeout(const Duration(seconds: 15));
       if (imgResponse.statusCode != 200 || imgResponse.bodyBytes.isEmpty) {
-        print('[Art Fetcher] ⚠️ Error descargando imagen (${imgResponse.statusCode}) de $artUrlStr');
+        debugPrint('[Art Fetcher] ⚠️ Error descargando imagen (${imgResponse.statusCode}) de $artUrlStr');
         return;
       }
 
-      final supportDir = await getApplicationSupportDirectory();
-      final coverDir = Directory('${supportDir.path}/cover_art');
-      if (!coverDir.existsSync()) {
-        coverDir.createSync(recursive: true);
-      }
+      // Persist to hash-based covers cache directory
+      final savedPath = await MediaCacheService.instance.saveCover(
+        displayArtist,
+        displayTitle,
+        imgResponse.bodyBytes,
+      );
 
-      final ext = artUrlStr.toLowerCase().contains('.png') ? '.png' : '.jpg';
-      final file = File('${coverDir.path}/${track.trackId}$ext');
-
-      await file.writeAsBytes(imgResponse.bodyBytes);
-
-      track.customMetadata.customCoverPath = file.path;
+      track.customMetadata.customCoverPath = savedPath;
       track.artStatus = FetchStatus.success;
       await _db.saveTrack(track);
-      print('[Art Fetcher] 🎉 Portada descargada y asociada con éxito para: $displayArtist - $displayTitle');
+      debugPrint('[Art Fetcher] 🎉 Portada descargada y asociada en caché persistente para: $displayArtist - $displayTitle');
     } catch (e) {
-      print('[Art Fetcher] ⚠️ Excepción buscando portada para: $displayArtist - $displayTitle: $e');
+      debugPrint('[Art Fetcher] ⚠️ Excepción buscando portada para: $displayArtist - $displayTitle: $e');
     }
   }
 }

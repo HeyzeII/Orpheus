@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -24,6 +26,7 @@ class SettingsView extends StatefulWidget {
 class _SettingsViewState extends State<SettingsView> {
   List<String> _scanDirs = [];
   bool _isScanning = false;
+  bool _hasFullStorage = true;
   String _currentScanningFile = '';
   int _scannedCount = 0;
   int _addedCount = 0;
@@ -38,31 +41,177 @@ class _SettingsViewState extends State<SettingsView> {
   }
 
   Future<void> _loadConfig() async {
+    final hasFull = await PermissionService.hasFullStorageAccess();
     final config = await LocalDatabase.instance.getConfig();
+    final sanitizedDirs = <String>[];
+    for (final d in config.scanDirectories) {
+      final norm = _normalizePosixPath(d);
+      if (norm != null && norm.startsWith('/')) {
+        sanitizedDirs.add(norm);
+      } else {
+        sanitizedDirs.add(d);
+      }
+    }
     setState(() {
-      _scanDirs = List.from(config.scanDirectories);
+      _hasFullStorage = hasFull;
+      _scanDirs = sanitizedDirs;
     });
   }
 
+  /// Normalizes a picked directory path.
+  /// If it is a SAF URI (content://), attempts conversion to a native POSIX path.
+  /// Returns null if the path is invalid or cannot be represented as POSIX.
+  String? _normalizePosixPath(String rawPath) {
+    var path = rawPath.trim();
+    if (path.isEmpty) return null;
+
+    if (path.startsWith('/')) {
+      return path;
+    }
+
+    if (path.startsWith('content://')) {
+      try {
+        final decoded = Uri.decodeFull(path);
+
+        // Pattern 1: primary storage (internal)
+        if (decoded.contains('primary:')) {
+          final subPath = decoded.split('primary:').last;
+          final cleanSub = subPath.replaceFirst(RegExp(r'^/+'), '');
+          return cleanSub.isEmpty
+              ? '/storage/emulated/0'
+              : '/storage/emulated/0/$cleanSub';
+        }
+
+        // Pattern 2: SD card UUID (e.g. 1234-5678:Music)
+        final uuidMatch =
+            RegExp(r'([0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}):(.*)').firstMatch(decoded);
+        if (uuidMatch != null) {
+          final uuid = uuidMatch.group(1);
+          final subPath =
+              (uuidMatch.group(2) ?? '').replaceFirst(RegExp(r'^/+'), '');
+          return subPath.isEmpty ? '/storage/$uuid' : '/storage/$uuid/$subPath';
+        }
+      } catch (e) {
+        debugPrint('Error decodificando URI SAF ($path): $e');
+      }
+    }
+
+    return null;
+  }
+
+  /// Checks if the app has full storage access. If not, shows an explanation dialog
+  /// offering to redirect to Android system settings.
+  Future<bool> _ensureFullStoragePermission() async {
+    if (!Platform.isAndroid) return true;
+
+    final hasFull = await PermissionService.hasFullStorageAccess();
+    if (hasFull) {
+      if (!_hasFullStorage) setState(() => _hasFullStorage = true);
+      return true;
+    }
+
+    if (!mounted) return false;
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.bgSurface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: const BorderSide(color: AppTheme.divider),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.folder_special_rounded, color: AppTheme.accent),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Acceso a todos los archivos',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Android requiere que habilites "Acceso a todos los archivos" para que Orpheus pueda descubrir la totalidad de tus canciones en el almacenamiento.\n\n'
+          'Sin este permiso, el sistema operativo restringirá el escáner a una cantidad reducida de archivos indexados.\n\n'
+          '¿Deseas habilitarlo ahora en los Ajustes del sistema?',
+          style: TextStyle(color: AppTheme.textSecondary, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Omitir',
+                style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accent,
+              foregroundColor: AppTheme.bgDeep,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'Abrir Ajustes',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (proceed == true) {
+      await PermissionService.openManageAllFilesAccess();
+      final refreshed = await PermissionService.hasFullStorageAccess();
+      setState(() => _hasFullStorage = refreshed);
+      return refreshed;
+    }
+
+    return false;
+  }
+
   Future<void> _addDirectory() async {
-    final granted = await PermissionService.requestStoragePermission();
-    if (!granted) {
+    final hasFull = await _ensureFullStoragePermission();
+    if (!hasFull) {
+      final grantedBasic = await PermissionService.requestStoragePermission();
+      if (!grantedBasic) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Se requieren permisos de almacenamiento para escanear música.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    final rawPath = await FilePicker.platform.getDirectoryPath();
+    if (rawPath == null) return;
+
+    final normalizedPath = _normalizePosixPath(rawPath);
+    if (normalizedPath == null || !normalizedPath.startsWith('/')) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Se requieren permisos de almacenamiento para escanear música.'),
+          SnackBar(
+            content: Text(
+              'Ruta no compatible ($rawPath). Selecciona una carpeta desde el almacenamiento interno.',
+            ),
             backgroundColor: Colors.redAccent,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
       return;
     }
 
-    final path = await FilePicker.platform.getDirectoryPath();
-    if (path != null) {
-      await LocalDatabase.instance.addScanDirectory(path);
-      await _loadConfig();
-    }
+    await LocalDatabase.instance.addScanDirectory(normalizedPath);
+    await _loadConfig();
   }
 
   Future<void> _removeDirectory(String path) async {
@@ -72,6 +221,19 @@ class _SettingsViewState extends State<SettingsView> {
 
   Future<void> _runScan() async {
     if (_scanDirs.isEmpty) return;
+
+    final hasFull = await PermissionService.hasFullStorageAccess();
+    if (!hasFull) {
+      final granted = await _ensureFullStoragePermission();
+      if (!granted && mounted) {
+        AppToast.showText(
+          context,
+          'Aviso: Sin acceso a todos los archivos, el escaneo solo detectará pistas pre-indexadas.',
+          icon: Icons.warning_amber_rounded,
+        );
+      }
+    }
+
     setState(() {
       _isScanning = true;
       _currentScanningFile = '';
@@ -194,6 +356,9 @@ class _SettingsViewState extends State<SettingsView> {
 
           const SizedBox(height: 40),
 
+          // ── Storage Permission Warning Banner ──────────────────────────────
+          _buildStoragePermissionBanner(),
+
           // ── Section: Scanner ───────────────────────────────────────────────
           const Text(
             'ESCÁNER DE BIBLIOTECA',
@@ -302,6 +467,66 @@ class _SettingsViewState extends State<SettingsView> {
           'Añadir Carpeta',
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
         ),
+      ),
+    );
+  }
+
+  Widget _buildStoragePermissionBanner() {
+    if (_hasFullStorage || !Platform.isAndroid) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade900.withAlpha(50),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.amber.shade700),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded,
+              color: Colors.amberAccent, size: 24),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Acceso total a archivos inactivo',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Para detectar los 425+ archivos de tu biblioteca, activa "Acceso a todos los archivos" en Ajustes.',
+                  style: TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amberAccent,
+              foregroundColor: Colors.black,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6)),
+            ),
+            onPressed: () async {
+              await PermissionService.openManageAllFilesAccess();
+              final has = await PermissionService.hasFullStorageAccess();
+              setState(() => _hasFullStorage = has);
+            },
+            child: const Text('Activar',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+          ),
+        ],
       ),
     );
   }

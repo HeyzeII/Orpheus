@@ -59,15 +59,6 @@ class _EditMetadataDialogState extends State<EditMetadataDialog> {
     super.dispose();
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  /// Returns true if the user has changed any of the text fields or selected a new cover.
-  bool get _hasChanges =>
-      _titleCtrl.text.trim() != widget.track.displayTitle ||
-      _artistCtrl.text.trim() != widget.track.displayArtist ||
-      _albumCtrl.text.trim() != widget.track.displayAlbum ||
-      _selectedNewCoverPath != null;
-
   Future<void> _pickCoverImage() async {
     final result = await fp.FilePicker.platform.pickFiles(
       type: fp.FileType.custom,
@@ -427,7 +418,7 @@ class _EditMetadataDialogState extends State<EditMetadataDialog> {
             key: const ValueKey('reidentify-switch'),
             value: _reidentify,
             onChanged: _isSaving ? null : (v) => setState(() => _reidentify = v),
-            activeColor: AppTheme.accent,
+            activeThumbColor: AppTheme.accent,
             activeTrackColor: AppTheme.accent.withAlpha(80),
             inactiveThumbColor: AppTheme.textHint,
             inactiveTrackColor: AppTheme.divider,

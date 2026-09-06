@@ -94,6 +94,36 @@ class MainActivity : AudioServiceActivity() {
             if (call.method == "minimizeApp") {
                 moveTaskToBack(true)
                 result.success(true)
+            } else if (call.method == "openManageStorageSettings") {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try {
+                        val uri = android.net.Uri.parse("package:$packageName")
+                        val intent = android.content.Intent(
+                            android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                            uri
+                        ).apply {
+                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        try {
+                            val intent = android.content.Intent(
+                                android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION
+                            ).apply {
+                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e2: Exception) {
+                            result.error("INTENT_ERROR", e2.message, null)
+                        }
+                    }
+                } else {
+                    result.success(false)
+                }
+            } else if (call.method == "getAndroidSdkVersion") {
+                result.success(Build.VERSION.SDK_INT)
             } else if (call.method == "getNotificationDiagnostics") {
                 val report = mutableMapOf<String, Any?>()
                 

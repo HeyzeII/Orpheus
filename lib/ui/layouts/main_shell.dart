@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 
 import '../../core/models/track.dart';
 import '../../core/services/audio_handler.dart';
-import '../../core/services/audio_player_service.dart';
 import '../../core/services/permission_service.dart';
 import '../theme/app_theme.dart';
 import '../views/expanded_player_view.dart';
@@ -107,10 +106,12 @@ class _DesktopNavigationShellState extends State<DesktopNavigationShell> with Wi
                           duration: const Duration(milliseconds: 300),
                           opacity: _showLyrics ? 1.0 : 0.0,
                           child: StreamBuilder<Track?>(
-                            stream: OrpheusAudioHandler
-                                .instance.currentTrackStream,
-                            initialData: OrpheusAudioHandler
-                                .instance.currentTrack,
+                            stream: OrpheusAudioHandler.hasInstance
+                                ? OrpheusAudioHandler.instance.currentTrackStream
+                                : const Stream.empty(),
+                            initialData: OrpheusAudioHandler.hasInstance
+                                ? OrpheusAudioHandler.instance.currentTrack
+                                : null,
                             builder: (context, snap) {
                               final track = snap.data;
                               if (track == null) {

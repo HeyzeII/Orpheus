@@ -1,5 +1,6 @@
 import 'package:isar/isar.dart';
 
+import '../utils/string_sanitizer.dart';
 import 'custom_metadata.dart';
 import 'track_stats.dart';
 
@@ -27,12 +28,12 @@ class Track {
 
   /// Stable unique identifier: SHA-256 hex digest of [filePath].
   /// Indexed for fast duplicate detection during library scanning.
-  @Index(unique: true, replace: false)
+  @Index(unique: true, replace: true)
   late String trackId;
 
   /// Absolute path to the media file on disk.
   /// Indexed for fast duplicate detection during library scanning.
-  @Index(unique: true, replace: false)
+  @Index(unique: true, replace: true)
   late String filePath;
 
   /// Media container/codec type (mp3, flac, mp4, …).
@@ -49,6 +50,9 @@ class Track {
 
   /// Artist extracted from file tags.
   String? artist;
+
+  /// Individual artists parsed from collaborations.
+  List<String> artists = [];
 
   /// Album extracted from file tags.
   String? album;
@@ -106,6 +110,14 @@ class Track {
       return customMetadata.artist!;
     }
     return artist ?? 'Unknown Artist';
+  }
+
+  /// Returns the distinct individual artists parsed from collaborations.
+  /// Falls back to decomposing [displayArtist] if [artists] is empty.
+  @ignore
+  List<String> get individualArtists {
+    if (artists.isNotEmpty) return artists;
+    return StringSanitizer.splitArtists(displayArtist);
   }
 
   /// Returns the display album: custom override → raw tag → "Unknown Album".

@@ -48,7 +48,6 @@ class _LibraryViewState extends State<LibraryView> {
   String? _selectedAlbum;
   String? _selectedArtist;
   Playlist? _selectedPlaylist;
-  Color _playlistColor = const Color(0xFF1E1E1E);
 
   StreamSubscription<void>? _tracksSubscription;
 
@@ -99,7 +98,6 @@ class _LibraryViewState extends State<LibraryView> {
           orElse: () => _selectedPlaylist!,
         );
         _selectedPlaylist = updated;
-        _updatePlaylistColor(updated);
       }
     });
   }
@@ -108,62 +106,6 @@ class _LibraryViewState extends State<LibraryView> {
     setState(() {
       _selectedPlaylist = playlist;
     });
-    _updatePlaylistColor(playlist);
-  }
-
-  Future<void> _updatePlaylistColor(Playlist playlist) async {
-    Color extracted = const Color(0xFF1E1E1E);
-    final customPath = playlist.customCoverPath;
-
-    if (customPath != null && customPath.isNotEmpty && File(customPath).existsSync()) {
-      extracted = await _extractAverageColor(customPath);
-    } else {
-      final playlistTracks = playlist.trackIds
-          .map((id) => _allTracks.firstWhere((t) => t.id == id, orElse: () => Track()))
-          .where((t) => t.trackId.isNotEmpty)
-          .toList();
-
-      if (playlistTracks.isNotEmpty) {
-        final firstTrack = playlistTracks.first;
-        final coverPath = firstTrack.customMetadata.customCoverPath;
-        if (coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync()) {
-          extracted = await _extractAverageColor(coverPath);
-        }
-      }
-    }
-
-    if (mounted) {
-      setState(() {
-        _playlistColor = extracted;
-      });
-    }
-  }
-
-  Future<Color> _extractAverageColor(String filePath) async {
-    try {
-      final file = File(filePath);
-      if (!file.existsSync()) return const Color(0xFF1E1E1E);
-      final bytes = await file.readAsBytes();
-      final codec = await ui.instantiateImageCodec(bytes, targetWidth: 10, targetHeight: 10);
-      final frameInfo = await codec.getNextFrame();
-      final uiImage = frameInfo.image;
-      final byteData = await uiImage.toByteData(format: ui.ImageByteFormat.rawRgba);
-      if (byteData == null) return const Color(0xFF1E1E1E);
-
-      int r = 0, g = 0, b = 0;
-      int count = 0;
-      for (int i = 0; i < byteData.lengthInBytes; i += 4) {
-        r += byteData.getUint8(i);
-        g += byteData.getUint8(i + 1);
-        b += byteData.getUint8(i + 2);
-        count++;
-      }
-      if (count == 0) return const Color(0xFF1E1E1E);
-      return Color.fromARGB(255, r ~/ count, g ~/ count, b ~/ count);
-    } catch (e) {
-      print('Error extracting color: $e');
-      return const Color(0xFF1E1E1E);
-    }
   }
 
   // Playback integration
@@ -482,7 +424,6 @@ class _LibraryViewState extends State<LibraryView> {
     playlist.customCoverPath = destPath;
     await LocalDatabase.instance.savePlaylist(playlist);
     _refreshData();
-    if (mounted) _updatePlaylistColor(playlist);
   }
 
   /// Clears the custom cover of [playlist], falling back to the auto-generated
@@ -505,7 +446,6 @@ class _LibraryViewState extends State<LibraryView> {
 
     await LocalDatabase.instance.savePlaylist(playlist);
     _refreshData();
-    if (mounted) _updatePlaylistColor(playlist);
   }
 
   // Delete playlist
@@ -666,6 +606,7 @@ class _LibraryViewState extends State<LibraryView> {
       final query = _searchQuery.toLowerCase();
       return t.displayTitle.toLowerCase().contains(query) ||
           t.displayArtist.toLowerCase().contains(query) ||
+          t.individualArtists.any((a) => a.toLowerCase().contains(query)) ||
           (t.displayAlbum.toLowerCase().contains(query));
     }).toList();
 
@@ -811,7 +752,10 @@ class _LibraryViewState extends State<LibraryView> {
             itemCount: filtered.length,
             itemBuilder: (context, idx) {
               final artistName = filtered[idx];
-              final count = _allTracks.where((t) => t.displayArtist == artistName).length;
+              final count = _allTracks
+                  .where((t) => t.individualArtists
+                      .any((a) => a.toLowerCase() == artistName.toLowerCase()))
+                  .length;
 
               return Material(
                 color: AppTheme.bgSurface,
@@ -1062,7 +1006,10 @@ class _LibraryViewState extends State<LibraryView> {
 
   // ── Artist Details View ────────────────────────────────────────────────────
   Widget _buildArtistDetails(String artistName) {
-    final artistTracks = _allTracks.where((t) => t.displayArtist == artistName).toList();
+    final artistTracks = _allTracks
+        .where((t) => t.individualArtists
+            .any((a) => a.toLowerCase() == artistName.toLowerCase()))
+        .toList();
 
     return PopScope(
       canPop: false,
@@ -1465,7 +1412,7 @@ class _LibraryViewState extends State<LibraryView> {
                                       fit: StackFit.expand,
                                       children: [
                                         hasArt
-                                            ? Image.file(File(coverPath!), fit: BoxFit.cover, cacheWidth: 88)
+                                            ? Image.file(File(coverPath), fit: BoxFit.cover, cacheWidth: 88)
                                             : const ColoredBox(
                                                 color: AppTheme.bgHover,
                                                 child: Icon(Icons.music_note_rounded,
@@ -1646,21 +1593,25 @@ class _LibraryViewState extends State<LibraryView> {
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: AppTheme.bgSurface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
         return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: ValueListenableBuilder<Set<String>>(
-              valueListenable: db.likedTrackIdsNotifier,
-              builder: (context, likedTrackIds, _) {
-                final isLiked = likedTrackIds.contains(track.trackId);
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          top: false,
+          bottom: true,
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: ValueListenableBuilder<Set<String>>(
+                valueListenable: db.likedTrackIdsNotifier,
+                builder: (context, likedTrackIds, _) {
+                  final isLiked = likedTrackIds.contains(track.trackId);
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Header: Cover + Title + Artist
                     Padding(
@@ -1673,7 +1624,7 @@ class _LibraryViewState extends State<LibraryView> {
                               width: 48,
                               height: 48,
                               child: hasArt
-                                  ? Image.file(File(coverPath!), fit: BoxFit.cover, cacheWidth: 96)
+                                  ? Image.file(File(coverPath), fit: BoxFit.cover, cacheWidth: 96)
                                   : const ColoredBox(
                                       color: AppTheme.bgHover,
                                       child: Icon(Icons.music_note_rounded,
@@ -1776,14 +1727,24 @@ class _LibraryViewState extends State<LibraryView> {
                         setState(() => _selectedArtist = track.displayArtist);
                       },
                     ),
+                    ListTile(
+                      leading: const Icon(Icons.edit_rounded, color: AppTheme.textPrimary),
+                      title: const Text('Editar información',
+                          style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showEditMetadataDialog(context, track);
+                      },
+                    ),
                   ],
                 );
               },
             ),
           ),
-        );
-      },
-    );
+        ),
+      );
+    },
+  );
   }
 
   void _showAddToPlaylistModal(BuildContext context, Track track) {
@@ -1868,6 +1829,128 @@ class _LibraryViewState extends State<LibraryView> {
     );
   }
 
+  void _showEditMetadataDialog(BuildContext context, Track track) {
+    final titleController = TextEditingController(text: track.displayTitle);
+    final artistController = TextEditingController(text: track.displayArtist);
+    final albumController = TextEditingController(text: track.displayAlbum);
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return AlertDialog(
+          backgroundColor: AppTheme.bgSurface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: AppTheme.divider),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.edit_rounded, color: AppTheme.accent, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Editar información',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: titleController,
+                  autofocus: true,
+                  style: const TextStyle(color: AppTheme.textPrimary),
+                  decoration: const InputDecoration(
+                    labelText: 'Título',
+                    labelStyle: TextStyle(color: AppTheme.textSecondary),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: AppTheme.divider),
+                    ),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: AppTheme.accent),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: artistController,
+                  style: const TextStyle(color: AppTheme.textPrimary),
+                  decoration: const InputDecoration(
+                    labelText: 'Artista',
+                    labelStyle: TextStyle(color: AppTheme.textSecondary),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: AppTheme.divider),
+                    ),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: AppTheme.accent),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: albumController,
+                  style: const TextStyle(color: AppTheme.textPrimary),
+                  decoration: const InputDecoration(
+                    labelText: 'Álbum',
+                    labelStyle: TextStyle(color: AppTheme.textSecondary),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: AppTheme.divider),
+                    ),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: AppTheme.accent),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text('Cancelar', style: TextStyle(color: AppTheme.textSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accent,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onPressed: () async {
+                final newTitle = titleController.text.trim();
+                final newArtist = artistController.text.trim();
+                final newAlbum = albumController.text.trim();
+                Navigator.pop(dialogCtx);
+
+                await LocalDatabase.instance.updateTrackMetadata(
+                  track,
+                  newTitle: newTitle,
+                  newArtist: newArtist,
+                  newAlbum: newAlbum,
+                  resetMediaFlags: true,
+                );
+
+                // Update in player if it's currently loaded
+                AudioPlayerService.instance.updateTrack(track);
+
+                if (mounted) {
+                  await _refreshData();
+                }
+              },
+              child: const Text('Guardar', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   /// Mobile-optimised songs list: clean ListTile rows with rounded cover art,
   /// title, artist, and an IconButton opening the BottomSheet menu.
   Widget _buildMobileSongsList(List<Track> tracks, {double bottomPad = 0}) {
@@ -1930,7 +2013,7 @@ class _LibraryViewState extends State<LibraryView> {
                       fit: StackFit.expand,
                       children: [
                         hasArt
-                            ? Image.file(File(coverPath!), fit: BoxFit.cover, cacheWidth: 92)
+                            ? Image.file(File(coverPath), fit: BoxFit.cover, cacheWidth: 92)
                             : const ColoredBox(
                                 color: AppTheme.bgHover,
                                 child: Icon(Icons.music_note_rounded,
@@ -2888,7 +2971,6 @@ class _ImageCropDialogState extends State<_ImageCropDialog> {
   final _repaintKey = GlobalKey();
   final _transformController = TransformationController();
 
-  static const double _previewSize = 420.0;
   bool _processing = false;
 
   late final Future<ui.Image> _imageLoaderFuture;
@@ -3083,7 +3165,7 @@ class _ImageCropDialogState extends State<_ImageCropDialog> {
                                 : () async {
                                     setState(() => _processing = true);
                                     final bytes = await _captureCrop();
-                                    if (mounted) {
+                                    if (context.mounted) {
                                       Navigator.of(context).pop(bytes);
                                     }
                                   },

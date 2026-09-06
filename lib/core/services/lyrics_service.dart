@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../database/local_database.dart';
 import '../models/track.dart';
+import 'media_cache_service.dart';
 
 /// Singleton service responsible for fetching and caching synced lyrics.
 ///
@@ -73,13 +74,22 @@ class LyricsService {
       return '';
     }
 
-    // ── 3. Build request URL ──────────────────────────────────────────────
+    // ── 3. Check persistent hash cache before network request ─────────────
+    final cachedLyrics = await MediaCacheService.instance.getCachedLyrics(artist, title);
+    if (cachedLyrics != null && cachedLyrics.trim().isNotEmpty) {
+      track.syncedLyrics = cachedLyrics;
+      track.lyricsStatus = FetchStatus.success;
+      await _persistLyrics(track, cachedLyrics);
+      return cachedLyrics;
+    }
+
+    // ── 4. Build request URL ──────────────────────────────────────────────
     final uri = Uri.parse(_baseUrl).replace(queryParameters: {
       'artist_name': artist,
       'track_name': title,
     });
 
-    // ── 4. Network call with timeout ──────────────────────────────────────
+    // ── 5. Network call with timeout ──────────────────────────────────────
     try {
       final response = await _client.get(
         uri,
@@ -100,7 +110,7 @@ class LyricsService {
         return null;
       }
 
-      // ── 5. Parse JSON body ─────────────────────────────────────────────
+      // ── 6. Parse JSON body ─────────────────────────────────────────────
       final Map<String, dynamic> json =
           jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
 
@@ -115,6 +125,11 @@ class LyricsService {
               : '';
 
       track.lyricsStatus = lrcContent.isEmpty ? FetchStatus.notFound : FetchStatus.success;
+      if (lrcContent.isNotEmpty) {
+        try {
+          await MediaCacheService.instance.saveLyrics(artist, title, lrcContent);
+        } catch (_) {}
+      }
       await _persistLyrics(track, lrcContent);
       return lrcContent;
     } on TimeoutException {

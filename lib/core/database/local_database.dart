@@ -8,6 +8,8 @@ import '../models/app_config.dart';
 import '../models/playback_state.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
+import '../services/media_cache_service.dart';
+import '../utils/string_sanitizer.dart';
 
 /// Singleton service that owns the Isar database instance for Orpheus.
 ///
@@ -178,10 +180,14 @@ class LocalDatabase {
     return _isar.tracks.where().filePathEqualTo(filePath).findFirst();
   }
 
-  /// Returns all [Track]s whose [Track.artist] matches [artist].
+  /// Returns all [Track]s associated with [artist] (including multi-artist collaborations).
   Future<List<Track>> getTracksByArtist(String artist) async {
     if (_isTestUninitialized) return [];
-    return _isar.tracks.filter().artistEqualTo(artist).findAll();
+    final target = artist.trim().toLowerCase();
+    final tracks = await getAllTracks();
+    return tracks
+        .where((t) => t.individualArtists.any((a) => a.toLowerCase() == target))
+        .toList();
   }
 
   /// Returns all [Track]s whose [Track.album] matches [album].
@@ -292,11 +298,17 @@ class LocalDatabase {
     final trimArtist = newArtist.trim();
     final trimAlbum = newAlbum.trim();
 
+    if (trimTitle.isNotEmpty) track.title = trimTitle;
+    if (trimArtist.isNotEmpty) track.artist = trimArtist;
+    if (trimAlbum.isNotEmpty) track.album = trimAlbum;
+
     track.customMetadata.title = trimTitle.isEmpty ? null : trimTitle;
     track.customMetadata.artist = trimArtist.isEmpty ? null : trimArtist;
     track.customMetadata.album = trimAlbum.isEmpty ? null : trimAlbum;
     track.customMetadata.isEdited = true;
     track.hasCustomMetadata = true;
+
+    track.artists = StringSanitizer.splitArtists(track.displayArtist);
 
     if (resetMediaFlags) {
       track.artStatus = FetchStatus.none;
@@ -310,6 +322,28 @@ class LocalDatabase {
     }
 
     await saveTrack(track);
+
+    // Persist to .orpheus_cache/metadata_index.json
+    try {
+      final musicDir = track.filePath.isNotEmpty ? File(track.filePath).parent.path : null;
+      final payload = <String, dynamic>{
+        'title': track.displayTitle,
+        'artist': track.displayArtist,
+        'album': track.displayAlbum,
+        'artists': track.artists,
+        'customCoverPath': track.customMetadata.customCoverPath,
+        'isEdited': true,
+      };
+
+      // Save under raw artist/title
+      final rArtist = track.artist;
+      final rTitle = track.title;
+      if (rArtist != null && rArtist.isNotEmpty && rTitle != null && rTitle.isNotEmpty) {
+        await MediaCacheService.instance.saveMetadataEntry(rArtist, rTitle, payload, musicDir);
+      }
+      // Save under display artist/title
+      await MediaCacheService.instance.saveMetadataEntry(track.displayArtist, track.displayTitle, payload, musicDir);
+    } catch (_) {}
   }
 
 
@@ -380,15 +414,16 @@ class LocalDatabase {
     return albums;
   }
 
-  /// Returns a sorted list of unique artist names in the library.
+  /// Returns a sorted list of unique individual artist names in the library.
   Future<List<String>> getUniqueArtists() async {
     final tracks = await getAllTracks();
     final artists = tracks
-        .map((t) => t.displayArtist.trim())
+        .expand((t) => t.individualArtists)
+        .map((a) => a.trim())
         .where((a) => a.isNotEmpty && a != 'Unknown Artist')
         .toSet()
         .toList();
-    artists.sort();
+    artists.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     return artists;
   }
 

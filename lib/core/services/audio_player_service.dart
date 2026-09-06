@@ -564,6 +564,27 @@ class AudioPlayerService {
     _notifyState();
   }
 
+  /// Updates a track's metadata within the active queue and notifies listeners if it changed.
+  void updateTrack(Track updatedTrack) {
+    bool changed = false;
+    for (int i = 0; i < _queue.length; i++) {
+      if (_queue[i].trackId == updatedTrack.trackId) {
+        _queue[i] = updatedTrack;
+        changed = true;
+      }
+    }
+    if (_originalQueue != null) {
+      for (int i = 0; i < _originalQueue!.length; i++) {
+        if (_originalQueue![i].trackId == updatedTrack.trackId) {
+          _originalQueue![i] = updatedTrack;
+        }
+      }
+    }
+    if (changed) {
+      _notifyState();
+    }
+  }
+
   /// Clears all tracks from the queue except the currently playing one.
   void clearQueue() {
     if (_queue.isEmpty || _currentIndex < 0) return;

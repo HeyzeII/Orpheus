@@ -33,87 +33,92 @@ const TrackSchema = CollectionSchema(
       name: r'artist',
       type: IsarType.string,
     ),
-    r'audioQuality': PropertySchema(
+    r'artists': PropertySchema(
       id: 3,
+      name: r'artists',
+      type: IsarType.stringList,
+    ),
+    r'audioQuality': PropertySchema(
+      id: 4,
       name: r'audioQuality',
       type: IsarType.string,
     ),
     r'customMetadata': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'customMetadata',
       type: IsarType.object,
       target: r'CustomMetadata',
     ),
     r'displayAlbum': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'displayAlbum',
       type: IsarType.string,
     ),
     r'displayArtist': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'displayArtist',
       type: IsarType.string,
     ),
     r'displayTitle': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'displayTitle',
       type: IsarType.string,
     ),
     r'downloadSource': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'downloadSource',
       type: IsarType.string,
     ),
     r'duration': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'duration',
       type: IsarType.long,
     ),
     r'filePath': PropertySchema(
-      id: 10,
+      id: 11,
       name: r'filePath',
       type: IsarType.string,
     ),
     r'fileType': PropertySchema(
-      id: 11,
+      id: 12,
       name: r'fileType',
       type: IsarType.byte,
       enumMap: _TrackfileTypeEnumValueMap,
     ),
     r'genre': PropertySchema(
-      id: 12,
+      id: 13,
       name: r'genre',
       type: IsarType.string,
     ),
     r'hasCustomMetadata': PropertySchema(
-      id: 13,
+      id: 14,
       name: r'hasCustomMetadata',
       type: IsarType.bool,
     ),
     r'lyricsStatus': PropertySchema(
-      id: 14,
+      id: 15,
       name: r'lyricsStatus',
       type: IsarType.byte,
       enumMap: _TracklyricsStatusEnumValueMap,
     ),
     r'stats': PropertySchema(
-      id: 15,
+      id: 16,
       name: r'stats',
       type: IsarType.object,
       target: r'TrackStats',
     ),
     r'syncedLyrics': PropertySchema(
-      id: 16,
+      id: 17,
       name: r'syncedLyrics',
       type: IsarType.string,
     ),
     r'title': PropertySchema(
-      id: 17,
+      id: 18,
       name: r'title',
       type: IsarType.string,
     ),
     r'trackId': PropertySchema(
-      id: 18,
+      id: 19,
       name: r'trackId',
       type: IsarType.string,
     )
@@ -128,7 +133,7 @@ const TrackSchema = CollectionSchema(
       id: -8614467705999066844,
       name: r'trackId',
       unique: true,
-      replace: false,
+      replace: true,
       properties: [
         IndexPropertySchema(
           name: r'trackId',
@@ -141,7 +146,7 @@ const TrackSchema = CollectionSchema(
       id: 2918041768256347220,
       name: r'filePath',
       unique: true,
-      replace: false,
+      replace: true,
       properties: [
         IndexPropertySchema(
           name: r'filePath',
@@ -178,6 +183,13 @@ int _trackEstimateSize(
     final value = object.artist;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
+    }
+  }
+  bytesCount += 3 + object.artists.length * 3;
+  {
+    for (var i = 0; i < object.artists.length; i++) {
+      final value = object.artists[i];
+      bytesCount += value.length * 3;
     }
   }
   bytesCount += 3 + object.audioQuality.length * 3;
@@ -228,32 +240,33 @@ void _trackSerialize(
   writer.writeString(offsets[0], object.album);
   writer.writeByte(offsets[1], object.artStatus.index);
   writer.writeString(offsets[2], object.artist);
-  writer.writeString(offsets[3], object.audioQuality);
+  writer.writeStringList(offsets[3], object.artists);
+  writer.writeString(offsets[4], object.audioQuality);
   writer.writeObject<CustomMetadata>(
-    offsets[4],
+    offsets[5],
     allOffsets,
     CustomMetadataSchema.serialize,
     object.customMetadata,
   );
-  writer.writeString(offsets[5], object.displayAlbum);
-  writer.writeString(offsets[6], object.displayArtist);
-  writer.writeString(offsets[7], object.displayTitle);
-  writer.writeString(offsets[8], object.downloadSource);
-  writer.writeLong(offsets[9], object.duration);
-  writer.writeString(offsets[10], object.filePath);
-  writer.writeByte(offsets[11], object.fileType.index);
-  writer.writeString(offsets[12], object.genre);
-  writer.writeBool(offsets[13], object.hasCustomMetadata);
-  writer.writeByte(offsets[14], object.lyricsStatus.index);
+  writer.writeString(offsets[6], object.displayAlbum);
+  writer.writeString(offsets[7], object.displayArtist);
+  writer.writeString(offsets[8], object.displayTitle);
+  writer.writeString(offsets[9], object.downloadSource);
+  writer.writeLong(offsets[10], object.duration);
+  writer.writeString(offsets[11], object.filePath);
+  writer.writeByte(offsets[12], object.fileType.index);
+  writer.writeString(offsets[13], object.genre);
+  writer.writeBool(offsets[14], object.hasCustomMetadata);
+  writer.writeByte(offsets[15], object.lyricsStatus.index);
   writer.writeObject<TrackStats>(
-    offsets[15],
+    offsets[16],
     allOffsets,
     TrackStatsSchema.serialize,
     object.stats,
   );
-  writer.writeString(offsets[16], object.syncedLyrics);
-  writer.writeString(offsets[17], object.title);
-  writer.writeString(offsets[18], object.trackId);
+  writer.writeString(offsets[17], object.syncedLyrics);
+  writer.writeString(offsets[18], object.title);
+  writer.writeString(offsets[19], object.trackId);
 }
 
 Track _trackDeserialize(
@@ -268,34 +281,35 @@ Track _trackDeserialize(
       _TrackartStatusValueEnumMap[reader.readByteOrNull(offsets[1])] ??
           FetchStatus.none;
   object.artist = reader.readStringOrNull(offsets[2]);
-  object.audioQuality = reader.readString(offsets[3]);
+  object.artists = reader.readStringList(offsets[3]) ?? [];
+  object.audioQuality = reader.readString(offsets[4]);
   object.customMetadata = reader.readObjectOrNull<CustomMetadata>(
-        offsets[4],
+        offsets[5],
         CustomMetadataSchema.deserialize,
         allOffsets,
       ) ??
       CustomMetadata();
-  object.downloadSource = reader.readStringOrNull(offsets[8]);
-  object.duration = reader.readLong(offsets[9]);
-  object.filePath = reader.readString(offsets[10]);
+  object.downloadSource = reader.readStringOrNull(offsets[9]);
+  object.duration = reader.readLong(offsets[10]);
+  object.filePath = reader.readString(offsets[11]);
   object.fileType =
-      _TrackfileTypeValueEnumMap[reader.readByteOrNull(offsets[11])] ??
+      _TrackfileTypeValueEnumMap[reader.readByteOrNull(offsets[12])] ??
           FileType.mp3;
-  object.genre = reader.readStringOrNull(offsets[12]);
-  object.hasCustomMetadata = reader.readBool(offsets[13]);
+  object.genre = reader.readStringOrNull(offsets[13]);
+  object.hasCustomMetadata = reader.readBool(offsets[14]);
   object.id = id;
   object.lyricsStatus =
-      _TracklyricsStatusValueEnumMap[reader.readByteOrNull(offsets[14])] ??
+      _TracklyricsStatusValueEnumMap[reader.readByteOrNull(offsets[15])] ??
           FetchStatus.none;
   object.stats = reader.readObjectOrNull<TrackStats>(
-        offsets[15],
+        offsets[16],
         TrackStatsSchema.deserialize,
         allOffsets,
       ) ??
       TrackStats();
-  object.syncedLyrics = reader.readStringOrNull(offsets[16]);
-  object.title = reader.readStringOrNull(offsets[17]);
-  object.trackId = reader.readString(offsets[18]);
+  object.syncedLyrics = reader.readStringOrNull(offsets[17]);
+  object.title = reader.readStringOrNull(offsets[18]);
+  object.trackId = reader.readString(offsets[19]);
   return object;
 }
 
@@ -314,48 +328,50 @@ P _trackDeserializeProp<P>(
     case 2:
       return (reader.readStringOrNull(offset)) as P;
     case 3:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringList(offset) ?? []) as P;
     case 4:
+      return (reader.readString(offset)) as P;
+    case 5:
       return (reader.readObjectOrNull<CustomMetadata>(
             offset,
             CustomMetadataSchema.deserialize,
             allOffsets,
           ) ??
           CustomMetadata()) as P;
-    case 5:
-      return (reader.readString(offset)) as P;
     case 6:
       return (reader.readString(offset)) as P;
     case 7:
       return (reader.readString(offset)) as P;
     case 8:
-      return (reader.readStringOrNull(offset)) as P;
-    case 9:
-      return (reader.readLong(offset)) as P;
-    case 10:
       return (reader.readString(offset)) as P;
+    case 9:
+      return (reader.readStringOrNull(offset)) as P;
+    case 10:
+      return (reader.readLong(offset)) as P;
     case 11:
+      return (reader.readString(offset)) as P;
+    case 12:
       return (_TrackfileTypeValueEnumMap[reader.readByteOrNull(offset)] ??
           FileType.mp3) as P;
-    case 12:
-      return (reader.readStringOrNull(offset)) as P;
     case 13:
-      return (reader.readBool(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 14:
+      return (reader.readBool(offset)) as P;
+    case 15:
       return (_TracklyricsStatusValueEnumMap[reader.readByteOrNull(offset)] ??
           FetchStatus.none) as P;
-    case 15:
+    case 16:
       return (reader.readObjectOrNull<TrackStats>(
             offset,
             TrackStatsSchema.deserialize,
             allOffsets,
           ) ??
           TrackStats()) as P;
-    case 16:
-      return (reader.readStringOrNull(offset)) as P;
     case 17:
       return (reader.readStringOrNull(offset)) as P;
     case 18:
+      return (reader.readStringOrNull(offset)) as P;
+    case 19:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1025,6 +1041,220 @@ extension TrackQueryFilter on QueryBuilder<Track, Track, QFilterCondition> {
         property: r'artist',
         value: '',
       ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsElementEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'artists',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsElementGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'artists',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsElementLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'artists',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsElementBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'artists',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsElementStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'artists',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsElementEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'artists',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsElementContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'artists',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsElementMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'artists',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsElementIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'artists',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsElementIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'artists',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsLengthEqualTo(
+      int length) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'artists',
+        length,
+        true,
+        length,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'artists',
+        0,
+        true,
+        0,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'artists',
+        0,
+        false,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsLengthLessThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'artists',
+        0,
+        true,
+        length,
+        include,
+      );
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsLengthGreaterThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'artists',
+        length,
+        include,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> artistsLengthBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'artists',
+        lower,
+        includeLower,
+        upper,
+        includeUpper,
+      );
     });
   }
 
@@ -3072,6 +3302,12 @@ extension TrackQueryWhereDistinct on QueryBuilder<Track, Track, QDistinct> {
     });
   }
 
+  QueryBuilder<Track, Track, QDistinct> distinctByArtists() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'artists');
+    });
+  }
+
   QueryBuilder<Track, Track, QDistinct> distinctByAudioQuality(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -3191,6 +3427,12 @@ extension TrackQueryProperty on QueryBuilder<Track, Track, QQueryProperty> {
   QueryBuilder<Track, String?, QQueryOperations> artistProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'artist');
+    });
+  }
+
+  QueryBuilder<Track, List<String>, QQueryOperations> artistsProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'artists');
     });
   }
 

@@ -398,7 +398,7 @@ class _MobileTopGrid extends StatelessWidget {
                     width: 48,
                     height: double.infinity,
                     child: hasArt
-                        ? Image.file(File(coverPath!), fit: BoxFit.cover, cacheWidth: 96)
+                        ? Image.file(File(coverPath), fit: BoxFit.cover, cacheWidth: 96)
                         : const ColoredBox(
                             color: AppTheme.bgHover,
                             child: Icon(
@@ -499,7 +499,7 @@ class _HorizontalCarousel extends StatelessWidget {
                               fit: StackFit.expand,
                               children: [
                                 hasArt
-                                    ? Image.file(File(coverPath!),
+                                    ? Image.file(File(coverPath),
                                         fit: BoxFit.cover, cacheWidth: 260)
                                     : const ColoredBox(
                                         color: AppTheme.bgHover,

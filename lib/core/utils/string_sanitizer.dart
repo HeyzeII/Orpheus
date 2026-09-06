@@ -125,4 +125,22 @@ class StringSanitizer {
 
     return sanitize(stem);
   }
+
+  /// Regular expression for detecting multi-artist collaborations.
+  /// Matches delimiters such as '&', 'ft.', 'feat.', ',', '/', ' X '.
+  static final multiArtistRegex =
+      RegExp(r'\s*(?:&|\bft\.?|\bfeat\.?|,|/| X )\s*', caseSensitive: false);
+
+  /// Splits a collaboration artist string into distinct individual artist names.
+  static List<String> splitArtists(String rawArtist) {
+    if (rawArtist.trim().isEmpty || rawArtist.trim().toLowerCase() == 'unknown artist') {
+      return const [];
+    }
+    return rawArtist
+        .split(multiArtistRegex)
+        .map((a) => a.trim())
+        .where((a) => a.isNotEmpty && a.toLowerCase() != 'unknown artist')
+        .toSet()
+        .toList();
+  }
 }

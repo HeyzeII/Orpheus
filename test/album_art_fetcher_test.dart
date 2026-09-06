@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:orpheus/core/database/local_database.dart';
 import 'package:orpheus/core/models/track.dart';
 import 'package:orpheus/core/services/album_art_fetcher_service.dart';
+import 'package:orpheus/core/services/media_cache_service.dart';
 
 class FakeHttpClient extends http.BaseClient {
   final Future<http.Response> Function(http.BaseRequest request) onSend;
@@ -122,7 +123,8 @@ void main() {
       expect(updated, isNotNull);
       expect(updated!.artStatus, equals(FetchStatus.success));
       expect(updated.customMetadata.customCoverPath, isNotNull);
-      expect(updated.customMetadata.customCoverPath!.contains('track1'), isTrue);
+      final expectedHash = MediaCacheService.instance.computeMediaHash(updated.displayArtist, updated.displayTitle);
+      expect(updated.customMetadata.customCoverPath!.contains(expectedHash), isTrue);
 
       // Clean up files created
       final file = File(updated.customMetadata.customCoverPath!);

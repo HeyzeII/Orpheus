@@ -135,4 +135,50 @@ void main() {
       );
     });
   });
+
+  group('StringSanitizer - splitArtists', () {
+    test('Splits collaborations with &', () {
+      expect(
+        StringSanitizer.splitArtists('The Weeknd & Kendrick Lamar'),
+        equals(['The Weeknd', 'Kendrick Lamar']),
+      );
+    });
+
+    test('Splits collaborations with ft. and feat.', () {
+      expect(
+        StringSanitizer.splitArtists('Drake ft. 21 Savage'),
+        equals(['Drake', '21 Savage']),
+      );
+      expect(
+        StringSanitizer.splitArtists('Travis Scott feat. Drake'),
+        equals(['Travis Scott', 'Drake']),
+      );
+    });
+
+    test('Splits collaborations with commas and slashes', () {
+      expect(
+        StringSanitizer.splitArtists('Artist A, Artist B / Artist C'),
+        equals(['Artist A', 'Artist B', 'Artist C']),
+      );
+    });
+
+    test('Splits collaborations with X', () {
+      expect(
+        StringSanitizer.splitArtists('Marshmello X Khalid'),
+        equals(['Marshmello', 'Khalid']),
+      );
+    });
+
+    test('Handles single artist cleanly', () {
+      expect(
+        StringSanitizer.splitArtists('Daft Punk'),
+        equals(['Daft Punk']),
+      );
+    });
+
+    test('Ignores empty or Unknown Artist', () {
+      expect(StringSanitizer.splitArtists(''), isEmpty);
+      expect(StringSanitizer.splitArtists('Unknown Artist'), isEmpty);
+    });
+  });
 }

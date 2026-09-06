@@ -7,12 +7,28 @@ import '../database/local_database.dart';
 import '../models/track.dart';
 import '../utils/fuzzy_matcher.dart';
 import '../utils/string_sanitizer.dart';
+import 'media_cache_service.dart';
 import 'scan_result.dart';
 
 export 'scan_result.dart';
 
 /// Supported media file extensions (lowercase, without the leading dot).
-const _kSupportedExtensions = {'mp3', 'flac', 'mp4', 'm4a', 'wav'};
+const _kSupportedExtensions = {
+  'mp3',
+  'flac',
+  'm4a',
+  'mp4',
+  'wav',
+  'ogg',
+  'opus',
+  'aac',
+  'wma',
+  'aiff',
+  'aif',
+  'm4b',
+  'webm',
+  'mka',
+};
 
 /// Batch size: how many tracks are committed in a single Isar transaction.
 /// Keeps individual write transactions short to avoid blocking the main thread.
@@ -44,7 +60,7 @@ class AudioScannerService {
   // ── Public API ─────────────────────────────────────────────────────────────
 
   /// Recursively scans [directoryPath] for supported media files and persists
-  /// them to the database.
+  /// them to the database using resilient BFS queue traversal.
   ///
   /// Yields a [ScanResult] for every file encountered (including skipped ones)
   /// so the caller can drive a progress UI.
@@ -52,8 +68,12 @@ class AudioScannerService {
   /// Throws [ArgumentError] if [directoryPath] does not exist or is not a
   /// directory.
   Stream<ScanResult> scanDirectory(String directoryPath) async* {
-    final dir = Directory(directoryPath);
-    if (!dir.existsSync()) {
+    if (!directoryPath.startsWith('/')) {
+      throw ArgumentError(
+          'El escáner requiere una ruta POSIX nativa válida que inicie con "/": $directoryPath');
+    }
+    final rootDir = Directory(directoryPath);
+    if (!rootDir.existsSync()) {
       throw ArgumentError('Directory does not exist: $directoryPath');
     }
 
@@ -70,142 +90,259 @@ class AudioScannerService {
     // Pending batch for bulk Isar writes.
     final batch = <Track>[];
 
-    await for (final entity in dir.list(recursive: true, followLinks: false)) {
-      if (entity is! File) continue;
+    // Resilient BFS traversal queue to prevent subfolder permission errors from aborting the scan.
+    final dirQueue = <Directory>[rootDir];
+    final visitedPaths = <String>{};
 
-      final extension = _extensionOf(entity.path);
-      if (!_kSupportedExtensions.contains(extension)) continue;
+    while (dirQueue.isNotEmpty) {
+      final currentDir = dirQueue.removeAt(0);
+      final currentPath = currentDir.path;
+      if (visitedPaths.contains(currentPath)) continue;
+      visitedPaths.add(currentPath);
 
-      // ── Extract metadata ─────────────────────────────────────────────────
-      Metadata? meta;
+      final dirName = currentPath.split('/').last;
+      if (dirName == '.trash') continue;
+
+      List<FileSystemEntity> entities;
       try {
-        meta = await MetadataGod.readMetadata(file: entity.path);
+        entities = await currentDir.list(recursive: false, followLinks: false).toList();
       } catch (e) {
-        // Corrupt file, permission denied, or unsupported codec — skip it.
-        yield ScanResult(
-          filePath: entity.path,
-          outcome: ScanOutcome.skipped,
-          error: e,
-        );
+        // Silently skip inaccessible or permission-restricted subfolders (e.g. .thumbnails)
         continue;
       }
 
-      // ── Resolve cover art ────────────────────────────────────────────────
-      String? coverPath;
-      try {
-        coverPath = await _saveCoverArt(
-          picture: meta.picture,
-          filePath: entity.path,
-          cacheDir: coverCacheDir,
-        );
-      } catch (_) {
-        // Cover art failure is non-fatal; proceed without it.
-      }
-
-      // ── Resolve duration ─────────────────────────────────────────────────
-      final durationSec = meta.durationMs != null
-          ? (meta.durationMs! / 1000).round()
-          : 0;
-
-      // ── Detect file type ─────────────────────────────────────────────────
-      final fileType = _fileTypeFromExtension(extension);
-
-      // ── Check for existing track (update vs insert) ───────────────────────
-      final existingTrack = await _db.getTrackByFilePath(entity.path);
-
-      final trackId = existingTrack?.trackId ?? _buildTrackId(entity.path);
-      final isUpdate = existingTrack != null;
-
-      // ── Fallback Parsing & Sanitization ──────────────────────────────────
-      var rawTitle = meta.title?.trim();
-      var rawArtist = meta.artist?.trim();
-
-      // If both metadata title and artist are empty, fall back to file name parsing
-      if ((rawTitle == null || rawTitle.isEmpty) && (rawArtist == null || rawArtist.isEmpty)) {
-        final stem = _stemFromPath(entity.path);
-        final hyphenIndex = stem.indexOf(' - ');
-        if (hyphenIndex != -1) {
-          rawArtist = stem.substring(0, hyphenIndex).trim();
-          rawTitle = stem.substring(hyphenIndex + 3).trim();
-        } else {
-          rawTitle = stem;
+      for (final entity in entities) {
+        if (entity is Directory) {
+          final subName = entity.path.split('/').last;
+          if (subName != '.trash') {
+            dirQueue.add(entity);
+          }
+          continue;
         }
-      }
 
-      // Sanitize fields using StringSanitizer
-      final cleanTitle = rawTitle != null && rawTitle.isNotEmpty
-          ? StringSanitizer.sanitize(rawTitle)
-          : null;
-      final cleanArtist = rawArtist != null && rawArtist.isNotEmpty
-          ? StringSanitizer.sanitize(rawArtist)
-          : null;
+        if (entity is! File) continue;
 
-      // Detect download source from path or raw metadata fields
-      final downloadSource = StringSanitizer.detectDownloadSource(entity.path) ??
-          (rawTitle != null ? StringSanitizer.detectDownloadSource(rawTitle) : null) ??
-          (rawArtist != null ? StringSanitizer.detectDownloadSource(rawArtist) : null);
+        final extension = _extensionOf(entity.path);
+        if (!_kSupportedExtensions.contains(extension)) continue;
 
-      // ── Fuzzy artist deduplication ────────────────────────────────────────
-      ScanOutcome outcome = isUpdate ? ScanOutcome.updated : ScanOutcome.added;
-      String? mergeExistingArtist;
-      String? mergeCandidateArtist;
+        // ── Extract metadata (Non-fatal with fallback) ───────────────────────
+        Metadata? meta;
+        try {
+          meta = await MetadataGod.readMetadata(file: entity.path);
+        } catch (e) {
+          // Tag reading failure is non-fatal: fallback to filename parsing.
+          meta = null;
+        }
 
-      if (cleanArtist != null && cleanArtist.isNotEmpty) {
-        final match = _findSimilarArtist(cleanArtist, knownArtists);
-        if (match != null && match != cleanArtist) {
-          // Check if the user has explicitly ignored this pair.
-          final isIgnored = ignoredPairs.any(
-            (p) =>
-                (p.artistA == cleanArtist && p.artistB == match) ||
-                (p.artistA == match && p.artistB == cleanArtist),
-          );
-
-          if (!isIgnored) {
-            // Surface to the UI for the user to decide.
-            outcome = ScanOutcome.pendingArtistMerge;
-            mergeExistingArtist = match;
-            mergeCandidateArtist = cleanArtist;
+        // ── Resolve cover art ────────────────────────────────────────────────
+        String? coverPath;
+        if (meta?.picture != null) {
+          try {
+            coverPath = await _saveCoverArt(
+              picture: meta!.picture,
+              filePath: entity.path,
+              cacheDir: coverCacheDir,
+            );
+          } catch (_) {
+            // Cover art failure is non-fatal; proceed without it.
           }
         }
 
-        // Register new artist so subsequent files in this scan can match it.
-        if (!knownArtists.contains(cleanArtist)) {
-          knownArtists.add(cleanArtist);
+        // ── Resolve duration ─────────────────────────────────────────────────
+        final durationSec = meta?.durationMs != null
+            ? (meta!.durationMs! / 1000).round()
+            : 0;
+
+        // ── Detect file type ─────────────────────────────────────────────────
+        final fileType = _fileTypeFromExtension(extension);
+
+        // ── Check for existing track (update vs insert) ───────────────────────
+        final existingTrack = await _db.getTrackByFilePath(entity.path);
+
+        final trackId = existingTrack?.trackId ?? _buildTrackId(entity.path);
+        final isUpdate = existingTrack != null;
+
+        // ── Fallback Parsing & Sanitization ──────────────────────────────────
+        var rawTitle = meta?.title?.trim();
+        var rawArtist = meta?.artist?.trim();
+
+        // If both metadata title and artist are empty, fall back to file name parsing
+        if ((rawTitle == null || rawTitle.isEmpty) && (rawArtist == null || rawArtist.isEmpty)) {
+          final stem = _stemFromPath(entity.path);
+          final hyphenIndex = stem.indexOf(' - ');
+          if (hyphenIndex != -1) {
+            rawArtist = stem.substring(0, hyphenIndex).trim();
+            rawTitle = stem.substring(hyphenIndex + 3).trim();
+          } else {
+            rawTitle = stem;
+          }
         }
+
+        if (rawTitle == null || rawTitle.isEmpty) {
+          rawTitle = _stemFromPath(entity.path);
+        }
+        if (rawArtist == null || rawArtist.isEmpty) {
+          rawArtist = 'Artista Desconocido';
+        }
+
+        // Sanitize fields using StringSanitizer
+        final cleanTitle = StringSanitizer.sanitize(rawTitle);
+        final cleanArtist = StringSanitizer.sanitize(rawArtist);
+
+        // Detect download source from path or raw metadata fields
+        final downloadSource = StringSanitizer.detectDownloadSource(entity.path) ??
+            (rawTitle.isNotEmpty ? StringSanitizer.detectDownloadSource(rawTitle) : null) ??
+            (rawArtist.isNotEmpty ? StringSanitizer.detectDownloadSource(rawArtist) : null);
+
+        // ── Fuzzy artist deduplication ────────────────────────────────────────
+        ScanOutcome outcome = isUpdate ? ScanOutcome.updated : ScanOutcome.added;
+        String? mergeExistingArtist;
+        String? mergeCandidateArtist;
+
+        if (cleanArtist.isNotEmpty && cleanArtist != 'Artista Desconocido') {
+          final match = _findSimilarArtist(cleanArtist, knownArtists);
+          if (match != null && match != cleanArtist) {
+            // Check if the user has explicitly ignored this pair.
+            final isIgnored = ignoredPairs.any(
+              (p) =>
+                  (p.artistA == cleanArtist && p.artistB == match) ||
+                  (p.artistA == match && p.artistB == cleanArtist),
+            );
+
+            if (!isIgnored) {
+              // Surface to the UI for the user to decide.
+              outcome = ScanOutcome.pendingArtistMerge;
+              mergeExistingArtist = match;
+              mergeCandidateArtist = cleanArtist;
+            }
+          }
+
+          // Register individual artists so subsequent files in this scan can match them.
+          final individualArtists = StringSanitizer.splitArtists(cleanArtist);
+          for (final a in individualArtists) {
+            if (!knownArtists.contains(a)) {
+              knownArtists.add(a);
+            }
+          }
+          if (!knownArtists.contains(cleanArtist)) {
+            knownArtists.add(cleanArtist);
+          }
+        }
+
+        final individualArtists = cleanArtist.isNotEmpty && cleanArtist != 'Artista Desconocido'
+            ? StringSanitizer.splitArtists(cleanArtist)
+            : <String>[];
+
+        // ── Build Track object ────────────────────────────────────────────────
+        final track = existingTrack ?? Track();
+        track
+          ..trackId = trackId
+          ..filePath = entity.path
+          ..fileType = fileType
+          ..duration = durationSec
+          ..title = cleanTitle
+          ..artist = cleanArtist
+          ..artists = individualArtists
+          ..album = meta?.album?.trim()
+          ..genre = meta?.genre?.trim()
+          ..downloadSource = downloadSource;
+
+        // ── Persistent .orpheus_cache/ verification (metadata, covers, lyrics) ──
+        final mediaCache = MediaCacheService.instance;
+        final cacheArtist = cleanArtist.isNotEmpty ? cleanArtist : rawArtist;
+        final cacheTitle = cleanTitle.isNotEmpty ? cleanTitle : rawTitle;
+        final scanDir = directoryPath;
+
+        // 1. Check metadata index in .orpheus_cache/metadata_index.json
+        if (!track.hasCustomMetadata) {
+          Map<String, dynamic>? metaEntry = await mediaCache.getMetadataEntry(cacheArtist, cacheTitle, scanDir);
+          metaEntry ??= await mediaCache.getMetadataEntry(rawArtist, rawTitle, scanDir);
+
+          if (metaEntry != null) {
+            final editedTitle = metaEntry['title'] as String?;
+            final editedArtist = metaEntry['artist'] as String?;
+            final editedAlbum = metaEntry['album'] as String?;
+            final editedCover = metaEntry['customCoverPath'] as String?;
+            final editedArtists = (metaEntry['artists'] as List<dynamic>?)?.map((e) => e.toString()).toList();
+
+            if (editedTitle != null && editedTitle.isNotEmpty) {
+              track.customMetadata.title = editedTitle;
+            }
+            if (editedArtist != null && editedArtist.isNotEmpty) {
+              track.customMetadata.artist = editedArtist;
+            }
+            if (editedAlbum != null && editedAlbum.isNotEmpty) {
+              track.customMetadata.album = editedAlbum;
+            }
+            if (editedCover != null && editedCover.isNotEmpty && File(editedCover).existsSync()) {
+              track.customMetadata.customCoverPath = editedCover;
+              track.artStatus = FetchStatus.custom;
+              coverPath = editedCover;
+            }
+            if (editedArtists != null && editedArtists.isNotEmpty) {
+              track.artists = editedArtists;
+              for (final a in editedArtists) {
+                if (!knownArtists.contains(a)) knownArtists.add(a);
+              }
+            } else if (editedArtist != null && editedArtist.isNotEmpty) {
+              track.artists = StringSanitizer.splitArtists(editedArtist);
+            }
+
+            track.customMetadata.isEdited = true;
+            track.hasCustomMetadata = true;
+          }
+        }
+
+        // 2. Cover Art: if no embedded art or custom cover, check .orpheus_cache/covers/
+        final lookupArtist = track.displayArtist;
+        final lookupTitle = track.displayTitle;
+
+        if ((coverPath == null || coverPath.isEmpty) && track.customMetadata.customCoverPath == null) {
+          final cachedCover = await mediaCache.getCachedCover(lookupArtist, lookupTitle, scanDir);
+          if (cachedCover != null) {
+            coverPath = cachedCover.path;
+            track.customMetadata.customCoverPath = coverPath;
+            track.artStatus = FetchStatus.success;
+          }
+        } else if (coverPath != null && meta?.picture?.data != null && meta!.picture!.data.isNotEmpty) {
+          // Populate persistent hash cache from embedded art
+          try {
+            await mediaCache.saveCover(lookupArtist, lookupTitle, meta.picture!.data, scanDir);
+          } catch (_) {}
+        }
+
+        // Persist cover art path if resolved and not previously overridden.
+        if (coverPath != null && track.customMetadata.customCoverPath == null) {
+          track.customMetadata.customCoverPath = coverPath;
+          if (track.artStatus == FetchStatus.none) {
+            track.artStatus = FetchStatus.success;
+          }
+        }
+
+        // 3. Lyrics: check .orpheus_cache/lyrics/ if track doesn't have lyrics yet
+        if (track.syncedLyrics == null || track.syncedLyrics!.isEmpty) {
+          final cachedLyrics = await mediaCache.getCachedLyrics(lookupArtist, lookupTitle, scanDir);
+          if (cachedLyrics != null && cachedLyrics.isNotEmpty) {
+            track.syncedLyrics = cachedLyrics;
+            track.lyricsStatus = FetchStatus.success;
+          }
+        }
+
+        batch.add(track);
+
+        // Flush batch when it reaches the configured size.
+        if (batch.length >= _kBatchSize) {
+          await _db.saveTracks(batch);
+          batch.clear();
+        }
+
+        yield ScanResult(
+          filePath: entity.path,
+          outcome: outcome,
+          existingArtist: mergeExistingArtist,
+          candidateArtist: mergeCandidateArtist,
+        );
       }
-
-      // ── Build Track object ────────────────────────────────────────────────
-      final track = existingTrack ?? Track();
-      track
-        ..trackId = trackId
-        ..filePath = entity.path
-        ..fileType = fileType
-        ..duration = durationSec
-        ..title = cleanTitle
-        ..artist = cleanArtist
-        ..album = meta.album?.trim()
-        ..genre = meta.genre?.trim()
-        ..downloadSource = downloadSource;
-
-      // Persist cover art path only if not already overridden by user.
-      if (coverPath != null && !track.hasCustomMetadata) {
-        track.customMetadata.customCoverPath = coverPath;
-      }
-
-      batch.add(track);
-
-      // Flush batch when it reaches the configured size.
-      if (batch.length >= _kBatchSize) {
-        await _db.saveTracks(batch);
-        batch.clear();
-      }
-
-      yield ScanResult(
-        filePath: entity.path,
-        outcome: outcome,
-        existingArtist: mergeExistingArtist,
-        candidateArtist: mergeCandidateArtist,
-      );
     }
 
     // Flush the remaining batch.
@@ -221,8 +358,7 @@ class AudioScannerService {
   Future<Set<String>> _collectKnownArtists() async {
     final tracks = await _db.getAllTracks();
     return {
-      for (final t in tracks)
-        if (t.artist != null && t.artist!.isNotEmpty) t.artist!,
+      for (final t in tracks) ...t.individualArtists,
     };
   }
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +20,13 @@ import 'ui/theme/app_theme.dart';
 void main() {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // Restrict orientation to vertical exclusively on mobile platforms
+    if (Platform.isAndroid || Platform.isIOS) {
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+      ]);
+    }
 
     // Global error handlers
     ErrorWidget.builder = (FlutterErrorDetails details) {
@@ -203,11 +211,11 @@ class OrpheusErrorScreen extends StatelessWidget {
   final StackTrace? stackTrace;
 
   const OrpheusErrorScreen({
-    key,
+    super.key,
     required this.title,
     required this.error,
     this.stackTrace,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
