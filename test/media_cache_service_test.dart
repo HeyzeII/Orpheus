@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -80,6 +81,149 @@ void main() {
       expect(entry['artists'], equals(['The Weeknd', 'Ariana Grande']));
       expect(entry['isEdited'], isTrue);
       expect(entry['updatedAt'], isNotNull);
+    });
+
+    test('saveMetadataEntry does not overwrite edited entries if incoming is not edited', () async {
+      final editedPayload = {
+        'title': 'Custom Title',
+        'artist': 'Custom Artist',
+        'isEdited': true,
+      };
+      await cacheService.saveMetadataEntry('Artist', 'Title', editedPayload);
+
+      // Attempt overwrite with unedited payload (e.g. from auto-scanner)
+      final autoPayload = {
+        'title': 'Overwritten Title',
+        'artist': 'Overwritten Artist',
+        'isEdited': false,
+      };
+      await cacheService.saveMetadataEntry('Artist', 'Title', autoPayload);
+
+      final entry = await cacheService.getMetadataEntry('Artist', 'Title');
+      expect(entry!['title'], equals('Custom Title'));
+      expect(entry['artist'], equals('Custom Artist'));
+      expect(entry['isEdited'], isTrue);
+    });
+
+    test('findLocalLrcFile locates matching .lrc file in audio directory', () async {
+      final audioFile = File('${tempDir.path}/Track01.mp3');
+      await audioFile.writeAsString('audio');
+
+      final lrcFile = File('${tempDir.path}/Track01.lrc');
+      await lrcFile.writeAsString('[00:01.00]Local lyric line');
+
+      final found = await cacheService.findLocalLrcFile(audioFile.path);
+      expect(found, isNotNull);
+      expect(found!.path, equals(lrcFile.path));
+      expect(await found.readAsString(), contains('Local lyric line'));
+    });
+
+    test('findLocalCoverFile locates cover.jpg or stem image in audio directory', () async {
+      final audioFile = File('${tempDir.path}/Song.mp3');
+      await audioFile.writeAsString('audio');
+
+      final coverFile = File('${tempDir.path}/cover.jpg');
+      await coverFile.writeAsBytes([0x01, 0x02, 0x03]);
+
+      final found = await cacheService.findLocalCoverFile(audioFile.path);
+      expect(found, isNotNull);
+      expect(found!.path, equals(coverFile.path));
+    });
+
+    test('saveTrackMetadataEntry stores multi-key payload in metadata_index.json', () async {
+      final fakeFilePath = '${tempDir.path}/Music/Artist/Album/Song.mp3';
+      final scanRoot = '${tempDir.path}/Music';
+
+      final payload = <String, dynamic>{
+        'title': 'Edited Title',
+        'artist': 'Edited Artist',
+        'album': 'Edited Album',
+        'artists': ['Edited Artist'],
+        'customCoverPath': null,
+        'isEdited': true,
+      };
+
+      await cacheService.saveTrackMetadataEntry(
+        filePath: fakeFilePath,
+        scanRootPath: scanRoot,
+        originalArtist: 'Raw Artist',
+        originalTitle: 'Raw Title',
+        editedArtist: 'Edited Artist',
+        editedTitle: 'Edited Title',
+        payload: payload,
+      );
+
+      final indexFile = File('${cacheService.customBaseDir!.path}/metadata_index.json');
+      expect(indexFile.existsSync(), isTrue);
+
+      final index = jsonDecode(indexFile.readAsStringSync()) as Map<String, dynamic>;
+
+      // All expected keys should be present
+      expect(index.containsKey('file:$fakeFilePath'), isTrue);
+      expect(index.containsKey('stem:Song'), isTrue);
+
+      // Payload should carry identity fields
+      final entry = index['stem:Song'] as Map<String, dynamic>;
+      expect(entry['filePath'], equals(fakeFilePath));
+      expect(entry['originalArtist'], equals('Raw Artist'));
+      expect(entry['originalTitle'], equals('Raw Title'));
+      expect(entry['fileStem'], equals('Song'));
+      expect(entry['isEdited'], isTrue);
+    });
+
+    test('findMetadataEntry resolves by relative path, stem, and raw hash', () async {
+      final scanRoot = '${tempDir.path}/Music';
+      final fakeFilePath = '$scanRoot/Artist/Song.mp3';
+
+      final payload = <String, dynamic>{
+        'title': 'Edited Title',
+        'artist': 'Edited Artist',
+        'album': 'Edited Album',
+        'artists': ['Edited Artist'],
+        'isEdited': true,
+      };
+
+      // Persist with multi-key entry
+      await cacheService.saveTrackMetadataEntry(
+        filePath: fakeFilePath,
+        scanRootPath: scanRoot,
+        originalArtist: 'Raw Artist',
+        originalTitle: 'Raw Title',
+        editedArtist: 'Edited Artist',
+        editedTitle: 'Edited Title',
+        payload: payload,
+      );
+
+      // 1. Find by exact file path
+      final byFilePath = await cacheService.findMetadataEntry(
+        filePath: fakeFilePath,
+        scanRootPath: scanRoot,
+        rawArtist: 'Raw Artist',
+        rawTitle: 'Raw Title',
+      );
+      expect(byFilePath, isNotNull);
+      expect(byFilePath!['isEdited'], isTrue);
+      expect(byFilePath['title'], equals('Edited Title'));
+
+      // 2. Find by stem key (different artist/title to force non-hash hit)
+      final byStem = await cacheService.findMetadataEntry(
+        filePath: fakeFilePath,
+        scanRootPath: scanRoot,
+        rawArtist: 'Completely Different Artist',
+        rawTitle: 'Completely Different Title',
+      );
+      expect(byStem, isNotNull);
+      expect(byStem!['fileStem'], equals('Song'));
+
+      // 3. Find by raw hash (original artist + title)
+      final byHash = await cacheService.findMetadataEntry(
+        filePath: '/new/install/path/Music/Artist/Song.mp3', // different absolute path
+        scanRootPath: '/new/install/path/Music',
+        rawArtist: 'Raw Artist',
+        rawTitle: 'Raw Title',
+      );
+      // Raw hash keys ('hash:<hash>' and '<hash>') should match
+      expect(byHash, isNotNull);
     });
   });
 }

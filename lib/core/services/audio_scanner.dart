@@ -134,20 +134,6 @@ class AudioScannerService {
           meta = null;
         }
 
-        // ── Resolve cover art ────────────────────────────────────────────────
-        String? coverPath;
-        if (meta?.picture != null) {
-          try {
-            coverPath = await _saveCoverArt(
-              picture: meta!.picture,
-              filePath: entity.path,
-              cacheDir: coverCacheDir,
-            );
-          } catch (_) {
-            // Cover art failure is non-fatal; proceed without it.
-          }
-        }
-
         // ── Resolve duration ─────────────────────────────────────────────────
         final durationSec = meta?.durationMs != null
             ? (meta!.durationMs! / 1000).round()
@@ -158,173 +144,288 @@ class AudioScannerService {
 
         // ── Check for existing track (update vs insert) ───────────────────────
         final existingTrack = await _db.getTrackByFilePath(entity.path);
-
         final trackId = existingTrack?.trackId ?? _buildTrackId(entity.path);
         final isUpdate = existingTrack != null;
 
-        // ── Fallback Parsing & Sanitization ──────────────────────────────────
-        var rawTitle = meta?.title?.trim();
-        var rawArtist = meta?.artist?.trim();
+        final isTrackEdited = existingTrack != null &&
+            (existingTrack.customMetadata.isEdited ||
+                (existingTrack.customMetadata.customCoverPath != null &&
+                    existingTrack.customMetadata.customCoverPath!.isNotEmpty));
 
-        // If both metadata title and artist are empty, fall back to file name parsing
-        if ((rawTitle == null || rawTitle.isEmpty) && (rawArtist == null || rawArtist.isEmpty)) {
-          final stem = _stemFromPath(entity.path);
-          final hyphenIndex = stem.indexOf(' - ');
-          if (hyphenIndex != -1) {
-            rawArtist = stem.substring(0, hyphenIndex).trim();
-            rawTitle = stem.substring(hyphenIndex + 3).trim();
-          } else {
-            rawTitle = stem;
-          }
-        }
+        final mediaCache = MediaCacheService.instance;
+        final scanDir = directoryPath;
 
-        if (rawTitle == null || rawTitle.isEmpty) {
-          rawTitle = _stemFromPath(entity.path);
-        }
-        if (rawArtist == null || rawArtist.isEmpty) {
-          rawArtist = 'Artista Desconocido';
-        }
-
-        // Sanitize fields using StringSanitizer
-        final cleanTitle = StringSanitizer.sanitize(rawTitle);
-        final cleanArtist = StringSanitizer.sanitize(rawArtist);
-
-        // Detect download source from path or raw metadata fields
-        final downloadSource = StringSanitizer.detectDownloadSource(entity.path) ??
-            (rawTitle.isNotEmpty ? StringSanitizer.detectDownloadSource(rawTitle) : null) ??
-            (rawArtist.isNotEmpty ? StringSanitizer.detectDownloadSource(rawArtist) : null);
-
-        // ── Fuzzy artist deduplication ────────────────────────────────────────
+        String cleanTitle;
+        String cleanArtist;
+        String? cleanAlbum;
+        List<String> individualArtists;
         ScanOutcome outcome = isUpdate ? ScanOutcome.updated : ScanOutcome.added;
         String? mergeExistingArtist;
         String? mergeCandidateArtist;
+        String? coverPath;
 
-        if (cleanArtist.isNotEmpty && cleanArtist != 'Artista Desconocido') {
-          final match = _findSimilarArtist(cleanArtist, knownArtists);
-          if (match != null && match != cleanArtist) {
-            // Check if the user has explicitly ignored this pair.
-            final isIgnored = ignoredPairs.any(
-              (p) =>
-                  (p.artistA == cleanArtist && p.artistB == match) ||
-                  (p.artistA == match && p.artistB == cleanArtist),
-            );
-
-            if (!isIgnored) {
-              // Surface to the UI for the user to decide.
-              outcome = ScanOutcome.pendingArtistMerge;
-              mergeExistingArtist = match;
-              mergeCandidateArtist = cleanArtist;
-            }
-          }
-
-          // Register individual artists so subsequent files in this scan can match them.
-          final individualArtists = StringSanitizer.splitArtists(cleanArtist);
-          for (final a in individualArtists) {
-            if (!knownArtists.contains(a)) {
-              knownArtists.add(a);
-            }
-          }
-          if (!knownArtists.contains(cleanArtist)) {
-            knownArtists.add(cleanArtist);
-          }
-        }
-
-        final individualArtists = cleanArtist.isNotEmpty && cleanArtist != 'Artista Desconocido'
-            ? StringSanitizer.splitArtists(cleanArtist)
-            : <String>[];
-
-        // ── Build Track object ────────────────────────────────────────────────
         final track = existingTrack ?? Track();
         track
           ..trackId = trackId
           ..filePath = entity.path
           ..fileType = fileType
-          ..duration = durationSec
-          ..title = cleanTitle
-          ..artist = cleanArtist
-          ..artists = individualArtists
-          ..album = meta?.album?.trim()
-          ..genre = meta?.genre?.trim()
-          ..downloadSource = downloadSource;
+          ..duration = durationSec;
 
-        // ── Persistent .orpheus_cache/ verification (metadata, covers, lyrics) ──
-        final mediaCache = MediaCacheService.instance;
-        final cacheArtist = cleanArtist.isNotEmpty ? cleanArtist : rawArtist;
-        final cacheTitle = cleanTitle.isNotEmpty ? cleanTitle : rawTitle;
-        final scanDir = directoryPath;
+        if (isTrackEdited) {
+          // ── PRESERVE USER-EDITED METADATA COMPLETELY ───────────────────────
+          // Never overwrite with ID3 tags, filename stems, or StringSanitizer
+          cleanTitle = existingTrack.displayTitle;
+          cleanArtist = existingTrack.displayArtist;
+          cleanAlbum = existingTrack.displayAlbum;
+          individualArtists = List<String>.from(existingTrack.artists);
+          if (individualArtists.isEmpty && cleanArtist.isNotEmpty) {
+            individualArtists = StringSanitizer.splitArtists(cleanArtist);
+          }
 
-        // 1. Check metadata index in .orpheus_cache/metadata_index.json
-        if (!track.hasCustomMetadata) {
-          Map<String, dynamic>? metaEntry = await mediaCache.getMetadataEntry(cacheArtist, cacheTitle, scanDir);
-          metaEntry ??= await mediaCache.getMetadataEntry(rawArtist, rawTitle, scanDir);
+          track
+            ..title = existingTrack.title ?? cleanTitle
+            ..artist = existingTrack.artist ?? cleanArtist
+            ..album = existingTrack.album ?? cleanAlbum
+            ..artists = individualArtists
+            ..customMetadata = existingTrack.customMetadata
+            ..hasCustomMetadata = true
+            ..artStatus = existingTrack.artStatus
+            ..lyricsStatus = existingTrack.lyricsStatus
+            ..syncedLyrics = existingTrack.syncedLyrics;
 
-          if (metaEntry != null) {
+          if (existingTrack.customMetadata.customCoverPath != null &&
+              existingTrack.customMetadata.customCoverPath!.isNotEmpty) {
+            coverPath = existingTrack.customMetadata.customCoverPath;
+          }
+
+          // Register known artists
+          for (final a in individualArtists) {
+            if (!knownArtists.contains(a)) knownArtists.add(a);
+          }
+          if (!knownArtists.contains(cleanArtist)) {
+            knownArtists.add(cleanArtist);
+          }
+        } else {
+          // ── Extract metadata (tags or fallback parsing) ─────────────────────
+          var rawTitle = meta?.title?.trim();
+          var rawArtist = meta?.artist?.trim();
+
+          // If both metadata title and artist are empty, fall back to file name parsing
+          if ((rawTitle == null || rawTitle.isEmpty) && (rawArtist == null || rawArtist.isEmpty)) {
+            final stem = _stemFromPath(entity.path);
+            final hyphenIndex = stem.indexOf(' - ');
+            if (hyphenIndex != -1) {
+              rawArtist = stem.substring(0, hyphenIndex).trim();
+              rawTitle = stem.substring(hyphenIndex + 3).trim();
+            } else {
+              rawTitle = stem;
+            }
+          }
+
+          if (rawTitle == null || rawTitle.isEmpty) {
+            rawTitle = _stemFromPath(entity.path);
+          }
+          if (rawArtist == null || rawArtist.isEmpty) {
+            rawArtist = 'Artista Desconocido';
+          }
+
+          // Check persistent .orpheus_cache/metadata_index.json first.
+          // findMetadataEntry uses a multi-step fallback: file path → relative
+          // path → stem → raw ID3 hash, so it works even after a reinstall.
+          final Map<String, dynamic>? metaEntry =
+              await mediaCache.findMetadataEntry(
+            filePath: entity.path,
+            scanRootPath: scanDir,
+            rawArtist: rawArtist,
+            rawTitle: rawTitle,
+          );
+
+          if (metaEntry != null && metaEntry['isEdited'] == true) {
+            // Restore persistent user edits from index
             final editedTitle = metaEntry['title'] as String?;
             final editedArtist = metaEntry['artist'] as String?;
             final editedAlbum = metaEntry['album'] as String?;
             final editedCover = metaEntry['customCoverPath'] as String?;
-            final editedArtists = (metaEntry['artists'] as List<dynamic>?)?.map((e) => e.toString()).toList();
+            final editedArtists = (metaEntry['artists'] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList();
 
-            if (editedTitle != null && editedTitle.isNotEmpty) {
-              track.customMetadata.title = editedTitle;
-            }
-            if (editedArtist != null && editedArtist.isNotEmpty) {
-              track.customMetadata.artist = editedArtist;
-            }
-            if (editedAlbum != null && editedAlbum.isNotEmpty) {
-              track.customMetadata.album = editedAlbum;
-            }
-            if (editedCover != null && editedCover.isNotEmpty && File(editedCover).existsSync()) {
+            cleanTitle = (editedTitle != null && editedTitle.isNotEmpty)
+                ? editedTitle
+                : StringSanitizer.sanitize(rawTitle);
+            cleanArtist = (editedArtist != null && editedArtist.isNotEmpty)
+                ? editedArtist
+                : StringSanitizer.sanitize(rawArtist);
+            cleanAlbum = editedAlbum ?? meta?.album?.trim();
+            individualArtists = editedArtists ??
+                (cleanArtist.isNotEmpty && cleanArtist != 'Artista Desconocido'
+                    ? StringSanitizer.splitArtists(cleanArtist)
+                    : <String>[]);
+
+            track.customMetadata.title = cleanTitle;
+            track.customMetadata.artist = cleanArtist;
+            track.customMetadata.album = cleanAlbum;
+            track.customMetadata.isEdited = true;
+            track.hasCustomMetadata = true;
+
+            if (editedCover != null &&
+                editedCover.isNotEmpty &&
+                File(editedCover).existsSync()) {
               track.customMetadata.customCoverPath = editedCover;
               track.artStatus = FetchStatus.custom;
               coverPath = editedCover;
             }
-            if (editedArtists != null && editedArtists.isNotEmpty) {
-              track.artists = editedArtists;
-              for (final a in editedArtists) {
-                if (!knownArtists.contains(a)) knownArtists.add(a);
-              }
-            } else if (editedArtist != null && editedArtist.isNotEmpty) {
-              track.artists = StringSanitizer.splitArtists(editedArtist);
-            }
+          } else {
+            // Standard sanitization
+            cleanTitle = StringSanitizer.sanitize(rawTitle);
+            cleanArtist = StringSanitizer.sanitize(rawArtist);
+            cleanAlbum = meta?.album?.trim();
+            individualArtists = cleanArtist.isNotEmpty && cleanArtist != 'Artista Desconocido'
+                ? StringSanitizer.splitArtists(cleanArtist)
+                : <String>[];
 
-            track.customMetadata.isEdited = true;
-            track.hasCustomMetadata = true;
+            // Fuzzy artist deduplication (only for non-edited tracks)
+            if (cleanArtist.isNotEmpty && cleanArtist != 'Artista Desconocido') {
+              final match = _findSimilarArtist(cleanArtist, knownArtists);
+              if (match != null && match != cleanArtist) {
+                final isIgnored = ignoredPairs.any(
+                  (p) =>
+                      (p.artistA == cleanArtist && p.artistB == match) ||
+                      (p.artistA == match && p.artistB == cleanArtist),
+                );
+                if (!isIgnored) {
+                  outcome = ScanOutcome.pendingArtistMerge;
+                  mergeExistingArtist = match;
+                  mergeCandidateArtist = cleanArtist;
+                }
+              }
+            }
           }
+
+          // Detect download source from path or raw metadata fields
+          final downloadSource = StringSanitizer.detectDownloadSource(entity.path) ??
+              (rawTitle.isNotEmpty ? StringSanitizer.detectDownloadSource(rawTitle) : null) ??
+              (rawArtist.isNotEmpty ? StringSanitizer.detectDownloadSource(rawArtist) : null);
+
+          track
+            ..title = cleanTitle
+            ..artist = cleanArtist
+            ..artists = individualArtists
+            ..album = cleanAlbum
+            ..genre = meta?.genre?.trim()
+            ..downloadSource = downloadSource;
+
+          for (final a in individualArtists) {
+            if (!knownArtists.contains(a)) knownArtists.add(a);
+          }
+          if (!knownArtists.contains(cleanArtist)) knownArtists.add(cleanArtist);
         }
 
-        // 2. Cover Art: if no embedded art or custom cover, check .orpheus_cache/covers/
         final lookupArtist = track.displayArtist;
         final lookupTitle = track.displayTitle;
 
-        if ((coverPath == null || coverPath.isEmpty) && track.customMetadata.customCoverPath == null) {
-          final cachedCover = await mediaCache.getCachedCover(lookupArtist, lookupTitle, scanDir);
+        // ── JERARQUÍA DE CARÁTULAS ──────────────────────────────────────────
+        // 1. Archivo persistente en .orpheus_cache/covers/ (o customCoverPath existente)
+        if (track.customMetadata.customCoverPath == null ||
+            track.customMetadata.customCoverPath!.isEmpty ||
+            !File(track.customMetadata.customCoverPath!).existsSync()) {
+          final cachedCover =
+              await mediaCache.getCachedCover(lookupArtist, lookupTitle, scanDir);
           if (cachedCover != null) {
             coverPath = cachedCover.path;
             track.customMetadata.customCoverPath = coverPath;
             track.artStatus = FetchStatus.success;
           }
-        } else if (coverPath != null && meta?.picture?.data != null && meta!.picture!.data.isNotEmpty) {
-          // Populate persistent hash cache from embedded art
-          try {
-            await mediaCache.saveCover(lookupArtist, lookupTitle, meta.picture!.data, scanDir);
-          } catch (_) {}
         }
 
-        // Persist cover art path if resolved and not previously overridden.
-        if (coverPath != null && track.customMetadata.customCoverPath == null) {
+        // 2. Tags ID3 / metadatos embebidos en el archivo
+        if ((coverPath == null || coverPath.isEmpty) &&
+            (track.customMetadata.customCoverPath == null ||
+                track.customMetadata.customCoverPath!.isEmpty)) {
+          if (meta?.picture != null) {
+            try {
+              coverPath = await _saveCoverArt(
+                picture: meta!.picture,
+                filePath: entity.path,
+                cacheDir: coverCacheDir,
+              );
+              if (coverPath != null && meta.picture?.data != null) {
+                try {
+                  await mediaCache.saveCover(
+                    lookupArtist,
+                    lookupTitle,
+                    meta.picture!.data,
+                    scanDir,
+                  );
+                } catch (_) {}
+              }
+            } catch (_) {}
+          }
+        }
+
+        // 3. Archivo de imagen local en la misma carpeta del audio (cover.jpg, folder.jpg, {stem}.jpg)
+        if ((coverPath == null || coverPath.isEmpty) &&
+            (track.customMetadata.customCoverPath == null ||
+                track.customMetadata.customCoverPath!.isEmpty)) {
+          final localCover = await mediaCache.findLocalCoverFile(entity.path);
+          if (localCover != null) {
+            try {
+              final bytes = await localCover.readAsBytes();
+              if (bytes.isNotEmpty) {
+                coverPath = await mediaCache.saveCover(
+                  lookupArtist,
+                  lookupTitle,
+                  bytes,
+                  scanDir,
+                );
+              } else {
+                coverPath = localCover.path;
+              }
+            } catch (_) {
+              coverPath = localCover.path;
+            }
+          }
+        }
+
+        if (coverPath != null &&
+            (track.customMetadata.customCoverPath == null ||
+                track.customMetadata.customCoverPath!.isEmpty)) {
           track.customMetadata.customCoverPath = coverPath;
           if (track.artStatus == FetchStatus.none) {
             track.artStatus = FetchStatus.success;
           }
         }
 
-        // 3. Lyrics: check .orpheus_cache/lyrics/ if track doesn't have lyrics yet
+        // ── JERARQUÍA DE LETRAS ─────────────────────────────────────────────
+        // 1. Archivo persistente en .orpheus_cache/lyrics/ (o ya en Isar)
         if (track.syncedLyrics == null || track.syncedLyrics!.isEmpty) {
-          final cachedLyrics = await mediaCache.getCachedLyrics(lookupArtist, lookupTitle, scanDir);
+          final cachedLyrics =
+              await mediaCache.getCachedLyrics(lookupArtist, lookupTitle, scanDir);
           if (cachedLyrics != null && cachedLyrics.isNotEmpty) {
             track.syncedLyrics = cachedLyrics;
             track.lyricsStatus = FetchStatus.success;
+          }
+        }
+
+        // 2. Archivo .lrc local en la misma carpeta física del audio
+        if (track.syncedLyrics == null || track.syncedLyrics!.isEmpty) {
+          final localLrc = await mediaCache.findLocalLrcFile(entity.path);
+          if (localLrc != null) {
+            try {
+              final content = await localLrc.readAsString();
+              if (content.trim().isNotEmpty) {
+                track.syncedLyrics = content;
+                track.lyricsStatus = FetchStatus.success;
+                try {
+                  await mediaCache.saveLyrics(
+                    lookupArtist,
+                    lookupTitle,
+                    content,
+                    scanDir,
+                  );
+                } catch (_) {}
+              }
+            } catch (_) {}
           }
         }
 

@@ -298,6 +298,11 @@ class LocalDatabase {
     final trimArtist = newArtist.trim();
     final trimAlbum = newAlbum.trim();
 
+    // Capture raw (original ID3) values BEFORE mutating track, so that we can
+    // index by both the original hash and the edited hash in metadata_index.json.
+    final rawTitle = track.title ?? '';
+    final rawArtist = track.artist ?? '';
+
     if (trimTitle.isNotEmpty) track.title = trimTitle;
     if (trimArtist.isNotEmpty) track.artist = trimArtist;
     if (trimAlbum.isNotEmpty) track.album = trimAlbum;
@@ -323,9 +328,26 @@ class LocalDatabase {
 
     await saveTrack(track);
 
-    // Persist to .orpheus_cache/metadata_index.json
+    // Persist to .orpheus_cache/metadata_index.json using multi-key indexing.
+    // The scan root is resolved from config.scanDirectories, not the file's
+    // parent folder, ensuring all entries land in a single shared index file.
     try {
-      final musicDir = track.filePath.isNotEmpty ? File(track.filePath).parent.path : null;
+      // Determine the correct scan root for this file
+      String scanRoot = '';
+      try {
+        final config = await getConfig();
+        final fp = track.filePath;
+        for (final scanPath in config.scanDirectories) {
+          if (fp == scanPath || fp.startsWith('$scanPath/')) {
+            scanRoot = scanPath;
+            break;
+          }
+        }
+        if (scanRoot.isEmpty && config.scanDirectories.isNotEmpty) {
+          scanRoot = config.scanDirectories.first;
+        }
+      } catch (_) {}
+
       final payload = <String, dynamic>{
         'title': track.displayTitle,
         'artist': track.displayArtist,
@@ -335,14 +357,15 @@ class LocalDatabase {
         'isEdited': true,
       };
 
-      // Save under raw artist/title
-      final rArtist = track.artist;
-      final rTitle = track.title;
-      if (rArtist != null && rArtist.isNotEmpty && rTitle != null && rTitle.isNotEmpty) {
-        await MediaCacheService.instance.saveMetadataEntry(rArtist, rTitle, payload, musicDir);
-      }
-      // Save under display artist/title
-      await MediaCacheService.instance.saveMetadataEntry(track.displayArtist, track.displayTitle, payload, musicDir);
+      await MediaCacheService.instance.saveTrackMetadataEntry(
+        filePath: track.filePath,
+        scanRootPath: scanRoot,
+        originalArtist: rawArtist,
+        originalTitle: rawTitle,
+        editedArtist: track.displayArtist,
+        editedTitle: track.displayTitle,
+        payload: payload,
+      );
     } catch (_) {}
   }
 

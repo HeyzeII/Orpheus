@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -100,7 +101,10 @@ class AlbumArtFetcherService {
   /// Single-track lookup worker using iTunes Search API.
 
   Future<void> _fetchArtForTrack(Track track) async {
-    if (track.artStatus == FetchStatus.custom) {
+    if (track.artStatus == FetchStatus.custom ||
+        track.customMetadata.isEdited ||
+        (track.customMetadata.customCoverPath != null &&
+            track.customMetadata.customCoverPath!.isNotEmpty)) {
       return;
     }
 
@@ -127,15 +131,43 @@ class AlbumArtFetcherService {
 
     final displayArtist = track.displayArtist;
     final displayTitle = track.displayTitle;
+    final musicDir = track.filePath.isNotEmpty ? File(track.filePath).parent.path : null;
 
-    // First check persistent hash cache
-    final cachedCover = await MediaCacheService.instance.getCachedCover(displayArtist, displayTitle);
+    // 1. Check persistent hash cache in .orpheus_cache/
+    final cachedCover = await MediaCacheService.instance.getCachedCover(displayArtist, displayTitle, musicDir);
     if (cachedCover != null) {
       track.customMetadata.customCoverPath = cachedCover.path;
       track.artStatus = FetchStatus.success;
       await _db.saveTrack(track);
       debugPrint('[Art Fetcher] ⚡ Portada obtenida de caché persistente para: $displayArtist - $displayTitle');
       return;
+    }
+
+    // 2. Check local cover image in the same directory as the audio file
+    if (track.filePath.isNotEmpty) {
+      final localCover = await MediaCacheService.instance.findLocalCoverFile(track.filePath);
+      if (localCover != null) {
+        try {
+          final bytes = await localCover.readAsBytes();
+          if (bytes.isNotEmpty) {
+            final cachedPath = await MediaCacheService.instance.saveCover(
+              displayArtist,
+              displayTitle,
+              bytes,
+              musicDir,
+            );
+            track.customMetadata.customCoverPath = cachedPath;
+          } else {
+            track.customMetadata.customCoverPath = localCover.path;
+          }
+        } catch (_) {
+          track.customMetadata.customCoverPath = localCover.path;
+        }
+        track.artStatus = FetchStatus.success;
+        await _db.saveTrack(track);
+        debugPrint('[Art Fetcher] 📁 Portada local encontrada en carpeta para: $displayArtist - $displayTitle');
+        return;
+      }
     }
 
     // Prefer Album + Artist search term, fallback to Artist + Title, fallback to Title.

@@ -63,19 +63,13 @@ class LyricsService {
       return track.syncedLyrics;
     }
 
-    // ── 2. Skip if we have no useful search terms ─────────────────────────
     final artist = track.displayArtist;
     final title = track.displayTitle;
+    final musicDir = track.filePath.isNotEmpty ? File(track.filePath).parent.path : null;
 
-    if (artist == 'Unknown Artist' || title.isEmpty) {
-      // Cache the "not found" result so we don't retry every time.
-      track.lyricsStatus = FetchStatus.notFound;
-      await _persistLyrics(track, '');
-      return '';
-    }
-
-    // ── 3. Check persistent hash cache before network request ─────────────
-    final cachedLyrics = await MediaCacheService.instance.getCachedLyrics(artist, title);
+    // ── 2. Check persistent hash cache before network request ─────────────
+    final cachedLyrics =
+        await MediaCacheService.instance.getCachedLyrics(artist, title, musicDir);
     if (cachedLyrics != null && cachedLyrics.trim().isNotEmpty) {
       track.syncedLyrics = cachedLyrics;
       track.lyricsStatus = FetchStatus.success;
@@ -83,7 +77,36 @@ class LyricsService {
       return cachedLyrics;
     }
 
-    // ── 4. Build request URL ──────────────────────────────────────────────
+    // ── 3. Check local .lrc file in the same physical directory ───────────
+    if (track.filePath.isNotEmpty) {
+      final localLrc =
+          await MediaCacheService.instance.findLocalLrcFile(track.filePath);
+      if (localLrc != null) {
+        try {
+          final content = await localLrc.readAsString();
+          if (content.trim().isNotEmpty) {
+            track.syncedLyrics = content;
+            track.lyricsStatus = FetchStatus.success;
+            try {
+              await MediaCacheService.instance
+                  .saveLyrics(artist, title, content, musicDir);
+            } catch (_) {}
+            await _persistLyrics(track, content);
+            return content;
+          }
+        } catch (_) {}
+      }
+    }
+
+    // ── 4. Skip if we have no useful search terms ─────────────────────────
+    if (artist == 'Unknown Artist' || title.isEmpty) {
+      // Cache the "not found" result so we don't retry every time.
+      track.lyricsStatus = FetchStatus.notFound;
+      await _persistLyrics(track, '');
+      return '';
+    }
+
+    // ── 5. Build request URL ──────────────────────────────────────────────
     final uri = Uri.parse(_baseUrl).replace(queryParameters: {
       'artist_name': artist,
       'track_name': title,
