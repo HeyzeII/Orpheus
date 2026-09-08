@@ -225,5 +225,76 @@ void main() {
       // Raw hash keys ('hash:<hash>' and '<hash>') should match
       expect(byHash, isNotNull);
     });
+
+    test('saveTrackMetadataEntry prunes orphan hash keys when re-editing a track', () async {
+      final scanRoot = '${tempDir.path}/Music';
+      final fakeFilePath = '$scanRoot/Artist/Song.mp3';
+
+      final payloadV1 = <String, dynamic>{
+        'title': 'Title v1',
+        'artist': 'Artist v1',
+        'album': 'Album v1',
+        'artists': ['Artist v1'],
+        'isEdited': true,
+      };
+
+      // First edit
+      await cacheService.saveTrackMetadataEntry(
+        filePath: fakeFilePath,
+        scanRootPath: scanRoot,
+        originalArtist: 'Raw Artist',
+        originalTitle: 'Raw Title',
+        editedArtist: 'Artist v1',
+        editedTitle: 'Title v1',
+        payload: payloadV1,
+      );
+
+      final hashV1 = cacheService.computeMediaHash('Artist v1', 'Title v1');
+      final rawHash = cacheService.computeMediaHash('Raw Artist', 'Raw Title');
+
+      final indexFile = File('${cacheService.customBaseDir!.path}/metadata_index.json');
+      var index = jsonDecode(indexFile.readAsStringSync()) as Map<String, dynamic>;
+
+      expect(index.containsKey('hash:$hashV1'), isTrue);
+      expect(index.containsKey(hashV1), isTrue);
+      expect(index.containsKey('hash:$rawHash'), isTrue);
+
+      // Second edit (re-editing the same file)
+      final payloadV2 = <String, dynamic>{
+        'title': 'Title v2',
+        'artist': 'Artist v2',
+        'album': 'Album v2',
+        'artists': ['Artist v2'],
+        'isEdited': true,
+      };
+
+      await cacheService.saveTrackMetadataEntry(
+        filePath: fakeFilePath,
+        scanRootPath: scanRoot,
+        originalArtist: 'Raw Artist',
+        originalTitle: 'Raw Title',
+        editedArtist: 'Artist v2',
+        editedTitle: 'Title v2',
+        payload: payloadV2,
+      );
+
+      final hashV2 = cacheService.computeMediaHash('Artist v2', 'Title v2');
+      index = jsonDecode(indexFile.readAsStringSync()) as Map<String, dynamic>;
+
+      // Old v1 hashes should be completely pruned
+      expect(index.containsKey('hash:$hashV1'), isFalse);
+      expect(index.containsKey(hashV1), isFalse);
+
+      // New v2 hashes and raw hashes should be present
+      expect(index.containsKey('hash:$hashV2'), isTrue);
+      expect(index.containsKey(hashV2), isTrue);
+      expect(index.containsKey('hash:$rawHash'), isTrue);
+
+      // File-identity keys should reflect the updated payload
+      final fileEntry = index['file:$fakeFilePath'] as Map<String, dynamic>;
+      expect(fileEntry['title'], equals('Title v2'));
+      expect(fileEntry['artist'], equals('Artist v2'));
+    });
   });
 }
+

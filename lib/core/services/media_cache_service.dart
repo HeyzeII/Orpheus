@@ -315,6 +315,23 @@ class MediaCacheService {
 
   // ── Multi-Key Metadata Index ───────────────────────────────────────────────
 
+  /// Removes all entries from the in-memory [index] map whose payload matches
+  /// the given [filePath] or [relPath].
+  ///
+  /// This prevents orphan hash keys from previous edits from accumulating when
+  /// a song's metadata is modified multiple times.
+  void _pruneEntriesForFile(
+    Map<String, dynamic> index,
+    String filePath,
+    String relPath,
+  ) {
+    index.removeWhere((key, value) {
+      if (value is! Map) return false;
+      return value['filePath'] == filePath ||
+          value['relativeFilePath'] == relPath;
+    });
+  }
+
   /// Persists a metadata entry indexed under multiple independent keys so that
   /// a fresh scanner can always find it regardless of which information it has:
   ///
@@ -349,6 +366,9 @@ class MediaCacheService {
     final relPath = filePath.startsWith('$scanRootPath/')
         ? filePath.substring(scanRootPath.length + 1)
         : fileName;
+
+    // Prune previous entries for this exact file to eliminate orphan hashes
+    _pruneEntriesForFile(index, filePath, relPath);
 
     final editedHash = computeMediaHash(editedArtist, editedTitle);
     final originalHash = computeMediaHash(originalArtist, originalTitle);
