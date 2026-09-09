@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../database/local_database.dart';
 import '../models/track.dart';
 import 'media_cache_service.dart';
+import 'network_guard_service.dart';
 
 /// Singleton service responsible for fetching and caching synced lyrics.
 ///
@@ -29,18 +30,36 @@ import 'media_cache_service.dart';
 class LyricsService {
   // ── Singleton boilerplate ──────────────────────────────────────────────────
 
-  LyricsService._internal({LocalDatabase? db, http.Client? client})
-      : _db = db ?? LocalDatabase.instance,
-        _client = client ?? http.Client();
+  LyricsService._internal({
+    LocalDatabase? db,
+    http.Client? client,
+    NetworkGuardService? networkGuard,
+  })  : _db = db ?? LocalDatabase.instance,
+        _client = client ?? http.Client(),
+        _networkGuard = networkGuard ?? NetworkGuardService.instance;
 
   static final LyricsService instance = LyricsService._internal();
 
-  factory LyricsService() => instance;
+  factory LyricsService({
+    LocalDatabase? db,
+    http.Client? client,
+    NetworkGuardService? networkGuard,
+  }) {
+    if (db != null || client != null || networkGuard != null) {
+      return LyricsService._internal(
+        db: db,
+        client: client,
+        networkGuard: networkGuard,
+      );
+    }
+    return instance;
+  }
 
   // ── Dependencies ───────────────────────────────────────────────────────────
 
   final LocalDatabase _db;
   final http.Client _client;
+  final NetworkGuardService _networkGuard;
 
   static const _baseUrl = 'https://lrclib.net/api/get';
   static const _timeout = Duration(seconds: 10);
@@ -106,13 +125,20 @@ class LyricsService {
       return '';
     }
 
-    // ── 5. Build request URL ──────────────────────────────────────────────
+    // ── 5. Check network permissions (Strict Offline Mode & connectivity) ───
+    final networkAccess = await _networkGuard.checkGeneralAccess();
+    if (networkAccess != NetworkAccessResult.allowed) {
+      // Do not cache as notFound: allow retry when online or offline mode is off.
+      return null;
+    }
+
+    // ── 6. Build request URL ──────────────────────────────────────────────
     final uri = Uri.parse(_baseUrl).replace(queryParameters: {
       'artist_name': artist,
       'track_name': title,
     });
 
-    // ── 5. Network call with timeout ──────────────────────────────────────
+    // ── 7. Network call with timeout ──────────────────────────────────────
     try {
       final response = await _client.get(
         uri,

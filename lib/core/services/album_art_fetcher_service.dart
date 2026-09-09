@@ -9,6 +9,7 @@ import '../database/local_database.dart';
 import '../models/track.dart';
 import '../utils/string_sanitizer.dart';
 import 'media_cache_service.dart';
+import 'network_guard_service.dart';
 
 /// Singleton service responsible for lazy background fetching of missing album art.
 ///
@@ -17,16 +18,34 @@ import 'media_cache_service.dart';
 /// - Stores a status flag (`artStatus = FetchStatus.notFound`) on search failures (404 / no results)
 ///   to ensure network resources are not wasted on subsequent scans.
 class AlbumArtFetcherService {
-  AlbumArtFetcherService.internal({LocalDatabase? db, http.Client? client})
-      : _db = db ?? LocalDatabase.instance,
-        _client = client ?? http.Client();
+  AlbumArtFetcherService.internal({
+    LocalDatabase? db,
+    http.Client? client,
+    NetworkGuardService? networkGuard,
+  })  : _db = db ?? LocalDatabase.instance,
+        _client = client ?? http.Client(),
+        _networkGuard = networkGuard ?? NetworkGuardService.instance;
 
   static final AlbumArtFetcherService instance = AlbumArtFetcherService.internal();
 
-  factory AlbumArtFetcherService() => instance;
+  factory AlbumArtFetcherService({
+    LocalDatabase? db,
+    http.Client? client,
+    NetworkGuardService? networkGuard,
+  }) {
+    if (db != null || client != null || networkGuard != null) {
+      return AlbumArtFetcherService.internal(
+        db: db,
+        client: client,
+        networkGuard: networkGuard,
+      );
+    }
+    return instance;
+  }
 
   final LocalDatabase _db;
   final http.Client _client;
+  final NetworkGuardService _networkGuard;
 
   bool _isProcessing = false;
 
@@ -195,6 +214,13 @@ class AlbumArtFetcherService {
       }
     } else {
       searchTerm = title.isNotEmpty ? title : (album.isNotEmpty ? album : artist);
+    }
+
+    // 3. Check network permissions (Strict Offline Mode & cover download policy)
+    final networkAccess = await _networkGuard.checkCoverDownloadAccess();
+    if (networkAccess != NetworkAccessResult.allowed) {
+      debugPrint('[Art Fetcher] ⏸️ Descarga remota omitida (${networkAccess.name}) para: $displayArtist - $displayTitle');
+      return;
     }
 
     debugPrint('[Art Fetcher] Buscando portada para: $displayArtist - $displayTitle (Búsqueda: "$searchTerm")');

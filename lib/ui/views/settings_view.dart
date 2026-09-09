@@ -1,14 +1,18 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/database/local_database.dart';
+import '../../core/models/app_config.dart';
 import '../../core/models/track.dart';
 import '../../core/services/album_art_fetcher_service.dart';
 import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_scanner.dart';
+import '../../core/services/network_guard_service.dart';
 import '../../core/services/permission_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_toast.dart';
@@ -34,10 +38,38 @@ class _SettingsViewState extends State<SettingsView> {
   int _skippedCount = 0;
   final List<ScanResult> _pendingMergeConflicts = [];
 
+  // ── Network & Offline Mode State ───────────────────────────────────────────
+  bool _strictOfflineMode = false;
+  CoverDownloadPolicy _coverDownloadPolicy = CoverDownloadPolicy.wifiOnly;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  List<ConnectivityResult> _connectivityResults = [];
+
   @override
   void initState() {
     super.initState();
     _loadConfig();
+    _initConnectivity();
+  }
+
+  @override
+  void dispose() {
+    _connectivitySub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initConnectivity() async {
+    try {
+      final initial = await Connectivity().checkConnectivity();
+      if (mounted) {
+        setState(() => _connectivityResults = initial);
+      }
+      _connectivitySub =
+          NetworkGuardService.instance.onConnectivityChanged.listen((results) {
+        if (mounted) {
+          setState(() => _connectivityResults = results);
+        }
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadConfig() async {
@@ -55,6 +87,8 @@ class _SettingsViewState extends State<SettingsView> {
     setState(() {
       _hasFullStorage = hasFull;
       _scanDirs = sanitizedDirs;
+      _strictOfflineMode = config.strictOfflineMode;
+      _coverDownloadPolicy = config.coverDownloadPolicy;
     });
   }
 
@@ -359,6 +393,21 @@ class _SettingsViewState extends State<SettingsView> {
           // ── Storage Permission Warning Banner ──────────────────────────────
           _buildStoragePermissionBanner(),
 
+          // ── Section: Network & Offline Mode ────────────────────────────────
+          const Text(
+            'RED Y MODO OFFLINE',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 2.0,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildNetworkSettings(),
+
+          const SizedBox(height: 40),
+
           // ── Section: Scanner ───────────────────────────────────────────────
           const Text(
             'ESCÁNER DE BIBLIOTECA',
@@ -527,6 +576,263 @@ class _SettingsViewState extends State<SettingsView> {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildNetworkSettings() {
+    final isWifi = _connectivityResults.any(
+      (c) =>
+          c == ConnectivityResult.wifi ||
+          c == ConnectivityResult.ethernet,
+    );
+    final isMobile = _connectivityResults.any(
+      (c) => c == ConnectivityResult.mobile,
+    );
+    final isOffline = _strictOfflineMode;
+
+    Color statusColor;
+    IconData statusIcon;
+    String statusText;
+
+    if (isOffline) {
+      statusColor = Colors.orangeAccent;
+      statusIcon = Icons.cloud_off_rounded;
+      statusText = 'Modo Offline Estricto activo (tráfico HTTP bloqueado)';
+    } else if (isWifi) {
+      statusColor = const Color(0xFF4CAF50);
+      statusIcon = Icons.wifi_rounded;
+      statusText = 'Conexión activa: Red Wi-Fi / Ethernet';
+    } else if (isMobile) {
+      statusColor = AppTheme.accent;
+      statusIcon = Icons.signal_cellular_alt_rounded;
+      statusText = 'Conexión activa: Datos móviles (celular)';
+    } else {
+      statusColor = AppTheme.textHint;
+      statusIcon = Icons.wifi_off_rounded;
+      statusText = 'Sin conexión a Internet';
+    }
+
+    return Material(
+      color: AppTheme.bgSurface,
+      borderRadius: BorderRadius.circular(8),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppTheme.divider),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1. Strict Offline Mode switch tile
+            SwitchListTile.adaptive(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              activeColor: AppTheme.accent,
+              value: _strictOfflineMode,
+              onChanged: (val) async {
+                setState(() => _strictOfflineMode = val);
+                await NetworkGuardService.instance.setOfflineMode(val);
+                if (mounted) {
+                  AppToast.showText(
+                    context,
+                    val
+                        ? 'Modo Offline Estricto activado'
+                        : 'Modo Offline desactivado',
+                    icon:
+                        val ? Icons.cloud_off_rounded : Icons.cloud_done_rounded,
+                  );
+                }
+              },
+              secondary: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: _strictOfflineMode
+                      ? Colors.orangeAccent.withValues(alpha: 0.15)
+                      : AppTheme.bgDeep,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.cloud_off_rounded,
+                  color: _strictOfflineMode
+                      ? Colors.orangeAccent
+                      : AppTheme.textSecondary,
+                  size: 20,
+                ),
+              ),
+              title: const Text(
+                'Modo Offline Estricto',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+              subtitle: const Text(
+                'Bloquea de inmediato toda solicitud HTTP externa (letras y portadas). Solo utiliza recursos locales y la caché persistente.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary,
+                  height: 1.3,
+                ),
+              ),
+            ),
+
+            const Divider(height: 1, color: AppTheme.divider),
+
+            // 2. Cover Download Policy selection tile
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: AppTheme.bgDeep,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.image_search_rounded,
+                          color: AppTheme.accent,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Descarga de portadas remotas',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Política de consumo de red para buscar carátulas faltantes en iTunes/Apple CDN.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.textSecondary,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.bgDeep,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.divider),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<CoverDownloadPolicy>(
+                        value: _coverDownloadPolicy,
+                        isExpanded: true,
+                        dropdownColor: AppTheme.bgSurface,
+                        icon: const Icon(Icons.arrow_drop_down,
+                            color: AppTheme.textSecondary),
+                        style: const TextStyle(
+                            fontSize: 13, color: AppTheme.textPrimary),
+                        onChanged: (policy) async {
+                          if (policy == null) return;
+                          setState(() => _coverDownloadPolicy = policy);
+                          await NetworkGuardService.instance
+                              .setCoverDownloadPolicy(policy);
+                          if (mounted) {
+                            AppToast.showText(
+                              context,
+                              'Política de descarga actualizada',
+                              icon: Icons.check_circle_rounded,
+                            );
+                          }
+                        },
+                        items: const [
+                          DropdownMenuItem(
+                            value: CoverDownloadPolicy.wifiOnly,
+                            child: Row(
+                              children: [
+                                Icon(Icons.wifi_rounded,
+                                    size: 18, color: AppTheme.accent),
+                                SizedBox(width: 10),
+                                Text('Solo en Wi-Fi (Recomendado)'),
+                              ],
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: CoverDownloadPolicy.always,
+                            child: Row(
+                              children: [
+                                Icon(Icons.all_inclusive_rounded,
+                                    size: 18, color: AppTheme.accent),
+                                SizedBox(width: 10),
+                                Text('Wi-Fi y Datos móviles'),
+                              ],
+                            ),
+                          ),
+                          DropdownMenuItem(
+                            value: CoverDownloadPolicy.never,
+                            child: Row(
+                              children: [
+                                Icon(Icons.block_rounded,
+                                    size: 18, color: AppTheme.textHint),
+                                SizedBox(width: 10),
+                                Text('Desactivada (Solo portadas locales)'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const Divider(height: 1, color: AppTheme.divider),
+
+            // 3. Status indicator footer
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppTheme.bgDeep.withValues(alpha: 0.5),
+                borderRadius:
+                    const BorderRadius.vertical(bottom: Radius.circular(8)),
+              ),
+              child: Row(
+                children: [
+                  Icon(statusIcon, size: 16, color: statusColor),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      statusText,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: statusColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

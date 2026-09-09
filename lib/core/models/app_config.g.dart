@@ -23,13 +23,24 @@ const AppConfigSchema = CollectionSchema(
       type: IsarType.object,
       target: r'ConflictResolution',
     ),
-    r'scanDirectories': PropertySchema(
+    r'coverDownloadPolicy': PropertySchema(
       id: 1,
+      name: r'coverDownloadPolicy',
+      type: IsarType.byte,
+      enumMap: _AppConfigcoverDownloadPolicyEnumValueMap,
+    ),
+    r'scanDirectories': PropertySchema(
+      id: 2,
       name: r'scanDirectories',
       type: IsarType.stringList,
     ),
+    r'strictOfflineMode': PropertySchema(
+      id: 3,
+      name: r'strictOfflineMode',
+      type: IsarType.bool,
+    ),
     r'theme': PropertySchema(
-      id: 2,
+      id: 4,
       name: r'theme',
       type: IsarType.string,
     )
@@ -83,8 +94,10 @@ void _appConfigSerialize(
     ConflictResolutionSchema.serialize,
     object.conflictResolution,
   );
-  writer.writeStringList(offsets[1], object.scanDirectories);
-  writer.writeString(offsets[2], object.theme);
+  writer.writeByte(offsets[1], object.coverDownloadPolicy.index);
+  writer.writeStringList(offsets[2], object.scanDirectories);
+  writer.writeBool(offsets[3], object.strictOfflineMode);
+  writer.writeString(offsets[4], object.theme);
 }
 
 AppConfig _appConfigDeserialize(
@@ -100,9 +113,13 @@ AppConfig _appConfigDeserialize(
         allOffsets,
       ) ??
       ConflictResolution();
+  object.coverDownloadPolicy = _AppConfigcoverDownloadPolicyValueEnumMap[
+          reader.readByteOrNull(offsets[1])] ??
+      CoverDownloadPolicy.wifiOnly;
   object.id = id;
-  object.scanDirectories = reader.readStringList(offsets[1]) ?? [];
-  object.theme = reader.readString(offsets[2]);
+  object.scanDirectories = reader.readStringList(offsets[2]) ?? [];
+  object.strictOfflineMode = reader.readBool(offsets[3]);
+  object.theme = reader.readString(offsets[4]);
   return object;
 }
 
@@ -121,13 +138,30 @@ P _appConfigDeserializeProp<P>(
           ) ??
           ConflictResolution()) as P;
     case 1:
-      return (reader.readStringList(offset) ?? []) as P;
+      return (_AppConfigcoverDownloadPolicyValueEnumMap[
+              reader.readByteOrNull(offset)] ??
+          CoverDownloadPolicy.wifiOnly) as P;
     case 2:
+      return (reader.readStringList(offset) ?? []) as P;
+    case 3:
+      return (reader.readBool(offset)) as P;
+    case 4:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
   }
 }
+
+const _AppConfigcoverDownloadPolicyEnumValueMap = {
+  'wifiOnly': 0,
+  'always': 1,
+  'never': 2,
+};
+const _AppConfigcoverDownloadPolicyValueEnumMap = {
+  0: CoverDownloadPolicy.wifiOnly,
+  1: CoverDownloadPolicy.always,
+  2: CoverDownloadPolicy.never,
+};
 
 Id _appConfigGetId(AppConfig object) {
   return object.id;
@@ -220,6 +254,62 @@ extension AppConfigQueryWhere
 
 extension AppConfigQueryFilter
     on QueryBuilder<AppConfig, AppConfig, QFilterCondition> {
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      coverDownloadPolicyEqualTo(CoverDownloadPolicy value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'coverDownloadPolicy',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      coverDownloadPolicyGreaterThan(
+    CoverDownloadPolicy value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'coverDownloadPolicy',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      coverDownloadPolicyLessThan(
+    CoverDownloadPolicy value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'coverDownloadPolicy',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      coverDownloadPolicyBetween(
+    CoverDownloadPolicy lower,
+    CoverDownloadPolicy upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'coverDownloadPolicy',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
   QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition> idEqualTo(
       Id value) {
     return QueryBuilder.apply(this, (query) {
@@ -500,6 +590,16 @@ extension AppConfigQueryFilter
     });
   }
 
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      strictOfflineModeEqualTo(bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'strictOfflineMode',
+        value: value,
+      ));
+    });
+  }
+
   QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition> themeEqualTo(
     String value, {
     bool caseSensitive = true,
@@ -645,6 +745,32 @@ extension AppConfigQueryLinks
     on QueryBuilder<AppConfig, AppConfig, QFilterCondition> {}
 
 extension AppConfigQuerySortBy on QueryBuilder<AppConfig, AppConfig, QSortBy> {
+  QueryBuilder<AppConfig, AppConfig, QAfterSortBy> sortByCoverDownloadPolicy() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'coverDownloadPolicy', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterSortBy>
+      sortByCoverDownloadPolicyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'coverDownloadPolicy', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterSortBy> sortByStrictOfflineMode() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'strictOfflineMode', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterSortBy>
+      sortByStrictOfflineModeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'strictOfflineMode', Sort.desc);
+    });
+  }
+
   QueryBuilder<AppConfig, AppConfig, QAfterSortBy> sortByTheme() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'theme', Sort.asc);
@@ -660,6 +786,19 @@ extension AppConfigQuerySortBy on QueryBuilder<AppConfig, AppConfig, QSortBy> {
 
 extension AppConfigQuerySortThenBy
     on QueryBuilder<AppConfig, AppConfig, QSortThenBy> {
+  QueryBuilder<AppConfig, AppConfig, QAfterSortBy> thenByCoverDownloadPolicy() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'coverDownloadPolicy', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterSortBy>
+      thenByCoverDownloadPolicyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'coverDownloadPolicy', Sort.desc);
+    });
+  }
+
   QueryBuilder<AppConfig, AppConfig, QAfterSortBy> thenById() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'id', Sort.asc);
@@ -669,6 +808,19 @@ extension AppConfigQuerySortThenBy
   QueryBuilder<AppConfig, AppConfig, QAfterSortBy> thenByIdDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'id', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterSortBy> thenByStrictOfflineMode() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'strictOfflineMode', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterSortBy>
+      thenByStrictOfflineModeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'strictOfflineMode', Sort.desc);
     });
   }
 
@@ -687,9 +839,22 @@ extension AppConfigQuerySortThenBy
 
 extension AppConfigQueryWhereDistinct
     on QueryBuilder<AppConfig, AppConfig, QDistinct> {
+  QueryBuilder<AppConfig, AppConfig, QDistinct>
+      distinctByCoverDownloadPolicy() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'coverDownloadPolicy');
+    });
+  }
+
   QueryBuilder<AppConfig, AppConfig, QDistinct> distinctByScanDirectories() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'scanDirectories');
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QDistinct> distinctByStrictOfflineMode() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'strictOfflineMode');
     });
   }
 
@@ -716,10 +881,23 @@ extension AppConfigQueryProperty
     });
   }
 
+  QueryBuilder<AppConfig, CoverDownloadPolicy, QQueryOperations>
+      coverDownloadPolicyProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'coverDownloadPolicy');
+    });
+  }
+
   QueryBuilder<AppConfig, List<String>, QQueryOperations>
       scanDirectoriesProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'scanDirectories');
+    });
+  }
+
+  QueryBuilder<AppConfig, bool, QQueryOperations> strictOfflineModeProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'strictOfflineMode');
     });
   }
 

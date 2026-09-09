@@ -77,6 +77,18 @@ void main() {
         return '.';
       },
     );
+
+    // Mock connectivity_plus method channel to return Wi-Fi connection
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('dev.fluttercommunity.plus/connectivity'),
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'check') {
+          return ['wifi'];
+        }
+        return null;
+      },
+    );
   });
 
   group('AlbumArtFetcherService tests', () {

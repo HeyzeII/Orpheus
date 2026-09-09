@@ -25,6 +25,13 @@ class ConflictResolution {
   List<IgnoredArtistPair> ignoredPairs = [];
 }
 
+/// Policy for remote album art downloading based on network connectivity.
+enum CoverDownloadPolicy {
+  wifiOnly,
+  always,
+  never,
+}
+
 /// Isar Collection for global application configuration.
 ///
 /// There is always exactly one [AppConfig] document (id == 1).
@@ -43,4 +50,12 @@ class AppConfig {
 
   /// Artist-pair conflict resolution state (fuzzy-matching deduplication).
   ConflictResolution conflictResolution = ConflictResolution();
+
+  /// Strict Offline Mode: immediately blocks all outgoing HTTP requests across the app.
+  bool strictOfflineMode = false;
+
+  /// Network policy for downloading remote album art.
+  @enumerated
+  CoverDownloadPolicy coverDownloadPolicy = CoverDownloadPolicy.wifiOnly;
 }
+

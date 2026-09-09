@@ -18,6 +18,18 @@ void main() {
       },
     );
 
+    // Mock connectivity_plus
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('dev.fluttercommunity.plus/connectivity'),
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'check') {
+          return ['wifi'];
+        }
+        return null;
+      },
+    );
+
     // Initialize database in temporary directory
     try {
       await LocalDatabase.instance.initialize();
