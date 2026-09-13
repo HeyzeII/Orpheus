@@ -316,6 +316,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   List<Track> get userQueue => AudioPlayerService.instance.userQueue;
   List<Track> get contextQueue => AudioPlayerService.instance.contextQueue;
   List<Track> get history => AudioPlayerService.instance.history;
+  List<Track> get pastContext => AudioPlayerService.instance.pastContext;
   String get contextName => AudioPlayerService.instance.contextName;
   int get currentIndex => AudioPlayerService.instance.currentIndex;
   bool get canSkipNext => AudioPlayerService.instance.canSkipNext;
@@ -332,6 +333,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   Stream<List<Track>> get userQueueStream => AudioPlayerService.instance.userQueueStream;
   Stream<List<Track>> get contextQueueStream => AudioPlayerService.instance.contextQueueStream;
   Stream<List<Track>> get historyStream => AudioPlayerService.instance.historyStream;
+  Stream<List<Track>> get pastContextStream => AudioPlayerService.instance.pastContextStream;
   Stream<String> get contextNameStream => AudioPlayerService.instance.contextNameStream;
   Stream<bool> get canSkipNextStream => AudioPlayerService.instance.canSkipNextStream;
 
@@ -449,6 +451,9 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
   Future<void> playContextQueueItem(int index) =>
       AudioPlayerService.instance.playContextQueueItem(index);
+
+  Future<void> playContextPastItem(int absoluteIndex) =>
+      AudioPlayerService.instance.playContextPastItem(absoluteIndex);
 
   Future<void> playHistoryItem(int index) =>
       AudioPlayerService.instance.playHistoryItem(index);

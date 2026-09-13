@@ -90,6 +90,7 @@ class AudioPlayerService {
   final _contextQueueController = StreamController<List<Track>>.broadcast();
   final _historyController = StreamController<List<Track>>.broadcast();
   final _contextNameController = StreamController<String>.broadcast();
+  final _pastContextController = StreamController<List<Track>>.broadcast();
 
   AudioSession? _audioSession;
   final List<StreamSubscription> _subscriptions = [];
@@ -261,6 +262,13 @@ class AudioPlayerService {
   /// Upcoming context tracks starting after the current context position.
   List<Track> get contextQueue => List.unmodifiable(_upcomingContext);
 
+  /// Context tracks that have already been played ([0 .. _contextIndex - 1]).
+  /// Used by the pivot-style queue view (Tidal model) to show past album/playlist tracks.
+  List<Track> get pastContext {
+    if (_contextIndex <= 0 || _activeContext.isEmpty) return const <Track>[];
+    return List.unmodifiable(_activeContext.sublist(0, _contextIndex));
+  }
+
   /// Chronological history stack of tracks played prior to the current track.
   List<Track> get history => List.unmodifiable(_history);
 
@@ -308,6 +316,7 @@ class AudioPlayerService {
   Stream<List<Track>> get contextQueueStream => _contextQueueController.stream;
   Stream<List<Track>> get historyStream => _historyController.stream;
   Stream<String> get contextNameStream => _contextNameController.stream;
+  Stream<List<Track>> get pastContextStream => _pastContextController.stream;
 
   // ── Control API ────────────────────────────────────────────────────────────
 
@@ -747,6 +756,28 @@ class AudioPlayerService {
     _notifyState();
   }
 
+  /// Plays a past context track by its [absoluteIndex] in [_activeContext] (pivot model).
+  ///
+  /// Precondition: [absoluteIndex] must be in [0, _contextIndex - 1].
+  /// Invariants preserved:
+  ///   • [_userQueue] is NOT touched.
+  ///   • [_history] accumulates (immutable log — no truncation).
+  ///   • [_contextTracks] order is NOT mutated.
+  Future<void> playContextPastItem(int absoluteIndex) async {
+    final active = _activeContext;
+    if (absoluteIndex < 0 || absoluteIndex >= _contextIndex || active.isEmpty) return;
+
+    if (_currentTrack != null) {
+      _pushHistory(_currentTrack!);
+      _pushNavigation(_currentTrack!);
+    }
+
+    _contextIndex = absoluteIndex;
+    _currentTrack = active[_contextIndex];
+    await _openTrack(_currentTrack!);
+    _notifyState();
+  }
+
   /// Plays item [index] from [history] without altering userQueue and preserving the immutable history log.
   Future<void> playHistoryItem(int index) async {
     if (index < 0 || index >= _history.length) return;
@@ -942,6 +973,7 @@ class AudioPlayerService {
     _historyController.add(history);
     _userQueueController.add(userQueue);
     _contextQueueController.add(contextQueue);
+    _pastContextController.add(pastContext);
     _contextNameController.add(_contextName);
     _canSkipNextController.add(canSkipNext);
   }
@@ -969,6 +1001,7 @@ class AudioPlayerService {
     await _userQueueController.close();
     await _contextQueueController.close();
     await _historyController.close();
+    await _pastContextController.close();
     await _contextNameController.close();
   }
 }

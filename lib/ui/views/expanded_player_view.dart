@@ -1116,61 +1116,105 @@ class _QueueTabState extends State<_QueueTab> {
           );
         }
 
-        return CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            // ── 1. REPRODUCIENDO ACTUALMENTE ──────────────────────────────
-            if (currentTrack != null) ...[
-              SliverToBoxAdapter(
-                child: _sectionHeader('REPRODUCIENDO ACTUALMENTE'),
-              ),
-              SliverToBoxAdapter(
-                child: SizedBox(
-                  height: _itemTileHeight,
-                  child: ListTile(
-                    dense: true,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-                    leading: _buildCover(currentTrack),
-                    title: Text(
-                      currentTrack.displayTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppTheme.accent,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
+        return StreamBuilder<List<Track>>(
+          stream: handler.pastContextStream,
+          initialData: handler.pastContext,
+          builder: (context, pastSnap) {
+            final pastContext = pastSnap.data ?? handler.pastContext;
+
+            return CustomScrollView(
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                // ── 0. CONTEXTO ANTERIOR — pivot Tidal ────────────────────────
+                if (pastContext.isNotEmpty) ...[
+                  SliverToBoxAdapter(
+                    child: StreamBuilder<String>(
+                      stream: handler.contextNameStream,
+                      initialData: handler.contextName,
+                      builder: (_, nameSnap) {
+                        final name = nameSnap.data ?? 'Biblioteca';
+                        return _sectionHeader(name.toUpperCase());
+                      },
                     ),
-                    subtitle: Text(
-                      currentTrack.displayArtist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: AppTheme.textSecondary, fontSize: 12),
+                  ),
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final track = pastContext[index];
+                        return Opacity(
+                          opacity: 0.55,
+                          child: _buildTrackTile(
+                            track: track,
+                            isCurrentTrack: false,
+                            dimmed: true,
+                            onTap: () => handler.playContextPastItem(index),
+                            trailing: const SizedBox.shrink(),
+                          ),
+                        );
+                      },
+                      childCount: pastContext.length,
                     ),
-                    trailing: StreamBuilder<bool>(
-                      stream: handler.isPlayingStream,
-                      initialData: handler.isPlaying,
-                      builder: (_, snap) => AnimatedEqualizer(
-                        isPlaying: snap.data ?? false,
-                        barCount: 3,
-                        barWidth: 2.8,
-                        maxHeight: 16.0,
-                        minHeight: 4.0,
-                        spacing: 2.5,
+                  ),
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 6),
+                      child: Divider(color: AppTheme.divider, height: 1),
+                    ),
+                  ),
+                ],
+
+                // ── 1. REPRODUCIENDO ACTUALMENTE ──────────────────────────────
+                if (currentTrack != null) ...[
+                  SliverToBoxAdapter(
+                    child: _sectionHeader('REPRODUCIENDO ACTUALMENTE'),
+                  ),
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: _itemTileHeight,
+                      child: ListTile(
+                        dense: true,
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                        leading: _buildCover(currentTrack),
+                        title: Text(
+                          currentTrack.displayTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppTheme.accent,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        subtitle: Text(
+                          currentTrack.displayArtist,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: AppTheme.textSecondary, fontSize: 12),
+                        ),
+                        trailing: StreamBuilder<bool>(
+                          stream: handler.isPlayingStream,
+                          initialData: handler.isPlaying,
+                          builder: (_, snap) => AnimatedEqualizer(
+                            isPlaying: snap.data ?? false,
+                            barCount: 3,
+                            barWidth: 2.8,
+                            maxHeight: 16.0,
+                            minHeight: 4.0,
+                            spacing: 2.5,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 6),
-                  child: Divider(color: AppTheme.divider, height: 1),
-                ),
-              ),
-            ],
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 6),
+                      child: Divider(color: AppTheme.divider, height: 1),
+                    ),
+                  ),
+                ],
 
             // ── 2. TU COLA DE REPRODUCCIÓN (userQueue - solo si no está vacía) ──
             if (userQueue.isNotEmpty) ...[
@@ -1264,6 +1308,8 @@ class _QueueTabState extends State<_QueueTab> {
             const SliverToBoxAdapter(child: SizedBox(height: 32)),
           ],
         );
+          },  // end pastContextStream builder
+        );    // end pastContextStream StreamBuilder
       },
     );
   }

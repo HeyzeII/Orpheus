@@ -357,5 +357,65 @@ void main() {
       expect(player.currentTrack?.trackId, 't4');
       expect(player.userQueue.map((t) => t.trackId), ['t5']); // userQueue preserved
     });
+
+    // ── Pivot Model (Tidal-style pastContext) ──────────────────────────────────
+
+    test('pastContext is empty at start and grows as _contextIndex advances', () async {
+      await player.loadPlaylist([track1, track2, track3, track4], initialIndex: 0);
+
+      // At track1 (index 0): no past context
+      expect(player.pastContext, isEmpty);
+
+      await player.next(); // track2
+      expect(player.pastContext.map((t) => t.trackId), ['t1']);
+
+      await player.next(); // track3
+      expect(player.pastContext.map((t) => t.trackId), ['t1', 't2']);
+
+      await player.next(); // track4
+      expect(player.pastContext.map((t) => t.trackId), ['t1', 't2', 't3']);
+    });
+
+    test('playContextPastItem jumps backwards, preserves userQueue and accumulates history', () async {
+      await player.loadPlaylist([track1, track2, track3, track4], initialIndex: 0);
+      await player.next(); // track2, history=[t1]
+      await player.next(); // track3, history=[t1, t2]
+
+      player.addToQueue(track5); // userQueue=[t5]
+      expect(player.currentTrack?.trackId, 't3');
+      expect(player.pastContext.map((t) => t.trackId), ['t1', 't2']);
+      expect(player.userQueue.map((t) => t.trackId), ['t5']);
+
+      // Jump back to absoluteIndex=0 (track1 in pastContext)
+      await player.playContextPastItem(0);
+
+      expect(player.currentTrack?.trackId, 't1');
+      // t3 was pushed to history (now [t1, t2, t3])
+      expect(player.history.map((t) => t.trackId), ['t1', 't2', 't3']);
+      // userQueue completely intact
+      expect(player.userQueue.map((t) => t.trackId), ['t5']);
+      // upcoming context from index 1 onward: [t2, t3, t4]
+      expect(player.contextQueue.map((t) => t.trackId), ['t2', 't3', 't4']);
+      // past context from index 0 (exclusive): now empty since we are at index 0
+      expect(player.pastContext, isEmpty);
+    });
+
+    test('pastContext resets to empty when playFromExternalContext switches album', () async {
+      await player.loadPlaylist([track1, track2, track3], initialIndex: 0);
+      await player.next(); // track2, pastContext=[t1]
+      expect(player.pastContext.map((t) => t.trackId), ['t1']);
+
+      // Switch to a new album starting at index 0
+      await player.playFromExternalContext(
+        track4,
+        [track4, track5],
+        contextName: 'Album: New',
+      );
+
+      expect(player.currentTrack?.trackId, 't4');
+      // pastContext must be empty: new context starts at index 0
+      expect(player.pastContext, isEmpty);
+      expect(player.contextQueue.map((t) => t.trackId), ['t5']);
+    });
   });
 }
