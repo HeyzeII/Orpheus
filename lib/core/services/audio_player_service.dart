@@ -293,7 +293,9 @@ class AudioPlayerService {
 
   bool get canSkipPrevious =>
       _navigationStack.isNotEmpty ||
-      position > const Duration(seconds: 3);
+      position > const Duration(seconds: 3) ||
+      _contextIndex > 0 ||
+      _repeatMode == PlayerRepeatMode.playlist;
 
   @visibleForTesting
   void setMockPosition(Duration pos) {
@@ -564,12 +566,27 @@ class AudioPlayerService {
       _currentTrack = prevTrack;
       await _openTrack(_currentTrack!);
       _notifyState();
-    } else {
-      // Si la pila de navegación está vacía, reiniciar a 0
-      await seek(Duration.zero);
-      await play();
-      _notifyState();
+      return;
     }
+
+    // 3. Fallback de contexto: retroceder un paso en el álbum/playlist activo
+    //    (cubre el caso donde _navigationStack está vacía pero hay pistas anteriores en el contexto,
+    //     ej. pista 50 de un álbum al abrir el reproductor sin haber avanzado vía next()).
+    if (_contextIndex > 0) {
+      if (_currentTrack != null) {
+        _pushHistory(_currentTrack!);
+      }
+      _contextIndex--;
+      _currentTrack = _activeContext[_contextIndex];
+      await _openTrack(_currentTrack!);
+      _notifyState();
+      return;
+    }
+
+    // 4. Sin contexto anterior: reiniciar a 0
+    await seek(Duration.zero);
+    await play();
+    _notifyState();
   }
 
   /// Jumps directly to an item by its consolidated index in [queue].
@@ -747,7 +764,11 @@ class AudioPlayerService {
 
     if (_currentTrack != null) {
       _pushHistory(_currentTrack!);
-      _pushNavigation(_currentTrack!);
+      if (_shuffle) {
+        _pushNavigation(_currentTrack!);
+      } else {
+        _navigationStack.clear();
+      }
     }
 
     _contextIndex = targetIndex;
@@ -769,7 +790,11 @@ class AudioPlayerService {
 
     if (_currentTrack != null) {
       _pushHistory(_currentTrack!);
-      _pushNavigation(_currentTrack!);
+      if (_shuffle) {
+        _pushNavigation(_currentTrack!);
+      } else {
+        _navigationStack.clear();
+      }
     }
 
     _contextIndex = absoluteIndex;

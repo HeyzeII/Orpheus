@@ -1000,6 +1000,40 @@ class _QueueTab extends StatefulWidget {
 
 class _QueueTabState extends State<_QueueTab> {
   static const double _itemTileHeight = 56.0;
+  // Estimated height of a section header label (label text + vertical padding)
+  static const double _sectionHeaderHeight = 34.0;
+  // Divider + vertical padding between past context and current track sections
+  static const double _dividerHeight = 13.0;
+
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToCurrentTrack());
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  /// Jumps the scroll view so that "REPRODUCIENDO ACTUALMENTE" is at the top
+  /// of the visible area. Offset is estimated from past context item count.
+  void _scrollToCurrentTrack() {
+    if (!_scrollController.hasClients) return;
+    if (!OrpheusAudioHandler.hasInstance) return;
+    final pastCount = OrpheusAudioHandler.instance.pastContext.length;
+    if (pastCount == 0) return; // Already at top — nothing to scroll
+
+    // Estimated scroll offset to reach the current track section header
+    final targetOffset =
+        pastCount * _itemTileHeight + _sectionHeaderHeight + _dividerHeight;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+
+    _scrollController.jumpTo(targetOffset.clamp(0.0, maxScroll));
+  }
 
   Widget _buildCover(Track track, {double size = 40, bool dimmed = false}) {
     final coverPath = track.customMetadata.customCoverPath;
@@ -1123,6 +1157,7 @@ class _QueueTabState extends State<_QueueTab> {
             final pastContext = pastSnap.data ?? handler.pastContext;
 
             return CustomScrollView(
+              controller: _scrollController,
               physics: const BouncingScrollPhysics(),
               slivers: [
                 // ── 0. CONTEXTO ANTERIOR — pivot Tidal ────────────────────────
