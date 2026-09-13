@@ -16,22 +16,9 @@ enum PlayerRepeatMode {
   single,
 }
 
-/// Singleton service managing the native audio player engine, play queue,
-/// automated playback statistics tracking, and **persistent playback state**.
-///
-/// ## Playback-state persistence strategy
-///
-/// We deliberately avoid timers or periodic writes to keep disk I/O minimal:
-///
-/// 1. **On pause** — the `playing` stream emits `false`. We capture the exact
-///    position at that instant and write to Isar once.
-/// 2. **On track change** — before opening a new file we write a snapshot with
-///    the new [Track.trackId] and `positionMs = 0`.
-/// 3. **On app lifecycle change** — [MainShell] calls [savePlaybackStateNow]
-///    when the app transitions to `inactive` or `paused`.
-/// 4. **On hydration** — [hydratePlaybackState] is called once from `main()`
-///    after the DB is ready. It restores the queue, seeks to the saved
-///    position, and leaves the player in the **paused** state.
+/// Singleton service managing the native audio player engine, decoupled play
+/// queues (contextQueue, userQueue, historyStack), automated statistics,
+/// and persistent playback state (Tidal-style decoupled architecture).
 class AudioPlayerService {
   // ── Singleton Boilerplate ──────────────────────────────────────────────────
 
@@ -45,21 +32,46 @@ class AudioPlayerService {
 
   factory AudioPlayerService() => instance;
 
-  // ── Dependencies & State ───────────────────────────────────────────────────
+  // ── Dependencies & Decoupled State ─────────────────────────────────────────
 
   final LocalDatabase _db;
   late final Player _player;
 
-  final List<Track> _queue = [];
-  List<Track>? _originalQueue;
-  int _currentIndex = -1;
+  /// Ordered context tracks (e.g. album, playlist, library).
+  /// Invariant: context is not mutated when user tracks play or history is browsed.
+  List<Track> _contextTracks = [];
+
+  /// Permutation of [_contextTracks] used when shuffle mode is active.
+  List<Track>? _shuffledContextTracks;
+
+  /// Stable index pointer into the active context list ([_activeContext]).
+  int _contextIndex = -1;
+
+  /// Pure FIFO queue for tracks explicitly added by user ("Play next" / "Add to queue").
+  final List<Track> _userQueue = [];
+
+  /// Chronological log of tracks that have completed playback or were transitioned from.
+  final List<Track> _history = [];
+
+  /// Navigation stack for backward traversal (previous()).
+  /// Independent of the immutable audit log (_history).
+  final List<Track> _navigationStack = [];
+
+  /// Mock position for unit tests in headless environments.
+  Duration? _mockPosition;
+
+  /// Currently active track.
+  Track? _currentTrack;
+
   bool _shuffle = false;
   PlayerRepeatMode _repeatMode = PlayerRepeatMode.off;
 
+  /// Human-readable label for the context source (e.g. "Album: Abbey Road").
+  String _contextName = 'Biblioteca';
+
   int _consecutiveErrors = 0;
 
-  /// Suppresses the "pause → save" listener during the hydration phase so we
-  /// don't overwrite the restored state with a position-0 snapshot.
+  /// Suppresses the "pause -> save" listener during the hydration phase.
   bool _hydrating = false;
   bool _disposed = false;
 
@@ -73,12 +85,13 @@ class AudioPlayerService {
   final _shuffleController = StreamController<bool>.broadcast();
   final _repeatController = StreamController<PlayerRepeatMode>.broadcast();
   final _queueController = StreamController<List<Track>>.broadcast();
-  /// Emits the current [canSkipNext] value whenever queue state changes.
   final _canSkipNextController = StreamController<bool>.broadcast();
+  final _userQueueController = StreamController<List<Track>>.broadcast();
+  final _contextQueueController = StreamController<List<Track>>.broadcast();
+  final _historyController = StreamController<List<Track>>.broadcast();
+  final _contextNameController = StreamController<String>.broadcast();
 
-  /// Cached [AudioSession] reference — set during [_initAudioSession].
   AudioSession? _audioSession;
-
   final List<StreamSubscription> _subscriptions = [];
 
   // ── Initialization ─────────────────────────────────────────────────────────
@@ -89,26 +102,16 @@ class AudioPlayerService {
     }
     _player = Player(
       configuration: const PlayerConfiguration(
-        // IMPORTANT: Do NOT set 'title' here.
-        // Passing a title to PlayerConfiguration activates media_kit's own
-        // native Android MediaSession registration (via libmpv's --title option).
-        // This creates a SECOND competing MediaSession alongside audio_service's,
-        // causing SystemUI to suppress audio_service's notification entirely.
-        // audio_service is the sole MediaSession owner — media_kit operates
-        // as a pure audio engine through JNI/FFI with no OS-level session.
-        pitch: false, // disable pitch control — not needed for audio-only
+        pitch: false,
       ),
     );
 
     _initAudioSession();
 
-    // ── Pipe native media_kit streams to our broadcast streams ────────────────
-
     _subscriptions.add(_player.stream.playing.listen((playing) {
       if (_disposed) return;
       _isPlayingController.add(playing);
 
-      // 🔑 Event-based save: capture position the moment playback pauses.
       if (!playing && !_hydrating) {
         _saveCurrentPlaybackState();
       }
@@ -129,7 +132,6 @@ class AudioPlayerService {
       _volumeController.add(vol / 100.0);
     }));
 
-    // Auto-advance and statistics logging on track completion
     _subscriptions.add(_player.stream.completed.listen((completed) async {
       if (_disposed) return;
       if (completed) {
@@ -137,9 +139,7 @@ class AudioPlayerService {
         if (finishedTrack != null) {
           try {
             await _db.recordPlay(finishedTrack);
-          } catch (_) {
-            // Non-fatal if database writing fails during playback
-          }
+          } catch (_) {}
         }
 
         if (_repeatMode == PlayerRepeatMode.single) {
@@ -156,7 +156,7 @@ class AudioPlayerService {
     try {
       await _audioSession?.setActive(active);
     } catch (e) {
-      debugPrint('AudioSession.setActive($active) safely caught error: $e');
+      debugPrint('AudioSession.setActive($active) caught error: $e');
     }
   }
 
@@ -175,13 +175,10 @@ class AudioPlayerService {
               case AudioInterruptionType.duck:
               case AudioInterruptionType.pause:
               case AudioInterruptionType.unknown:
-                // Pause playback during interruption while preserving the session
                 await pause();
                 break;
             }
           } else {
-            // Interruption ended — reclaim audio focus and resume if we were
-            // playing before the interruption.
             if (event.type != AudioInterruptionType.duck && isPlaying) {
               await _safeSetActive(true);
             }
@@ -194,7 +191,6 @@ class AudioPlayerService {
       _subscriptions.add(session.becomingNoisyEventStream.listen((_) async {
         if (_disposed) return;
         try {
-          // Headset unplugged or Bluetooth disconnected — pause gracefully without destroying session.
           await pause();
         } catch (e, s) {
           debugPrint('Error handling becomingNoisy event: $e\n$s');
@@ -205,23 +201,51 @@ class AudioPlayerService {
     }
   }
 
-  // ── Getters ────────────────────────────────────────────────────────────────
+  // ── Internal Helpers ───────────────────────────────────────────────────────
 
-  Track? get currentTrack =>
-      (_currentIndex >= 0 && _currentIndex < _queue.length)
-          ? _queue[_currentIndex]
-          : null;
+  List<Track> get _activeContext =>
+      _shuffle ? (_shuffledContextTracks ?? _contextTracks) : _contextTracks;
+
+  List<Track> get _upcomingContext {
+    final active = _activeContext;
+    if (_contextIndex < 0 || _contextIndex >= active.length - 1) {
+      return const <Track>[];
+    }
+    return active.sublist(_contextIndex + 1);
+  }
+
+  void _pushHistory(Track track) {
+    if (_history.isNotEmpty && _history.last.trackId == track.trackId) {
+      return;
+    }
+    _history.add(track);
+    if (_history.length > 100) {
+      _history.removeAt(0);
+    }
+  }
+
+  void _pushNavigation(Track track) {
+    _navigationStack.add(track);
+    if (_navigationStack.length > 100) {
+      _navigationStack.removeAt(0);
+    }
+  }
+
+  // ── Public Getters ─────────────────────────────────────────────────────────
+
+  Track? get currentTrack => _currentTrack;
 
   bool get isPlaying =>
       Platform.environment.containsKey('FLUTTER_TEST') ? false : _player.state.playing;
 
   Duration get position =>
-      Platform.environment.containsKey('FLUTTER_TEST') ? Duration.zero : _player.state.position;
+      Platform.environment.containsKey('FLUTTER_TEST')
+          ? (_mockPosition ?? Duration.zero)
+          : _player.state.position;
 
   Duration get duration =>
       Platform.environment.containsKey('FLUTTER_TEST') ? Duration.zero : _player.state.duration;
 
-  /// Volume represented as a range from `0.0` (muted) to `1.0` (max).
   double get volume =>
       Platform.environment.containsKey('FLUTTER_TEST') ? 1.0 : _player.state.volume / 100.0;
 
@@ -231,101 +255,122 @@ class AudioPlayerService {
 
   PlayerRepeatMode get repeatMode => _repeatMode;
 
-  List<Track> get queue => List.unmodifiable(_queue);
+  /// Pure FIFO user queue tracks in upcoming order.
+  List<Track> get userQueue => List.unmodifiable(_userQueue);
 
-  int get currentIndex => _currentIndex;
+  /// Upcoming context tracks starting after the current context position.
+  List<Track> get contextQueue => List.unmodifiable(_upcomingContext);
+
+  /// Chronological history stack of tracks played prior to the current track.
+  List<Track> get history => List.unmodifiable(_history);
+
+  /// Consolidated list in visual order [History + Current + UserQueue + UpcomingContext]
+  /// for OS MediaNotification, lockscreen controls, and system reactivity.
+  List<Track> get queue => List.unmodifiable([
+        ..._history,
+        ?_currentTrack,
+        ..._userQueue,
+        ..._upcomingContext,
+      ]);
+
+  String get contextName => _contextName;
+
+  /// Virtual index within the consolidated [queue] pointing to the current track.
+  int get currentIndex => _currentTrack == null ? -1 : _history.length;
+
+  bool get canSkipNext =>
+      _userQueue.isNotEmpty ||
+      (_contextIndex < _activeContext.length - 1) ||
+      _repeatMode == PlayerRepeatMode.playlist;
+
+  bool get canSkipPrevious =>
+      _navigationStack.isNotEmpty ||
+      position > const Duration(seconds: 3);
+
+  @visibleForTesting
+  void setMockPosition(Duration pos) {
+    _mockPosition = pos;
+    _positionController.add(pos);
+  }
 
   // ── Streams for UI ─────────────────────────────────────────────────────────
 
   Stream<Track?> get currentTrackStream => _currentTrackController.stream;
-
   Stream<bool> get isPlayingStream => _isPlayingController.stream;
-
   Stream<Duration> get positionStream => _positionController.stream;
-
   Stream<Duration> get durationStream => _durationController.stream;
-
   Stream<double> get volumeStream => _volumeController.stream;
-
   Stream<bool> get shuffleStream => _shuffleController.stream;
-
   Stream<PlayerRepeatMode> get repeatStream => _repeatController.stream;
-
   Stream<List<Track>> get queueStream => _queueController.stream;
-
-  /// Reactive stream of [canSkipNext]. Emits on every queue/index/repeat change.
   Stream<bool> get canSkipNextStream => _canSkipNextController.stream;
+  Stream<List<Track>> get userQueueStream => _userQueueController.stream;
+  Stream<List<Track>> get contextQueueStream => _contextQueueController.stream;
+  Stream<List<Track>> get historyStream => _historyController.stream;
+  Stream<String> get contextNameStream => _contextNameController.stream;
 
   // ── Control API ────────────────────────────────────────────────────────────
 
-  /// Replaces the current queue with [tracks] and starts playing at [initialIndex].
-  Future<void> loadPlaylist(List<Track> tracks, {int initialIndex = 0}) async {
-    if (tracks.isEmpty) {
-      _queue.clear();
-      _originalQueue = null;
-      _currentIndex = -1;
-      await stop();
-      _notifyState();
+  /// Starts playback from an external context (Album, Playlist, Library),
+  /// seamlessly preserving pending user-queue tracks.
+  Future<void> playFromExternalContext(
+    Track track,
+    List<Track> newContext, {
+    String? contextName,
+  }) async {
+    if (newContext.isEmpty) {
+      await stopAndReset();
       return;
     }
 
-    final targetIdx = initialIndex.clamp(0, tracks.length - 1);
-
-    // Compare with both _queue (active order) and _originalQueue (unshuffled order)
-    bool matchesList(List<Track> ref) {
-      if (ref.length != tracks.length) return false;
-      for (int i = 0; i < tracks.length; i++) {
-        if (tracks[i].trackId != ref[i].trackId) return false;
-      }
-      return true;
-    }
-
-    final isSameQueue = matchesList(_queue) || (_originalQueue != null && matchesList(_originalQueue!));
-
-    if (isSameQueue) {
-      // Playlist is already loaded. Simply jump _currentIndex to the target track.
-      final selectedTrack = tracks[targetIdx];
-      final queueIdx = _queue.indexWhere((t) => t.trackId == selectedTrack.trackId);
-      if (queueIdx != -1) {
-        await _playIndex(queueIdx);
-      } else {
-        await _playIndex(targetIdx);
-      }
-      return;
-    }
-
+    if (contextName != null) _contextName = contextName;
     _consecutiveErrors = 0;
+    _navigationStack.clear();
+
+    if (_currentTrack != null) {
+      _pushHistory(_currentTrack!);
+    }
+
+    _contextTracks = List<Track>.from(newContext);
+    final targetIdx = _contextTracks.indexWhere((t) => t.trackId == track.trackId);
+    final actualIdx = targetIdx >= 0 ? targetIdx : 0;
 
     if (_shuffle) {
-      _originalQueue = List<Track>.from(tracks);
-      final selectedTrack = tracks[targetIdx];
-      final remaining = List<Track>.from(tracks)..removeAt(targetIdx);
+      final remaining = List<Track>.from(_contextTracks)..removeAt(actualIdx);
       remaining.shuffle(Random());
-
-      _queue
-        ..clear()
-        ..add(selectedTrack)
-        ..addAll(remaining);
-      _currentIndex = 0;
+      _shuffledContextTracks = [_contextTracks[actualIdx], ...remaining];
+      _contextIndex = 0;
+      _currentTrack = _shuffledContextTracks![0];
     } else {
-      _originalQueue = null;
-      _queue
-        ..clear()
-        ..addAll(tracks);
-      _currentIndex = targetIdx;
+      _shuffledContextTracks = null;
+      _contextIndex = actualIdx;
+      _currentTrack = _contextTracks[_contextIndex];
     }
 
-    // 🔑 Save state before opening the new track (position resets to 0).
-    await _saveCurrentPlaybackState(
-      overrideTrackId: _queue[_currentIndex].trackId,
-      overridePositionMs: 0,
+    await _openTrack(_currentTrack!);
+    _notifyState();
+  }
+
+  /// Sets the playback context with [tracks] starting at [initialIndex].
+  Future<void> loadPlaylist(
+    List<Track> tracks, {
+    int initialIndex = 0,
+    String? contextName,
+  }) async {
+    if (tracks.isEmpty) {
+      await stopAndReset();
+      return;
+    }
+    final targetIdx = initialIndex.clamp(0, tracks.length - 1);
+    await playFromExternalContext(
+      tracks[targetIdx],
+      tracks,
+      contextName: contextName,
     );
-    await _playIndex(_currentIndex);
   }
 
   Future<void> play() async {
     if (Platform.environment.containsKey('FLUTTER_TEST')) return;
-    // Claim audio focus so other media apps yield their audio.
     await _safeSetActive(true);
     try {
       await _player.play();
@@ -342,8 +387,6 @@ class AudioPlayerService {
     } catch (e) {
       debugPrint('Error pausing audio: $e');
     }
-    // We intentionally keep AudioSession active while paused so Android
-    // preserves the ForegroundService, MediaSession, and lockscreen controls.
     _notifyState();
   }
 
@@ -354,32 +397,45 @@ class AudioPlayerService {
     } catch (e) {
       debugPrint('Error stopping audio: $e');
     }
-    // Release audio focus completely when playback is explicitly stopped.
     await _safeSetActive(false);
-    _currentIndex = -1;
+    _currentTrack = null;
     _notifyState();
   }
 
-  /// Completely stops playback and resets the internal state, clearing the queue and current track.
-  Future<void> stopAndReset() async {
+  /// Stops playback and resets queue state.
+  /// Set [clearHistory] to true only for explicit test cleanup or complete app resets.
+  Future<void> stopAndReset({bool clearHistory = false}) async {
     if (!Platform.environment.containsKey('FLUTTER_TEST')) {
       await _player.stop();
     }
     await _safeSetActive(false);
-    _queue.clear();
-    _originalQueue = null;
-    _currentIndex = -1;
+    _contextTracks.clear();
+    _shuffledContextTracks = null;
+    _contextIndex = -1;
+    _userQueue.clear();
+    _navigationStack.clear();
+    _mockPosition = null;
+    _shuffle = false;
+    _repeatMode = PlayerRepeatMode.off;
+    if (clearHistory) {
+      _history.clear();
+    }
+    _currentTrack = null;
     _currentTrackController.add(null);
     _notifyState();
   }
 
   Future<void> seek(Duration position) async {
-    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      _mockPosition = position;
+      _positionController.add(position);
+      _notifyState();
+      return;
+    }
     await _player.seek(position);
     _notifyState();
   }
 
-  /// Sets volume. Expects a range between `0.0` (muted) and `1.0` (max).
   Future<void> setVolume(double volume) async {
     final clamped = volume.clamp(0.0, 1.0);
     if (Platform.environment.containsKey('FLUTTER_TEST')) {
@@ -393,33 +449,27 @@ class AudioPlayerService {
   void toggleShuffle() {
     _shuffle = !_shuffle;
     if (_shuffle) {
-      _originalQueue ??= List<Track>.from(_queue);
-      if (_queue.isNotEmpty) {
-        final current = currentTrack;
-        final remaining = List<Track>.from(_queue);
-        if (current != null) {
-          remaining.removeWhere((t) => t.trackId == current.trackId);
+      if (_contextTracks.isNotEmpty) {
+        final currentContextTrack = (_contextIndex >= 0 && _contextIndex < _contextTracks.length)
+            ? _contextTracks[_contextIndex]
+            : _currentTrack;
+        final remaining = List<Track>.from(_contextTracks);
+        if (currentContextTrack != null) {
+          remaining.removeWhere((t) => t.trackId == currentContextTrack.trackId);
         }
         remaining.shuffle(Random());
-        _queue.clear();
-        if (current != null) {
-          _queue.add(current);
-        }
-        _queue.addAll(remaining);
-        _currentIndex = current != null ? 0 : -1;
+        _shuffledContextTracks = [
+          ?currentContextTrack,
+          ...remaining,
+        ];
+        _contextIndex = 0;
       }
     } else {
-      if (_originalQueue != null) {
-        final current = currentTrack;
-        _queue
-          ..clear()
-          ..addAll(_originalQueue!);
-        _originalQueue = null;
-        if (current != null) {
-          _currentIndex = _queue.indexWhere((t) => t.trackId == current.trackId);
-          if (_currentIndex == -1) _currentIndex = 0;
-        }
+      if (_shuffledContextTracks != null && _currentTrack != null) {
+        final origIdx = _contextTracks.indexWhere((t) => t.trackId == _currentTrack!.trackId);
+        _contextIndex = origIdx != -1 ? origIdx : _contextIndex.clamp(0, _contextTracks.length - 1);
       }
+      _shuffledContextTracks = null;
     }
     _shuffleController.add(_shuffle);
     _notifyState();
@@ -441,307 +491,316 @@ class AudioPlayerService {
     _notifyState();
   }
 
-  /// Advances to the next track in the queue, handling shuffle options.
+  /// Advances playback with FIFO user-queue priority without context mutation.
   Future<void> next() async {
-    if (_queue.isEmpty) return;
+    if (_currentTrack != null) {
+      _pushHistory(_currentTrack!);
+      _pushNavigation(_currentTrack!);
+    }
 
-    final nextIndex = _currentIndex + 1;
-    if (nextIndex >= _queue.length) {
-      if (_repeatMode == PlayerRepeatMode.playlist) {
-        await _playIndex(0); // loop back
-      } else {
-        // End of queue: stay on the last track, rewound to the beginning,
-        // so the mini-player and expanded view remain visible.
-        await _player.seek(Duration.zero);
-        await _player.pause();
-        _notifyState();
-      }
+    // 1. Priority: consume next FIFO item from userQueue
+    if (_userQueue.isNotEmpty) {
+      _currentTrack = _userQueue.removeAt(0);
+      await _openTrack(_currentTrack!);
+      _notifyState();
+      return;
+    }
+
+    // 2. Otherwise advance in contextQueue
+    final active = _activeContext;
+    if (active.isEmpty) {
+      await stop();
+      return;
+    }
+
+    if (_contextIndex + 1 < active.length) {
+      _contextIndex++;
+      _currentTrack = active[_contextIndex];
+      await _openTrack(_currentTrack!);
     } else {
-      await _playIndex(nextIndex);
+      if (_repeatMode == PlayerRepeatMode.playlist) {
+        _contextIndex = 0;
+        _currentTrack = active[0];
+        await _openTrack(_currentTrack!);
+      } else {
+        if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+          await _player.seek(Duration.zero);
+          await _player.pause();
+        }
+      }
+    }
+    _notifyState();
+  }
+
+  /// Reverse navigation through navigation stack with 3-second restart rule.
+  Future<void> previous() async {
+    // 1. Regla de los 3 segundos: reiniciar pista si ya transcurrieron > 3s
+    if (position > const Duration(seconds: 3)) {
+      await seek(Duration.zero);
+      await play();
+      return;
+    }
+
+    // 2. Desandar la pila de navegación de retroceso (inmune a bucles y a Shuffle)
+    if (_navigationStack.isNotEmpty) {
+      final prevTrack = _navigationStack.removeLast();
+      if (_currentTrack != null) {
+        _pushHistory(_currentTrack!);
+      }
+      final active = _activeContext;
+      final matchIdx = active.lastIndexOf(prevTrack);
+      if (matchIdx != -1) {
+        _contextIndex = matchIdx;
+      }
+      _currentTrack = prevTrack;
+      await _openTrack(_currentTrack!);
+      _notifyState();
+    } else {
+      // Si la pila de navegación está vacía, reiniciar a 0
+      await seek(Duration.zero);
+      await play();
+      _notifyState();
     }
   }
 
-  /// Plays the previous track, or restarts the current track if past 3 seconds.
-  Future<void> previous() async {
-    if (_queue.isEmpty) return;
+  /// Jumps directly to an item by its consolidated index in [queue].
+  Future<void> skipToIndex(int index) async {
+    final histLen = _history.length;
+    if (index < 0) return;
 
-    // Premium behavior: restarts song if past 3 seconds.
-    if (position.inSeconds > 3) {
+    if (index < histLen) {
+      await playHistoryItem(index);
+      return;
+    }
+
+    final hasCurrent = _currentTrack != null;
+    final currentIdx = hasCurrent ? histLen : -1;
+    if (index == currentIdx) {
       await seek(Duration.zero);
       return;
     }
 
-    final prevIndex = _currentIndex - 1;
-    if (prevIndex < 0) {
-      if (_repeatMode == PlayerRepeatMode.playlist) {
-        await _playIndex(_queue.length - 1);
-      } else {
-        await seek(Duration.zero);
-      }
-    } else {
-      await _playIndex(prevIndex);
+    final userQueueStart = histLen + (hasCurrent ? 1 : 0);
+    final userQueueLen = _userQueue.length;
+    if (index >= userQueueStart && index < userQueueStart + userQueueLen) {
+      await playUserQueueItem(index - userQueueStart);
+      return;
+    }
+
+    final contextStart = userQueueStart + userQueueLen;
+    final upcomingLen = _upcomingContext.length;
+    if (index >= contextStart && index < contextStart + upcomingLen) {
+      await playContextQueueItem(index - contextStart);
     }
   }
 
-  /// Jumps directly to the specified [index] in the current queue without re-shuffling.
-  Future<void> skipToIndex(int index) async {
-    if (index >= 0 && index < _queue.length) {
-      await _playIndex(index);
-    }
-  }
-
-  /// Whether skipping to the next track is valid given the current queue & repeat mode.
-  bool get canSkipNext =>
-      _queue.isNotEmpty &&
-      (_repeatMode == PlayerRepeatMode.playlist || _currentIndex < _queue.length - 1);
-
-  /// Whether skipping to the previous track is valid given the current queue & position.
-  bool get canSkipPrevious =>
-      _queue.isNotEmpty &&
-      (_repeatMode == PlayerRepeatMode.playlist || _currentIndex > 0 || position.inSeconds > 3);
-
-
-  /// Inserts [track] immediately after the currently playing track.
-  ///
-  /// If the queue is empty, starts playing [track] immediately.
+  /// Inserts [track] to play next (front of userQueue).
   void playNext(Track track) {
-    if (_queue.isEmpty || _currentIndex < 0) {
-      _queue.add(track);
-      _currentIndex = 0;
-      _notifyState();
-      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
-        _playIndex(0);
-      }
-      return;
+    _userQueue.insert(0, track);
+    if (_currentTrack == null && _activeContext.isEmpty) {
+      _currentTrack = _userQueue.removeAt(0);
+      _openTrack(_currentTrack!);
     }
-    // Remove any existing instance first (prevents duplicates mid-queue)
-    final existingIdx = _queue.indexWhere((t) => t.trackId == track.trackId);
-    if (existingIdx >= 0 && existingIdx != _currentIndex + 1) {
-      _queue.removeAt(existingIdx);
-      if (existingIdx <= _currentIndex) _currentIndex--;
-    }
-    final insertAt = _currentIndex + 1;
-    _queue.insert(insertAt, track);
-
-    // Sync original queue if shuffle is ON
-    if (_originalQueue != null) {
-      final origIdx = _originalQueue!.indexWhere((t) => t.trackId == track.trackId);
-      if (origIdx >= 0) _originalQueue!.removeAt(origIdx);
-      final currentTrackId = currentTrack?.trackId;
-      final origCurrentIdx = _originalQueue!.indexWhere((t) => t.trackId == currentTrackId);
-      if (origCurrentIdx >= 0) {
-        _originalQueue!.insert(origCurrentIdx + 1, track);
-      } else {
-        _originalQueue!.add(track);
-      }
-    }
-
     _notifyState();
   }
 
-  /// Appends [track] to the end of the current queue.
-  ///
-  /// If the queue is empty, starts playing [track] immediately.
+  /// Appends [track] to the end of userQueue.
   void addToQueue(Track track) {
-    if (_queue.isEmpty || _currentIndex < 0) {
-      _queue.add(track);
-      _currentIndex = 0;
-      _notifyState();
-      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
-        _playIndex(0);
-      }
-      return;
+    if (_currentTrack == null && _activeContext.isEmpty && _userQueue.isEmpty) {
+      _currentTrack = track;
+      _openTrack(track);
+    } else {
+      _userQueue.add(track);
     }
-    _queue.add(track);
-
-    // Sync original queue if shuffle is ON
-    if (_originalQueue != null) {
-      final origIdx = _originalQueue!.indexWhere((t) => t.trackId == track.trackId);
-      if (origIdx >= 0) _originalQueue!.removeAt(origIdx);
-      _originalQueue!.add(track);
-    }
-
     _notifyState();
   }
 
-  /// Updates a track's metadata within the active queue and notifies listeners if it changed.
+  /// Updates metadata of an existing track across all collections.
   void updateTrack(Track updatedTrack) {
     bool changed = false;
-    for (int i = 0; i < _queue.length; i++) {
-      if (_queue[i].trackId == updatedTrack.trackId) {
-        _queue[i] = updatedTrack;
+
+    if (_currentTrack?.trackId == updatedTrack.trackId) {
+      _currentTrack = updatedTrack;
+      changed = true;
+    }
+
+    for (int i = 0; i < _userQueue.length; i++) {
+      if (_userQueue[i].trackId == updatedTrack.trackId) {
+        _userQueue[i] = updatedTrack;
         changed = true;
       }
     }
-    if (_originalQueue != null) {
-      for (int i = 0; i < _originalQueue!.length; i++) {
-        if (_originalQueue![i].trackId == updatedTrack.trackId) {
-          _originalQueue![i] = updatedTrack;
+
+    for (int i = 0; i < _contextTracks.length; i++) {
+      if (_contextTracks[i].trackId == updatedTrack.trackId) {
+        _contextTracks[i] = updatedTrack;
+        changed = true;
+      }
+    }
+
+    if (_shuffledContextTracks != null) {
+      for (int i = 0; i < _shuffledContextTracks!.length; i++) {
+        if (_shuffledContextTracks![i].trackId == updatedTrack.trackId) {
+          _shuffledContextTracks![i] = updatedTrack;
+          changed = true;
         }
       }
     }
+
+    for (int i = 0; i < _history.length; i++) {
+      if (_history[i].trackId == updatedTrack.trackId) {
+        _history[i] = updatedTrack;
+        changed = true;
+      }
+    }
+
     if (changed) {
       _notifyState();
     }
   }
 
-  /// Clears all tracks from the queue except the currently playing one.
-  void clearQueue() {
-    if (_queue.isEmpty || _currentIndex < 0) return;
-    final current = _queue[_currentIndex];
-    _queue.clear();
-    _queue.add(current);
-    _currentIndex = 0;
-    _originalQueue = null;
+  /// Clears only the tracks in userQueue.
+  void clearUserQueue() {
+    if (_userQueue.isEmpty) return;
+    _userQueue.clear();
     _notifyState();
   }
 
-  // ── Persistence ────────────────────────────────────────────────────────────
-
-  /// Captures and persists the current playback state to Isar.
-  ///
-  /// All parameters are optional overrides used internally (e.g. when
-  /// switching tracks we know the next [trackId] before the player opens it).
-  Future<void> _saveCurrentPlaybackState({
-    String? overrideTrackId,
-    int? overridePositionMs,
-  }) async {
-    try {
-      final trackId = overrideTrackId ?? currentTrack?.trackId;
-      if (trackId == null) return; // Nothing to save yet.
-
-      final posMs = overridePositionMs ?? position.inMilliseconds;
-      final queueIds = _queue.map((t) => t.trackId).toList();
-
-      final state = local.PlaybackState()
-        ..trackId = trackId
-        ..positionMs = posMs
-        ..queueTrackIds = queueIds
-        ..shuffleModeEnabled = _shuffle;
-
-      await _db.savePlaybackState(state);    
-    } catch (_) {
-      // Non-fatal: persistence failures should never interrupt playback.
+  /// Clears userQueue and upcoming context except the current track, preserving the immutable history log.
+  void clearQueue() {
+    _userQueue.clear();
+    if (_currentTrack != null) {
+      _contextTracks = [_currentTrack!];
+      _shuffledContextTracks = null;
+      _contextIndex = 0;
+    } else {
+      _contextTracks.clear();
+      _shuffledContextTracks = null;
+      _contextIndex = -1;
     }
+    _notifyState();
   }
 
-  /// Public entry point called by [MainShell] on lifecycle transitions
-  /// (inactive / paused) to capture an immediate snapshot before the OS
-  /// may suspend the process.
-  Future<void> savePlaybackStateNow() => _saveCurrentPlaybackState();
+  /// Reorders an item within the userQueue.
+  void reorderUserQueue(int oldIndex, int newIndex) {
+    if (oldIndex < 0 ||
+        oldIndex >= _userQueue.length ||
+        newIndex < 0 ||
+        newIndex > _userQueue.length ||
+        oldIndex == newIndex) return;
 
-  /// Restores the last saved playback state on app startup.
-  ///
-  /// Call this **after** [LocalDatabase.initialize] and **before** [runApp].
-  /// The method:
-  /// 1. Reads the persisted [PlaybackState] from Isar.
-  /// 2. Looks up every [Track] in [queueTrackIds] from the library.
-  /// 3. Loads the queue without auto-playing (the `_hydrating` flag prevents
-  ///    the "pause → save" listener from immediately overwriting the state).
-  /// 4. Seeks to [positionMs] and leaves the player paused.
-  Future<void> hydratePlaybackState() async {
-    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
-
-    try {
-      final saved = await _db.getPlaybackState();
-      if (saved == null || saved.trackId == null) return;
-
-      // Resolve Track objects from their stable trackIds.
-      final resolvedTracks = <Track>[];
-      for (final id in saved.queueTrackIds) {
-        final track = await _db.getTrackByTrackId(id);
-        if (track != null) resolvedTracks.add(track);
-      }
-      if (resolvedTracks.isEmpty) return;
-
-      // Find the index of the track that was playing.
-      final startIndex = resolvedTracks.indexWhere(
-        (t) => t.trackId == saved.trackId,
-      );
-      if (startIndex == -1) return;
-
-      // Populate the in-memory queue without triggering persistence callbacks.
-      _hydrating = true;
-      _queue
-        ..clear()
-        ..addAll(resolvedTracks);
-      _currentIndex = startIndex;
-
-      final track = _queue[_currentIndex];
-      final file = File(track.filePath);
-      if (!file.existsSync()) {
-        _hydrating = false;
-        return;
-      }
-
-      // Open the file and pause immediately after the engine is ready.
-      await _player.open(
-        Media(Uri.file(track.filePath).toString()),
-        play: false,
-      );
-
-      // Give media_kit's native engine a moment to load metadata/duration
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      // Restore shuffle preference (no queue reshuffle needed — queue is
-      // already in persisted order; we just mark the flag so the handler
-      // renders the correct icon and future skips respect shuffle).
-      if (saved.shuffleModeEnabled) {
-        _shuffle = true;
-        _originalQueue = List<Track>.from(_queue);
-        _shuffleController.add(true);
-      }
-
-      // Seek to the saved position once the duration becomes available.
-      if (saved.positionMs > 0) {
-        await _player.seek(Duration(milliseconds: saved.positionMs));
-      }
-
-      _hydrating = false;
-      _notifyState();
-    } catch (_) {
-      _hydrating = false;
-      // Non-fatal: if hydration fails the app starts fresh.
-    }
+    final track = _userQueue.removeAt(oldIndex);
+    final targetIdx = newIndex > oldIndex ? newIndex - 1 : newIndex;
+    _userQueue.insert(targetIdx.clamp(0, _userQueue.length), track);
+    _notifyState();
   }
 
-  // ── Helper Methods ─────────────────────────────────────────────────────────
+  /// Reorders an item within the upcoming contextQueue.
+  void reorderContextQueue(int oldIndex, int newIndex) {
+    final upcoming = _upcomingContext;
+    if (oldIndex < 0 ||
+        oldIndex >= upcoming.length ||
+        newIndex < 0 ||
+        newIndex > upcoming.length ||
+        oldIndex == newIndex) return;
 
-  Future<void> _playIndex(int index) async {
-    if (_queue.isEmpty) {
-      _currentIndex = -1;
-      _notifyState();
+    final track = upcoming[oldIndex];
+    final targetContext = _shuffle ? _shuffledContextTracks! : _contextTracks;
+    final absOld = _contextIndex + 1 + oldIndex;
+    targetContext.removeAt(absOld);
+    final targetRelIdx = newIndex > oldIndex ? newIndex - 1 : newIndex;
+    final absNew = _contextIndex + 1 + targetRelIdx;
+    targetContext.insert(absNew.clamp(0, targetContext.length), track);
+    _notifyState();
+  }
+
+  /// Plays item [index] from [userQueue] immediately.
+  Future<void> playUserQueueItem(int index) async {
+    if (index < 0 || index >= _userQueue.length) return;
+    if (_currentTrack != null) {
+      _pushHistory(_currentTrack!);
+      _pushNavigation(_currentTrack!);
+    }
+
+    final target = _userQueue[index];
+    _userQueue.removeRange(0, index + 1);
+    _currentTrack = target;
+    await _openTrack(target);
+    _notifyState();
+  }
+
+  /// Plays item [relativeIndex] from upcoming [contextQueue] without mutating userQueue.
+  /// Only the currently active track is pushed to history (skipped intermediate tracks are ignored).
+  Future<void> playContextQueueItem(int relativeIndex) async {
+    final active = _activeContext;
+    final targetIndex = _contextIndex + 1 + relativeIndex;
+    if (targetIndex < 0 || targetIndex >= active.length) return;
+
+    if (_currentTrack != null) {
+      _pushHistory(_currentTrack!);
+      _pushNavigation(_currentTrack!);
+    }
+
+    _contextIndex = targetIndex;
+    _currentTrack = active[_contextIndex];
+    await _openTrack(_currentTrack!);
+    _notifyState();
+  }
+
+  /// Plays item [index] from [history] without altering userQueue and preserving the immutable history log.
+  Future<void> playHistoryItem(int index) async {
+    if (index < 0 || index >= _history.length) return;
+
+    final targetTrack = _history[index];
+
+    if (_currentTrack?.trackId == targetTrack.trackId) {
+      await seek(Duration.zero);
+      await play();
       return;
     }
 
-    if (index < 0 || index >= _queue.length) {
-      if (_repeatMode != PlayerRepeatMode.off) {
-        _currentIndex = 0;
-      } else {
-        await stop();
-        return;
-      }
-    } else {
-      _currentIndex = index;
+    if (_currentTrack != null) {
+      _pushHistory(_currentTrack!);
+      _pushNavigation(_currentTrack!);
     }
+
+    final active = _activeContext;
+    final matchIdx = active.lastIndexOf(targetTrack);
+    if (matchIdx != -1) {
+      _contextIndex = matchIdx;
+    }
+
+    _currentTrack = targetTrack;
+    await _openTrack(targetTrack);
+    _notifyState();
+  }
+
+  void setContextName(String name) {
+    if (_contextName == name) return;
+    _contextName = name;
+    _contextNameController.add(name);
+  }
+
+  // ── Engine Opener & Persistence ────────────────────────────────────────────
+
+  Future<void> _openTrack(Track track) async {
+    await _saveCurrentPlaybackState(
+      overrideTrackId: track.trackId,
+      overridePositionMs: 0,
+    );
 
     if (Platform.environment.containsKey('FLUTTER_TEST')) {
-      _notifyState();
       return;
     }
 
-    final track = _queue[_currentIndex];
     final file = File(track.filePath);
-
-    // Strict handling of missing files
     if (!file.existsSync()) {
       _consecutiveErrors++;
-      if (_consecutiveErrors >= _queue.length) {
+      if (_consecutiveErrors >= _activeContext.length + _userQueue.length + 1) {
         _consecutiveErrors = 0;
         await stop();
         return;
       }
-
       _currentTrackController.add(null);
       Future.delayed(const Duration(milliseconds: 100), () {
         next();
@@ -750,14 +809,7 @@ class AudioPlayerService {
     }
 
     _consecutiveErrors = 0;
-
     try {
-      // 🔑 Save state before opening (new track, position = 0).
-      await _saveCurrentPlaybackState(
-        overrideTrackId: track.trackId,
-        overridePositionMs: 0,
-      );
-      // Claim audio focus before starting playback.
       await _safeSetActive(true);
       await _player.open(
         Media(
@@ -773,11 +825,107 @@ class AudioPlayerService {
         ),
         play: true,
       );
-      _notifyState();
     } catch (e) {
       Future.delayed(const Duration(milliseconds: 100), () {
         next();
       });
+    }
+  }
+
+  Future<void> _saveCurrentPlaybackState({
+    String? overrideTrackId,
+    int? overridePositionMs,
+  }) async {
+    try {
+      final trackId = overrideTrackId ?? _currentTrack?.trackId;
+      if (trackId == null) return;
+
+      final posMs = overridePositionMs ?? position.inMilliseconds;
+      final queueIds = _contextTracks.map((t) => t.trackId).toList();
+      final userIds = _userQueue.map((t) => t.trackId).toList();
+
+      final state = local.PlaybackState()
+        ..trackId = trackId
+        ..positionMs = posMs
+        ..queueTrackIds = queueIds
+        ..shuffleModeEnabled = _shuffle
+        ..userQueueTrackIds = userIds;
+
+      await _db.savePlaybackState(state);
+    } catch (_) {}
+  }
+
+  Future<void> savePlaybackStateNow() => _saveCurrentPlaybackState();
+
+  Future<void> hydratePlaybackState() async {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
+
+    try {
+      final saved = await _db.getPlaybackState();
+      if (saved == null || saved.trackId == null) return;
+
+      final resolvedContext = <Track>[];
+      for (final id in saved.queueTrackIds) {
+        final t = await _db.getTrackByTrackId(id);
+        if (t != null) resolvedContext.add(t);
+      }
+      final resolvedUserQueue = <Track>[];
+      for (final id in saved.userQueueTrackIds) {
+        final t = await _db.getTrackByTrackId(id);
+        if (t != null) resolvedUserQueue.add(t);
+      }
+
+      if (resolvedContext.isEmpty && resolvedUserQueue.isEmpty) return;
+
+      _contextTracks = resolvedContext;
+      _userQueue
+        ..clear()
+        ..addAll(resolvedUserQueue);
+
+      final matchCtxIdx = _contextTracks.indexWhere((t) => t.trackId == saved.trackId);
+      if (matchCtxIdx != -1) {
+        _contextIndex = matchCtxIdx;
+        _currentTrack = _contextTracks[_contextIndex];
+      } else {
+        final matchUserIdx = _userQueue.indexWhere((t) => t.trackId == saved.trackId);
+        if (matchUserIdx != -1) {
+          _currentTrack = _userQueue.removeAt(matchUserIdx);
+        } else if (_contextTracks.isNotEmpty) {
+          _contextIndex = 0;
+          _currentTrack = _contextTracks[0];
+        }
+      }
+
+      if (_currentTrack == null) return;
+
+      final file = File(_currentTrack!.filePath);
+      if (!file.existsSync()) return;
+
+      _hydrating = true;
+      await _player.open(
+        Media(Uri.file(_currentTrack!.filePath).toString()),
+        play: false,
+      );
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      if (saved.shuffleModeEnabled && _contextTracks.isNotEmpty) {
+        _shuffle = true;
+        final remaining = List<Track>.from(_contextTracks)
+          ..removeWhere((t) => t.trackId == _currentTrack!.trackId);
+        remaining.shuffle(Random());
+        _shuffledContextTracks = [_currentTrack!, ...remaining];
+        _contextIndex = 0;
+        _shuffleController.add(true);
+      }
+
+      if (saved.positionMs > 0) {
+        await _player.seek(Duration(milliseconds: saved.positionMs));
+      }
+
+      _hydrating = false;
+      _notifyState();
+    } catch (_) {
+      _hydrating = false;
     }
   }
 
@@ -791,7 +939,10 @@ class AudioPlayerService {
     _shuffleController.add(_shuffle);
     _repeatController.add(_repeatMode);
     _queueController.add(queue);
-    // Always re-evaluate skip availability so the UI stays in sync.
+    _historyController.add(history);
+    _userQueueController.add(userQueue);
+    _contextQueueController.add(contextQueue);
+    _contextNameController.add(_contextName);
     _canSkipNextController.add(canSkipNext);
   }
 
@@ -815,5 +966,9 @@ class AudioPlayerService {
     await _repeatController.close();
     await _queueController.close();
     await _canSkipNextController.close();
+    await _userQueueController.close();
+    await _contextQueueController.close();
+    await _historyController.close();
+    await _contextNameController.close();
   }
 }

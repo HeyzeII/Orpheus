@@ -36,6 +36,11 @@ const PlaybackStateSchema = CollectionSchema(
       id: 3,
       name: r'trackId',
       type: IsarType.string,
+    ),
+    r'userQueueTrackIds': PropertySchema(
+      id: 4,
+      name: r'userQueueTrackIds',
+      type: IsarType.stringList,
     )
   },
   estimateSize: _playbackStateEstimateSize,
@@ -71,6 +76,13 @@ int _playbackStateEstimateSize(
       bytesCount += 3 + value.length * 3;
     }
   }
+  bytesCount += 3 + object.userQueueTrackIds.length * 3;
+  {
+    for (var i = 0; i < object.userQueueTrackIds.length; i++) {
+      final value = object.userQueueTrackIds[i];
+      bytesCount += value.length * 3;
+    }
+  }
   return bytesCount;
 }
 
@@ -84,6 +96,7 @@ void _playbackStateSerialize(
   writer.writeStringList(offsets[1], object.queueTrackIds);
   writer.writeBool(offsets[2], object.shuffleModeEnabled);
   writer.writeString(offsets[3], object.trackId);
+  writer.writeStringList(offsets[4], object.userQueueTrackIds);
 }
 
 PlaybackState _playbackStateDeserialize(
@@ -98,6 +111,7 @@ PlaybackState _playbackStateDeserialize(
   object.queueTrackIds = reader.readStringList(offsets[1]) ?? [];
   object.shuffleModeEnabled = reader.readBool(offsets[2]);
   object.trackId = reader.readStringOrNull(offsets[3]);
+  object.userQueueTrackIds = reader.readStringList(offsets[4]) ?? [];
   return object;
 }
 
@@ -116,6 +130,8 @@ P _playbackStateDeserializeProp<P>(
       return (reader.readBool(offset)) as P;
     case 3:
       return (reader.readStringOrNull(offset)) as P;
+    case 4:
+      return (reader.readStringList(offset) ?? []) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
   }
@@ -715,6 +731,233 @@ extension PlaybackStateQueryFilter
       ));
     });
   }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsElementEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'userQueueTrackIds',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsElementGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'userQueueTrackIds',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsElementLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'userQueueTrackIds',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsElementBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'userQueueTrackIds',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsElementStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'userQueueTrackIds',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsElementEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'userQueueTrackIds',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsElementContains(String value,
+          {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'userQueueTrackIds',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsElementMatches(String pattern,
+          {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'userQueueTrackIds',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsElementIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'userQueueTrackIds',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsElementIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'userQueueTrackIds',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsLengthEqualTo(int length) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'userQueueTrackIds',
+        length,
+        true,
+        length,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'userQueueTrackIds',
+        0,
+        true,
+        0,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'userQueueTrackIds',
+        0,
+        false,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsLengthLessThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'userQueueTrackIds',
+        0,
+        true,
+        length,
+        include,
+      );
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsLengthGreaterThan(
+    int length, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'userQueueTrackIds',
+        length,
+        include,
+        999999,
+        true,
+      );
+    });
+  }
+
+  QueryBuilder<PlaybackState, PlaybackState, QAfterFilterCondition>
+      userQueueTrackIdsLengthBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.listLength(
+        r'userQueueTrackIds',
+        lower,
+        includeLower,
+        upper,
+        includeUpper,
+      );
+    });
+  }
 }
 
 extension PlaybackStateQueryObject
@@ -847,6 +1090,13 @@ extension PlaybackStateQueryWhereDistinct
       return query.addDistinctBy(r'trackId', caseSensitive: caseSensitive);
     });
   }
+
+  QueryBuilder<PlaybackState, PlaybackState, QDistinct>
+      distinctByUserQueueTrackIds() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'userQueueTrackIds');
+    });
+  }
 }
 
 extension PlaybackStateQueryProperty
@@ -880,6 +1130,13 @@ extension PlaybackStateQueryProperty
   QueryBuilder<PlaybackState, String?, QQueryOperations> trackIdProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'trackId');
+    });
+  }
+
+  QueryBuilder<PlaybackState, List<String>, QQueryOperations>
+      userQueueTrackIdsProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'userQueueTrackIds');
     });
   }
 }

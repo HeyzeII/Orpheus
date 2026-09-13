@@ -29,4 +29,9 @@ class PlaybackState {
 
   /// Whether shuffle mode was active when the state was last captured.
   bool shuffleModeEnabled = false;
+
+  /// Subset of [queueTrackIds] that were explicitly added by the user
+  /// via "Play next" or "Add to queue". Preserved across app restarts so
+  /// the "Your queue" section is correctly distinguished from context tracks.
+  List<String> userQueueTrackIds = [];
 }

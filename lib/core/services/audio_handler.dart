@@ -313,6 +313,10 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   bool get repeatEnabled => AudioPlayerService.instance.repeatEnabled;
   PlayerRepeatMode get repeatMode => AudioPlayerService.instance.repeatMode;
   List<Track> get queueTracks => AudioPlayerService.instance.queue;
+  List<Track> get userQueue => AudioPlayerService.instance.userQueue;
+  List<Track> get contextQueue => AudioPlayerService.instance.contextQueue;
+  List<Track> get history => AudioPlayerService.instance.history;
+  String get contextName => AudioPlayerService.instance.contextName;
   int get currentIndex => AudioPlayerService.instance.currentIndex;
   bool get canSkipNext => AudioPlayerService.instance.canSkipNext;
   bool get canSkipPrevious => AudioPlayerService.instance.canSkipPrevious;
@@ -325,25 +329,53 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   Stream<bool> get shuffleStream => AudioPlayerService.instance.shuffleStream;
   Stream<PlayerRepeatMode> get repeatStream => AudioPlayerService.instance.repeatStream;
   Stream<List<Track>> get queueTracksStream => AudioPlayerService.instance.queueStream;
+  Stream<List<Track>> get userQueueStream => AudioPlayerService.instance.userQueueStream;
+  Stream<List<Track>> get contextQueueStream => AudioPlayerService.instance.contextQueueStream;
+  Stream<List<Track>> get historyStream => AudioPlayerService.instance.historyStream;
+  Stream<String> get contextNameStream => AudioPlayerService.instance.contextNameStream;
   Stream<bool> get canSkipNextStream => AudioPlayerService.instance.canSkipNextStream;
 
   // ── Delegated Actions from OS / Bluetooth / UI controls ─────────────────
 
-  Future<void> loadQueue(List<Track> tracks, {int initialIndex = 0}) async {
-    if (tracks.isNotEmpty && initialIndex >= 0 && initialIndex < tracks.length) {
-      final initialTrack = tracks[initialIndex];
-      mediaItem.add(_mapTrackToMediaItem(initialTrack));
-    }
-    await AudioPlayerService.instance.loadPlaylist(tracks, initialIndex: initialIndex);
+  Future<void> playFromExternalContext(
+    Track track,
+    List<Track> contextTracks, {
+    String? contextName,
+  }) async {
+    mediaItem.add(_mapTrackToMediaItem(track));
+    await AudioPlayerService.instance.playFromExternalContext(
+      track,
+      contextTracks,
+      contextName: contextName,
+    );
   }
 
-  Future<void> playTrack(Track track, {List<Track>? contextQueue}) async {
-    if (contextQueue != null && contextQueue.isNotEmpty) {
-      final index = contextQueue.indexWhere((t) => t.trackId == track.trackId);
-      await loadQueue(contextQueue, initialIndex: index == -1 ? 0 : index);
-    } else {
-      await loadQueue([track], initialIndex: 0);
+  Future<void> loadQueue(
+    List<Track> tracks, {
+    int initialIndex = 0,
+    String? contextName,
+  }) async {
+    if (tracks.isEmpty) {
+      await AudioPlayerService.instance.stopAndReset();
+      return;
     }
+    final targetIdx = initialIndex.clamp(0, tracks.length - 1);
+    await playFromExternalContext(
+      tracks[targetIdx],
+      tracks,
+      contextName: contextName,
+    );
+  }
+
+  Future<void> playTrack(Track track, {List<Track>? contextQueue, String? contextName}) async {
+    final context = (contextQueue != null && contextQueue.isNotEmpty)
+        ? contextQueue
+        : [track];
+    await playFromExternalContext(
+      track,
+      context,
+      contextName: contextName,
+    );
   }
 
   Future<void> togglePlayPause() async {
@@ -401,14 +433,28 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   void addToQueue(Track track) {
     AudioPlayerService.instance.addToQueue(track);
   }
+  void clearUserQueue() => AudioPlayerService.instance.clearUserQueue();
 
-  void addToQueueTrack(Track track) {
-    AudioPlayerService.instance.addToQueue(track);
-  }
+  /// Clears all tracks except the currently playing one (user + context).
+  void clearQueue() => AudioPlayerService.instance.clearQueue();
 
-  void clearQueue() {
-    AudioPlayerService.instance.clearQueue();
-  }
+  void reorderUserQueue(int oldIndex, int newIndex) =>
+      AudioPlayerService.instance.reorderUserQueue(oldIndex, newIndex);
+
+  void reorderContextQueue(int oldIndex, int newIndex) =>
+      AudioPlayerService.instance.reorderContextQueue(oldIndex, newIndex);
+
+  Future<void> playUserQueueItem(int index) =>
+      AudioPlayerService.instance.playUserQueueItem(index);
+
+  Future<void> playContextQueueItem(int index) =>
+      AudioPlayerService.instance.playContextQueueItem(index);
+
+  Future<void> playHistoryItem(int index) =>
+      AudioPlayerService.instance.playHistoryItem(index);
+
+  void setContextName(String name) => AudioPlayerService.instance.setContextName(name);
+
 
   Future<void> stopAndReset() async {
     await AudioPlayerService.instance.stopAndReset();
@@ -452,7 +498,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
   @override
   Future<void> skipToQueueItem(int index) async {
-    await AudioPlayerService.instance.loadPlaylist(AudioPlayerService.instance.queue, initialIndex: index);
+    await AudioPlayerService.instance.skipToIndex(index);
   }
 
   @override

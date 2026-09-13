@@ -239,8 +239,8 @@ void main() {
 
       final result = await lyricsService.fetchLyrics(track);
 
-      // Should return null (transient skip) and never touch the network
-      expect(result, isNull);
+      // Should return offlineBlockedSentinel (contextual offline message) and never touch the network
+      expect(result, equals(offlineBlockedSentinel));
       expect(fakeHttp.sendCallCount, equals(0));
     });
 

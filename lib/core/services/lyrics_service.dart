@@ -9,6 +9,14 @@ import '../models/track.dart';
 import 'media_cache_service.dart';
 import 'network_guard_service.dart';
 
+/// Sentinel string returned by [LyricsService.fetchLyrics] when a network
+/// request is intentionally blocked because Strict Offline Mode is active.
+///
+/// The UI checks for this value to show a contextual "offline mode" message
+/// instead of a generic connection error. Regular network failures still
+/// return `null` so the "retry" flow is preserved.
+const String offlineBlockedSentinel = '__OFFLINE_BLOCKED__';
+
 /// Singleton service responsible for fetching and caching synced lyrics.
 ///
 /// ## Strategy
@@ -128,7 +136,12 @@ class LyricsService {
     // ── 5. Check network permissions (Strict Offline Mode & connectivity) ───
     final networkAccess = await _networkGuard.checkGeneralAccess();
     if (networkAccess != NetworkAccessResult.allowed) {
-      // Do not cache as notFound: allow retry when online or offline mode is off.
+      if (networkAccess == NetworkAccessResult.blockedByOfflineMode) {
+        // Return sentinel so the UI can display a contextual offline message
+        // instead of a generic connection error. Do NOT cache as notFound.
+        return offlineBlockedSentinel;
+      }
+      // No connectivity — allow retry later (return null).
       return null;
     }
 

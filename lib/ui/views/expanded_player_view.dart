@@ -989,7 +989,7 @@ class _ExpandedUtilityPanelState extends State<_ExpandedUtilityPanel>
   }
 }
 
-// ── Queue Tab (Tidal Style) ───────────────────────────────────────────────────
+// ── Queue Tab (Dual Queue — Three Sections) ───────────────────────────────────
 
 class _QueueTab extends StatefulWidget {
   const _QueueTab();
@@ -999,80 +999,48 @@ class _QueueTab extends StatefulWidget {
 }
 
 class _QueueTabState extends State<_QueueTab> {
-  late ScrollController _scrollController;
-
   static const double _itemTileHeight = 56.0;
-  static const double _historyHeaderHeight = 34.0;
-  static const double _dividerHeight = 17.0; // 8 padding + 1 divider + 8 padding
-  static const double _currentHeaderHeight = 34.0;
-  static const double _upcomingHeaderHeight = 42.0;
 
-  @override
-  void initState() {
-    super.initState();
-    final handler = OrpheusAudioHandler.hasInstance ? OrpheusAudioHandler.instance : null;
-    final queue = handler?.queueTracks ?? const <Track>[];
-    final currentIndex = handler?.currentIndex ?? -1;
-    final historyCount = (currentIndex > 0 && currentIndex < queue.length) ? currentIndex : 0;
-
-    final view = WidgetsBinding.instance.platformDispatcher.views.firstOrNull;
-    final viewportHeight = (view != null && view.devicePixelRatio > 0)
-        ? view.physicalSize.height / view.devicePixelRatio
-        : 700.0;
-
-    final double headerHeight = historyCount > 0 ? (_historyHeaderHeight + _dividerHeight) : 0.0;
-    final double totalEstimatedHeight = (queue.length * _itemTileHeight) +
-        (historyCount > 0 ? (_historyHeaderHeight + _dividerHeight) : 0.0) +
-        _currentHeaderHeight +
-        _dividerHeight +
-        _upcomingHeaderHeight +
-        40.0;
-    final double maxOffset = (totalEstimatedHeight - viewportHeight).clamp(0.0, double.infinity);
-
-    final double targetOffset = historyCount > 0
-        ? (headerHeight + (historyCount * _itemTileHeight) - (viewportHeight * 0.25))
-        : 0.0;
-
-    final double initialOffset = targetOffset.clamp(
-      0.0,
-      maxOffset > 0 ? maxOffset : (targetOffset > 0 ? targetOffset : 0.0),
-    );
-    _scrollController = ScrollController(initialScrollOffset: initialOffset);
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  Widget _buildCover(Track track, {double size = 40, bool isPast = false}) {
+  Widget _buildCover(Track track, {double size = 40, bool dimmed = false}) {
     final coverPath = track.customMetadata.customCoverPath;
-    final hasArt = coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
-
+    final hasArt =
+        coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
     return Opacity(
-      opacity: isPast ? 0.45 : 1.0,
+      opacity: dimmed ? 0.5 : 1.0,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(6),
         child: SizedBox(
           width: size,
           height: size,
           child: hasArt
-              ? Image.file(File(coverPath), fit: BoxFit.cover, cacheWidth: (size * 2).toInt())
+              ? Image.file(File(coverPath), fit: BoxFit.cover,
+                  cacheWidth: (size * 2).toInt())
               : const ColoredBox(
                   color: AppTheme.bgHover,
-                  child: Icon(Icons.music_note_rounded, color: AppTheme.textHint, size: 20),
+                  child: Icon(Icons.music_note_rounded,
+                      color: AppTheme.textHint, size: 20),
                 ),
         ),
       ),
     );
   }
 
+  Widget _buildDragHandle(int index, String keyPrefix) {
+    return ReorderableDragStartListener(
+      index: index,
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 8),
+        child: Icon(Icons.drag_handle_rounded, color: Colors.white38, size: 20),
+      ),
+    );
+  }
+
   Widget _buildTrackTile({
     required Track track,
-    required bool isPast,
+    required bool isCurrentTrack,
     required VoidCallback onTap,
     required Widget trailing,
+    bool dimmed = false,
   }) {
     return SizedBox(
       height: _itemTileHeight,
@@ -1080,15 +1048,15 @@ class _QueueTabState extends State<_QueueTab> {
         dense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
         onTap: onTap,
-        leading: _buildCover(track, isPast: isPast),
+        leading: _buildCover(track, dimmed: dimmed),
         title: Text(
           track.displayTitle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: isPast ? Colors.white.withValues(alpha: 0.45) : Colors.white,
-            fontSize: 13,
-            fontWeight: isPast ? FontWeight.w400 : FontWeight.w500,
+            color: isCurrentTrack ? AppTheme.accent : Colors.white,
+            fontSize: isCurrentTrack ? 14 : 13,
+            fontWeight: isCurrentTrack ? FontWeight.bold : FontWeight.w500,
           ),
         ),
         subtitle: Text(
@@ -1096,7 +1064,7 @@ class _QueueTabState extends State<_QueueTab> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: isPast
+            color: dimmed
                 ? Colors.white.withValues(alpha: 0.3)
                 : Colors.white.withValues(alpha: 0.5),
             fontSize: 11,
@@ -1107,26 +1075,41 @@ class _QueueTabState extends State<_QueueTab> {
     );
   }
 
+  Widget _sectionHeader(String label, {Widget? action}) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textHint,
+              letterSpacing: 1.2,
+            ),
+          ),
+          ?action,
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!OrpheusAudioHandler.hasInstance) return const SizedBox.shrink();
     final handler = OrpheusAudioHandler.instance;
+
     return StreamBuilder<List<Track>>(
       stream: handler.queueTracksStream,
       initialData: handler.queueTracks,
-      builder: (context, snap) {
-        final queue = snap.data ?? handler.queueTracks;
-        final currentIndex = handler.currentIndex;
+      builder: (context, qSnap) {
         final currentTrack = handler.currentTrack;
+        final userQueue = handler.userQueue;
+        final contextQueue = handler.contextQueue;
 
-        final historyTracks = (currentIndex > 0 && currentIndex < queue.length)
-            ? queue.sublist(0, currentIndex)
-            : <Track>[];
-        final upcomingTracks = (currentIndex >= 0 && currentIndex < queue.length - 1)
-            ? queue.sublist(currentIndex + 1)
-            : (currentIndex < 0 ? queue : <Track>[]);
-
-        if (queue.isEmpty && currentTrack == null) {
+        if (currentTrack == null && userQueue.isEmpty && contextQueue.isEmpty) {
           return const Center(
             child: Text('La cola está vacía',
                 style: TextStyle(color: Colors.white54, fontSize: 15)),
@@ -1134,153 +1117,122 @@ class _QueueTabState extends State<_QueueTab> {
         }
 
         return CustomScrollView(
-          controller: _scrollController,
           physics: const BouncingScrollPhysics(),
           slivers: [
-            // ── 1. HISTORIAL DE REPRODUCCIÓN ──────────────────────────────────
-            if (historyTracks.isNotEmpty) ...[
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
-                  child: Text(
-                    'HISTORIAL DE REPRODUCCIÓN',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textHint,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ),
-              ),
-              SliverFixedExtentList(
-                itemExtent: _itemTileHeight,
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) {
-                    final track = historyTracks[i];
-                    return _buildTrackTile(
-                      track: track,
-                      isPast: true,
-                      onTap: () => OrpheusAudioHandler.instance.skipToQueueItem(i),
-                      trailing: Icon(
-                        Icons.history_rounded,
-                        color: Colors.white.withValues(alpha: 0.3),
-                        size: 18,
-                      ),
-                    );
-                  },
-                  childCount: historyTracks.length,
-                ),
-              ),
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Divider(color: AppTheme.divider, height: 1),
-                ),
-              ),
-            ],
-
-            // ── 2. REPRODUCIENDO ACTUALMENTE ──────────────────────────────────
+            // ── 1. REPRODUCIENDO ACTUALMENTE ──────────────────────────────
             if (currentTrack != null) ...[
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
-                  child: Text(
-                    'REPRODUCIENDO ACTUALMENTE',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textHint,
-                      letterSpacing: 1.2,
+              SliverToBoxAdapter(
+                child: _sectionHeader('REPRODUCIENDO ACTUALMENTE'),
+              ),
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: _itemTileHeight,
+                  child: ListTile(
+                    dense: true,
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                    leading: _buildCover(currentTrack),
+                    title: Text(
+                      currentTrack.displayTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppTheme.accent,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    subtitle: Text(
+                      currentTrack.displayArtist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: AppTheme.textSecondary, fontSize: 12),
+                    ),
+                    trailing: StreamBuilder<bool>(
+                      stream: handler.isPlayingStream,
+                      initialData: handler.isPlaying,
+                      builder: (_, snap) => AnimatedEqualizer(
+                        isPlaying: snap.data ?? false,
+                        barCount: 3,
+                        barWidth: 2.8,
+                        maxHeight: 16.0,
+                        minHeight: 4.0,
+                        spacing: 2.5,
+                      ),
                     ),
                   ),
                 ),
               ),
-              SliverFixedExtentList(
-                itemExtent: _itemTileHeight,
-                delegate: SliverChildBuilderDelegate(
-                  (context, _) {
-                    return SizedBox(
-                      height: _itemTileHeight,
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-                        leading: _buildCover(currentTrack),
-                        title: Text(
-                          currentTrack.displayTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppTheme.accent,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        subtitle: Text(
-                          currentTrack.displayArtist,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                        ),
-                        trailing: StreamBuilder<bool>(
-                          stream: OrpheusAudioHandler.instance.isPlayingStream,
-                          initialData: OrpheusAudioHandler.instance.isPlaying,
-                          builder: (_, playSnap) => AnimatedEqualizer(
-                            isPlaying: playSnap.data ?? false,
-                            barCount: 3,
-                            barWidth: 2.8,
-                            maxHeight: 16.0,
-                            minHeight: 4.0,
-                            spacing: 2.5,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                  childCount: 1,
-                ),
-              ),
               const SliverToBoxAdapter(
                 child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
+                  padding: EdgeInsets.symmetric(vertical: 6),
                   child: Divider(color: AppTheme.divider, height: 1),
                 ),
               ),
             ],
 
-            // ── 3. A CONTINUACIÓN ──────────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(4, 4, 4, 8),
-                    child: Text(
-                      'A CONTINUACIÓN:',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.textHint,
-                        letterSpacing: 1.2,
-                      ),
+            // ── 2. TU COLA DE REPRODUCCIÓN (userQueue - solo si no está vacía) ──
+            if (userQueue.isNotEmpty) ...[
+              SliverToBoxAdapter(
+                child: _sectionHeader(
+                  'TU COLA DE REPRODUCCIÓN',
+                  action: TextButton.icon(
+                    onPressed: handler.clearUserQueue,
+                    icon: const Icon(Icons.playlist_remove_rounded,
+                        size: 15, color: Colors.white60),
+                    label: const Text('Limpiar',
+                        style: TextStyle(
+                            color: Colors.white60,
+                            fontSize: 11,
+                            fontFamily: 'Inter')),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
-                  if (queue.isNotEmpty)
-                    TextButton.icon(
-                      onPressed: OrpheusAudioHandler.instance.clearQueue,
-                      icon: const Icon(Icons.clear_all_rounded, size: 16, color: Colors.white70),
-                      label: const Text('Limpiar',
-                          style: TextStyle(color: Colors.white70, fontSize: 12, fontFamily: 'Inter')),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        minimumSize: Size.zero,
-                      ),
+                ),
+              ),
+              SliverReorderableList(
+                itemCount: userQueue.length,
+                onReorder: handler.reorderUserQueue,
+                itemBuilder: (context, index) {
+                  final track = userQueue[index];
+                  return Material(
+                    key: ValueKey('user_${track.trackId}_$index'),
+                    color: Colors.transparent,
+                    child: _buildTrackTile(
+                      track: track,
+                      isCurrentTrack: false,
+                      onTap: () => handler.playUserQueueItem(index),
+                      trailing: _buildDragHandle(index, 'user'),
                     ),
-                ],
+                  );
+                },
+              ),
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 6),
+                  child: Divider(color: AppTheme.divider, height: 1),
+                ),
+              ),
+            ],
+
+            // ── 3. A CONTINUACIÓN: [Origen] (contextQueue) ────────────────
+            SliverToBoxAdapter(
+              child: StreamBuilder<String>(
+                stream: handler.contextNameStream,
+                initialData: handler.contextName,
+                builder: (context, nameSnap) {
+                  final name = nameSnap.data ?? 'Biblioteca';
+                  return _sectionHeader('A CONTINUACIÓN: ${name.toUpperCase()}');
+                },
               ),
             ),
 
-            if (upcomingTracks.isEmpty)
+            if (contextQueue.isEmpty)
               const SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.symmetric(vertical: 24),
@@ -1291,29 +1243,25 @@ class _QueueTabState extends State<_QueueTab> {
                 ),
               )
             else
-              SliverFixedExtentList(
-                itemExtent: _itemTileHeight,
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final track = upcomingTracks[index];
-                    final actualIndex = currentIndex + 1 + index;
-                    return _buildTrackTile(
+              SliverReorderableList(
+                itemCount: contextQueue.length,
+                onReorder: handler.reorderContextQueue,
+                itemBuilder: (context, index) {
+                  final track = contextQueue[index];
+                  return Material(
+                    key: ValueKey('ctx_${track.trackId}_$index'),
+                    color: Colors.transparent,
+                    child: _buildTrackTile(
                       track: track,
-                      isPast: false,
-                      onTap: () => OrpheusAudioHandler.instance.skipToQueueItem(actualIndex),
-                      trailing: const Icon(
-                        Icons.drag_handle_rounded,
-                        color: Colors.white38,
-                        size: 20,
-                      ),
-                    );
-                  },
-                  childCount: upcomingTracks.length,
-                ),
+                      isCurrentTrack: false,
+                      onTap: () => handler.playContextQueueItem(index),
+                      trailing: _buildDragHandle(index, 'ctx'),
+                    ),
+                  );
+                },
               ),
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 32),
-            ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 32)),
           ],
         );
       },
@@ -1452,7 +1400,7 @@ class _TrackMoreMenuState extends State<_TrackMoreMenu> {
           OrpheusAudioHandler.instance.playNext(widget.track);
           AppToast.showText(context, 'Se reproducirá a continuación');
         } else if (value == 'add_to_queue') {
-          OrpheusAudioHandler.instance.addToQueueTrack(widget.track);
+          OrpheusAudioHandler.instance.addToQueue(widget.track);
           AppToast.showText(context, 'Añadida a la cola');
         } else if (value is Playlist) {
           LocalDatabase.instance

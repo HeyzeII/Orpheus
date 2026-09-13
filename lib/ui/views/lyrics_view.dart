@@ -9,6 +9,7 @@ import '../../core/models/track.dart';
 import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/lyrics_service.dart';
+import 'settings_view.dart';
 import '../../core/utils/lrc_parser.dart';
 import '../theme/app_theme.dart';
 
@@ -159,7 +160,16 @@ class _LyricsViewState extends State<LyricsView> {
             return const _LyricsLoadingIndicator();
           }
 
-          if (snapshot.hasError || snapshot.data == null) {
+          if (snapshot.hasError) {
+            return _LyricsErrorCard(onRetry: _loadLyrics);
+          }
+
+          // Offline mode sentinel — show contextual message, not a generic error.
+          if (snapshot.data == offlineBlockedSentinel) {
+            return const _OfflineLyricsCard();
+          }
+
+          if (snapshot.data == null) {
             return _LyricsErrorCard(onRetry: _loadLyrics);
           }
 
@@ -824,6 +834,108 @@ class _NoLyricsCard extends StatelessWidget {
                       ),
                       icon: const Icon(Icons.refresh, size: 16),
                       label: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Offline mode blocked card
+// ════════════════════════════════════════════════════════════════════════════
+
+class _OfflineLyricsCard extends StatelessWidget {
+  const _OfflineLyricsCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 360),
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: AppTheme.bgSurface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFB45309).withValues(alpha: 0.4),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFB45309).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.wifi_off_rounded,
+                        size: 28,
+                        color: Color(0xFFF59E0B),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Modo Offline Estricto activo',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                            color: AppTheme.textPrimary,
+                            fontFamily: 'Inter',
+                          ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'Desactívalo en Ajustes para buscar\nletras en red.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 13,
+                        color: AppTheme.textSecondary,
+                        height: 1.6,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    FilledButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const SettingsView(),
+                          ),
+                        );
+                      },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFF59E0B),
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                      ),
+                      icon: const Icon(Icons.settings_rounded, size: 16),
+                      label: const Text(
+                        'Abrir Ajustes',
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ],
                 ),
