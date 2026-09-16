@@ -110,6 +110,8 @@ void main() {
             jsonEncode({
               'results': [
                 {
+                  'artistName': 'Clean Artist',
+                  'trackName': 'Clean Title',
                   'artworkUrl100': 'https://example.com/artwork100x100bb.jpg',
                 }
               ]
@@ -139,6 +141,93 @@ void main() {
       expect(updated.customMetadata.customCoverPath!.contains(expectedHash), isTrue);
 
       // Clean up files created
+      final file = File(updated.customMetadata.customCoverPath!);
+      if (file.existsSync()) {
+        file.deleteSync();
+      }
+    });
+
+    test('Candidate with completely different artist is rejected as notFound', () async {
+      final db = FakeLocalDatabase();
+      final track = Track()
+        ..trackId = 'track_mismatch'
+        ..filePath = '/music/test_mismatch.mp3'
+        ..title = 'Unique Song'
+        ..artist = 'Target Artist'
+        ..fileType = FileType.mp3;
+
+      await db.saveTrack(track);
+
+      final client = FakeHttpClient((request) async {
+        if (request.url.host == 'itunes.apple.com') {
+          return http.Response(
+            jsonEncode({
+              'results': [
+                {
+                  'artistName': 'Completely Unrelated Artist',
+                  'trackName': 'Unique Song',
+                  'artworkUrl100': 'https://example.com/wrong_cover.jpg',
+                }
+              ]
+            }),
+            200,
+          );
+        }
+        return http.Response('', 404);
+      });
+
+      final fetcher = AlbumArtFetcherService.internal(db: db, client: client);
+      await fetcher.processLibrary();
+
+      final updated = await db.getTrackByTrackId('track_mismatch');
+      expect(updated, isNotNull);
+      expect(updated!.artStatus, equals(FetchStatus.notFound));
+      expect(updated.customMetadata.customCoverPath, isNull);
+    });
+
+    test('Candidate with high similarity (accents and suffixes) is accepted', () async {
+      final db = FakeLocalDatabase();
+      final track = Track()
+        ..trackId = 'track_fuzzy'
+        ..filePath = '/music/test_fuzzy.mp3'
+        ..title = 'Canción de Prueba'
+        ..artist = 'Café Tacvba'
+        ..album = 'Re (Remastered)'
+        ..fileType = FileType.mp3;
+
+      await db.saveTrack(track);
+
+      final client = FakeHttpClient((request) async {
+        if (request.url.host == 'itunes.apple.com') {
+          expect(request.url.queryParameters['limit'], equals('5'));
+          return http.Response(
+            jsonEncode({
+              'results': [
+                {
+                  'artistName': 'Cafe Tacvba',
+                  'trackName': 'Cancion de Prueba',
+                  'collectionName': 'Re',
+                  'artworkUrl100': 'https://example.com/tacvba100x100bb.jpg',
+                }
+              ]
+            }),
+            200,
+          );
+        } else if (request.url.host == 'example.com') {
+          return http.Response.bytes([10, 20, 30], 200);
+        }
+        return http.Response('', 404);
+      });
+
+      final fetcher = AlbumArtFetcherService.internal(db: db, client: client);
+      await fetcher.processLibrary();
+
+      final updated = await db.getTrackByTrackId('track_fuzzy');
+      expect(updated, isNotNull);
+      expect(updated!.artStatus, equals(FetchStatus.success));
+      expect(updated.customMetadata.customCoverPath, isNotNull);
+
+      // Clean up file created
       final file = File(updated.customMetadata.customCoverPath!);
       if (file.existsSync()) {
         file.deleteSync();

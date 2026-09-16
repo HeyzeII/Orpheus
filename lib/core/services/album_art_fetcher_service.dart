@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import '../database/local_database.dart';
 import '../models/track.dart';
+import '../utils/fuzzy_matcher.dart';
 import '../utils/string_sanitizer.dart';
 import 'media_cache_service.dart';
 import 'network_guard_service.dart';
@@ -228,7 +229,7 @@ class AlbumArtFetcherService {
     final url = Uri.parse('https://itunes.apple.com/search')
         .replace(queryParameters: {
           'term': searchTerm,
-          'limit': '1',
+          'limit': '5',
           'entity': 'song',
         });
 
@@ -257,10 +258,31 @@ class AlbumArtFetcherService {
         return;
       }
 
-      final item = results.first as Map<String, dynamic>;
-      var artUrlStr = item['artworkUrl100'] as String?;
+      // Evaluate candidates with fuzzy similarity validation (threshold: >= 0.75)
+      Map<String, dynamic>? bestCandidate;
+      double bestScore = 0.0;
+
+      for (final rawItem in results) {
+        if (rawItem is! Map<String, dynamic>) continue;
+        final score = evaluateCandidateMatch(track, rawItem);
+        if (score > bestScore) {
+          bestScore = score;
+          bestCandidate = rawItem;
+        }
+      }
+
+      const minMatchThreshold = 0.75;
+      if (bestCandidate == null || bestScore < minMatchThreshold) {
+        debugPrint(
+            '[Art Fetcher] ❌ Ningún candidato superó el umbral de similitud ($bestScore < $minMatchThreshold) para: $displayArtist - $displayTitle');
+        track.artStatus = FetchStatus.notFound;
+        await _db.saveTrack(track);
+        return;
+      }
+
+      var artUrlStr = bestCandidate['artworkUrl100'] as String?;
       if (artUrlStr == null || artUrlStr.isEmpty) {
-        debugPrint('[Art Fetcher] ❌ URL de carátula vacía en iTunes para: $displayArtist - $displayTitle');
+        debugPrint('[Art Fetcher] ❌ URL de carátula vacía en candidato iTunes para: $displayArtist - $displayTitle');
         track.artStatus = FetchStatus.notFound;
         await _db.saveTrack(track);
         return;
@@ -286,9 +308,107 @@ class AlbumArtFetcherService {
       track.customMetadata.customCoverPath = savedPath;
       track.artStatus = FetchStatus.success;
       await _db.saveTrack(track);
-      debugPrint('[Art Fetcher] 🎉 Portada descargada y asociada en caché persistente para: $displayArtist - $displayTitle');
+      debugPrint('[Art Fetcher] 🎉 Portada descargada y asociada en caché persistente para: $displayArtist - $displayTitle (score: ${bestScore.toStringAsFixed(2)})');
     } catch (e) {
       debugPrint('[Art Fetcher] ⚠️ Excepción buscando portada para: $displayArtist - $displayTitle: $e');
     }
+  }
+
+  // ── Fuzzy Matching & Normalization Helpers ─────────────────────────────────
+
+  /// Normalizes a string for fuzzy metadata comparison by:
+  /// - Lowercasing and trimming
+  /// - Removing accents/diacritics
+  /// - Removing cosmetic suffixes like "(Remastered)", "[Live]", "(feat. X)", etc.
+  /// - Removing punctuation and collapsing multiple spaces
+  static String normalizeForMatching(String input) {
+    var s = input.toLowerCase().trim();
+
+    // 1. Remove diacritics / accents
+    const withDia = 'àáâãäåòóôõöøèéêëðçìíîïùúûüñšÿýž';
+    const withoutDia = 'aaaaaaooooooeeeeeciiiiuuuunsyyz';
+    for (int i = 0; i < withDia.length; i++) {
+      s = s.replaceAll(withDia[i], withoutDia[i]);
+    }
+
+    // 2. Remove cosmetic modifier patterns / suffixes
+    final suffixPattern = RegExp(
+      r'[\(\[]\s*(remaster(ed)?|deluxe(\s+edition)?|live(\s+at\s+[^\)\]]+)?|bonus(\s+track)?|anniversary(\s+edition)?|expanded|special\s+edition|version|feat\.?|ft\.?|official(\s+(music|lyric|audio)?\s*(video|audio)?)?|sub\s+esp)[^\)\]]*[\)\]]',
+      caseSensitive: false,
+    );
+    s = s.replaceAll(suffixPattern, ' ');
+
+    // 3. Remove punctuation and non-alphanumeric characters (keeping spaces)
+    s = s.replaceAll(RegExp(r'[^\p{L}\p{N} ]', unicode: true), ' ');
+
+    // 4. Collapse spaces and trim
+    s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+    return s;
+  }
+
+  /// Computes a similarity score between 0.0 and 1.0 between [target] and [candidate].
+  static double computeSimilarity(String target, String candidate) {
+    final t = normalizeForMatching(target);
+    final c = normalizeForMatching(candidate);
+
+    if (t.isEmpty || c.isEmpty) return 0.0;
+    if (t == c) return 1.0;
+
+    // Substring containment check: if one contains the other and covers majority
+    if (t.contains(c) || c.contains(t)) {
+      final minLen = t.length < c.length ? t.length : c.length;
+      final maxLen = t.length > c.length ? t.length : c.length;
+      if (maxLen > 0 && (minLen / maxLen) >= 0.6) {
+        final ratio = (minLen / maxLen) * 0.95;
+        final dice = FuzzyMatcher.similarity(t, c);
+        return dice > ratio ? dice : ratio;
+      }
+    }
+
+    final dice = FuzzyMatcher.similarity(t, c);
+    final maxLen = t.length > c.length ? t.length : c.length;
+    final lev = maxLen > 0 ? (1.0 - FuzzyMatcher.levenshteinDistance(t, c) / maxLen) : 0.0;
+
+    return dice > lev ? dice : lev;
+  }
+
+  /// Evaluates an iTunes candidate item against the given [track], returning a confidence
+  /// score between 0.0 and 1.0.
+  static double evaluateCandidateMatch(Track track, Map<String, dynamic> item) {
+    final targetArtist = track.displayArtist;
+    final targetTitle = track.displayTitle;
+    final targetAlbum = track.displayAlbum != 'Unknown Album' && track.displayAlbum != 'Artista Desconocido'
+        ? track.displayAlbum
+        : '';
+
+    final candidateArtist = (item['artistName'] as String?) ?? '';
+    final candidateTitle = (item['trackName'] as String?) ?? '';
+    final candidateAlbum = (item['collectionName'] as String?) ?? '';
+
+    // 1. Artist similarity
+    final artistSim = computeSimilarity(targetArtist, candidateArtist);
+
+    // 2. Title similarity
+    final titleSim = computeSimilarity(targetTitle, candidateTitle);
+
+    // 3. Album similarity
+    final albumSim = targetAlbum.isNotEmpty ? computeSimilarity(targetAlbum, candidateAlbum) : 0.0;
+
+    // Best content similarity (Title or Album)
+    final contentSim = albumSim > titleSim ? albumSim : titleSim;
+
+    // Disqualify if artist is completely mismatched (< 0.5)
+    if (artistSim < 0.5) {
+      return 0.0;
+    }
+
+    // Disqualify if content (title/album) is completely mismatched (< 0.5)
+    if (contentSim < 0.5) {
+      return 0.0;
+    }
+
+    // Weighted score: 50% artist + 50% content (album/title)
+    return (artistSim * 0.5) + (contentSim * 0.5);
   }
 }
