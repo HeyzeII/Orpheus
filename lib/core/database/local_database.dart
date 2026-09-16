@@ -315,15 +315,13 @@ class LocalDatabase {
 
     track.artists = StringSanitizer.splitArtists(track.displayArtist);
 
-    if (resetMediaFlags) {
-      track.artStatus = FetchStatus.none;
-      track.lyricsStatus = FetchStatus.none;
-      track.syncedLyrics = null;
-    }
-
     if (newCustomCoverPath != null && newCustomCoverPath.isNotEmpty) {
       track.customMetadata.customCoverPath = newCustomCoverPath;
       track.artStatus = FetchStatus.custom;
+    } else if (resetMediaFlags) {
+      track.artStatus = FetchStatus.none;
+      track.lyricsStatus = FetchStatus.none;
+      track.syncedLyrics = null;
     }
 
     await saveTrack(track);

@@ -8,6 +8,7 @@ import '../../core/database/local_database.dart';
 import '../../core/models/track.dart';
 import '../../core/services/album_art_fetcher_service.dart';
 import '../../core/services/lyrics_service.dart';
+import '../../core/services/media_cache_service.dart';
 import '../theme/app_theme.dart';
 
 /// Premium metadata editor dialog — Tidal-inspired dark aesthetic.
@@ -79,33 +80,60 @@ class _EditMetadataDialogState extends State<EditMetadataDialog> {
     final track = widget.track;
     String? persistentCoverPath;
 
+    final trimmedArtist = _artistCtrl.text.trim();
+    final trimmedTitle = _titleCtrl.text.trim();
+    final trimmedAlbum = _albumCtrl.text.trim();
+
+    final effectiveArtist = trimmedArtist.isNotEmpty ? trimmedArtist : track.displayArtist;
+    final effectiveTitle = trimmedTitle.isNotEmpty ? trimmedTitle : track.displayTitle;
+    final effectiveSecondary = trimmedAlbum.isNotEmpty ? trimmedAlbum : effectiveTitle;
+
+    final musicDir = track.filePath.isNotEmpty ? File(track.filePath).parent.path : null;
+
     if (_selectedNewCoverPath != null) {
       final tempFile = File(_selectedNewCoverPath!);
       if (tempFile.existsSync()) {
-        final supportDir = await getApplicationSupportDirectory();
-        final coverDir = Directory('${supportDir.path}/cover_art');
-        if (!coverDir.existsSync()) {
-          coverDir.createSync(recursive: true);
+        final bytes = await tempFile.readAsBytes();
+        if (bytes.isNotEmpty) {
+          // Save directly in .orpheus_cache/covers/<hash>.jpg using SHA256("${artist}_${album.isNotEmpty ? album : title}")
+          persistentCoverPath = await MediaCacheService.instance.saveCover(
+            effectiveArtist,
+            effectiveSecondary,
+            bytes,
+            musicDir,
+          );
         }
 
-        final ext = _selectedNewCoverPath!.toLowerCase().endsWith('.png') ? '.png' : '.jpg';
-        final destinationFile = File('${coverDir.path}/custom_${track.trackId}$ext');
-        await tempFile.copy(destinationFile.path);
-        persistentCoverPath = destinationFile.path;
+        // Also save to application support directory as fallback
+        try {
+          final supportDir = await getApplicationSupportDirectory();
+          final coverDir = Directory('${supportDir.path}/cover_art');
+          if (!coverDir.existsSync()) {
+            coverDir.createSync(recursive: true);
+          }
+          final ext = _selectedNewCoverPath!.toLowerCase().endsWith('.png') ? '.png' : '.jpg';
+          final destinationFile = File('${coverDir.path}/custom_${track.trackId}$ext');
+          await tempFile.copy(destinationFile.path);
+          persistentCoverPath ??= destinationFile.path;
+        } catch (_) {}
       }
     }
 
+    final hasTextChanges = trimmedTitle != (track.title ?? '') ||
+        trimmedArtist != (track.artist ?? '') ||
+        trimmedAlbum != (track.album ?? '');
+
     await LocalDatabase.instance.updateTrackMetadata(
       track,
-      newTitle: _titleCtrl.text,
-      newArtist: _artistCtrl.text,
-      newAlbum: _albumCtrl.text,
+      newTitle: trimmedTitle,
+      newArtist: trimmedArtist,
+      newAlbum: trimmedAlbum,
       newCustomCoverPath: persistentCoverPath,
-      resetMediaFlags: _reidentify,
+      resetMediaFlags: _reidentify || (_selectedNewCoverPath == null && hasTextChanges),
     );
 
-    // Fire re-identification in the background — don't block the UI.
-    if (_reidentify) {
+    // Fire re-identification in the background if requested or if metadata changed without a custom cover
+    if (_reidentify || (_selectedNewCoverPath == null && hasTextChanges)) {
       AlbumArtFetcherService.instance.processTrack(track);
       LyricsService.instance.fetchLyrics(track);
     }

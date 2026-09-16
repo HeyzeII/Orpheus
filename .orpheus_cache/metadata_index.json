@@ -1,0 +1,98 @@
+{
+  "file:/music/test_edit.mp3": {
+    "title": "New Title",
+    "artist": "New Artist",
+    "album": "New Album",
+    "artists": [
+      "New Artist"
+    ],
+    "customCoverPath": "/path/to/custom_cover.jpg",
+    "isEdited": true,
+    "filePath": "/music/test_edit.mp3",
+    "relativeFilePath": "music/test_edit.mp3",
+    "fileStem": "test_edit",
+    "originalArtist": "New Artist",
+    "originalTitle": "New Title",
+    "updatedAt": 1789582115444
+  },
+  "rel:music/test_edit.mp3": {
+    "title": "New Title",
+    "artist": "New Artist",
+    "album": "New Album",
+    "artists": [
+      "New Artist"
+    ],
+    "customCoverPath": "/path/to/custom_cover.jpg",
+    "isEdited": true,
+    "filePath": "/music/test_edit.mp3",
+    "relativeFilePath": "music/test_edit.mp3",
+    "fileStem": "test_edit",
+    "originalArtist": "New Artist",
+    "originalTitle": "New Title",
+    "updatedAt": 1789582115444
+  },
+  "rel:test_edit.mp3": {
+    "title": "New Title",
+    "artist": "New Artist",
+    "album": "New Album",
+    "artists": [
+      "New Artist"
+    ],
+    "customCoverPath": "/path/to/custom_cover.jpg",
+    "isEdited": true,
+    "filePath": "/music/test_edit.mp3",
+    "relativeFilePath": "music/test_edit.mp3",
+    "fileStem": "test_edit",
+    "originalArtist": "New Artist",
+    "originalTitle": "New Title",
+    "updatedAt": 1789582115444
+  },
+  "stem:test_edit": {
+    "title": "New Title",
+    "artist": "New Artist",
+    "album": "New Album",
+    "artists": [
+      "New Artist"
+    ],
+    "customCoverPath": "/path/to/custom_cover.jpg",
+    "isEdited": true,
+    "filePath": "/music/test_edit.mp3",
+    "relativeFilePath": "music/test_edit.mp3",
+    "fileStem": "test_edit",
+    "originalArtist": "New Artist",
+    "originalTitle": "New Title",
+    "updatedAt": 1789582115444
+  },
+  "hash:38fab659dc809086446091c18afa649c8147b8f0be2bd7d77874e6d52f741152": {
+    "title": "New Title",
+    "artist": "New Artist",
+    "album": "New Album",
+    "artists": [
+      "New Artist"
+    ],
+    "customCoverPath": "/path/to/custom_cover.jpg",
+    "isEdited": true,
+    "filePath": "/music/test_edit.mp3",
+    "relativeFilePath": "music/test_edit.mp3",
+    "fileStem": "test_edit",
+    "originalArtist": "New Artist",
+    "originalTitle": "New Title",
+    "updatedAt": 1789582115444
+  },
+  "38fab659dc809086446091c18afa649c8147b8f0be2bd7d77874e6d52f741152": {
+    "title": "New Title",
+    "artist": "New Artist",
+    "album": "New Album",
+    "artists": [
+      "New Artist"
+    ],
+    "customCoverPath": "/path/to/custom_cover.jpg",
+    "isEdited": true,
+    "filePath": "/music/test_edit.mp3",
+    "relativeFilePath": "music/test_edit.mp3",
+    "fileStem": "test_edit",
+    "originalArtist": "New Artist",
+    "originalTitle": "New Title",
+    "updatedAt": 1789582115444
+  }
+}

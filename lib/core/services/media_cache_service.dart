@@ -178,6 +178,27 @@ class MediaCacheService {
     return file.path;
   }
 
+  /// Deletes the cached cover file for [artist] and [title] if present.
+  Future<void> deleteCachedCover(String artist, String title, [String? musicDirectoryPath]) async {
+    if (artist.trim().isEmpty && title.trim().isEmpty) return;
+    final hash = computeMediaHash(artist, title);
+    try {
+      final coversDir = await getCoversDirectory(musicDirectoryPath);
+      final file = File('${coversDir.path}/$hash.jpg');
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
+
+    try {
+      final supportDir = await getApplicationSupportDirectory();
+      final legacyFile = File('${supportDir.path}/covers/$hash.jpg');
+      if (await legacyFile.exists()) {
+        await legacyFile.delete();
+      }
+    } catch (_) {}
+  }
+
   // ── Lyrics Cache ───────────────────────────────────────────────────────────
 
   /// Returns the lyrics directory (`.orpheus_cache/lyrics`), creating it if needed.

@@ -331,5 +331,79 @@ void main() {
       // Should search for "Nico Borie In the End en Español" instead of "Como sonaria..." filename fallback
       expect(requestedTerm, equals('Nico Borie In the End en Español'));
     });
+
+    test('resetTrackArtStatus resets artStatus to none and clears cached cover file', () async {
+      final db = FakeLocalDatabase();
+      final track = Track()
+        ..trackId = 'track_reset'
+        ..filePath = '/music/test_reset.mp3'
+        ..title = 'Reset Title'
+        ..artist = 'Reset Artist'
+        ..artStatus = FetchStatus.notFound
+        ..fileType = FileType.mp3;
+
+      // Save a mock cover in media cache
+      final savedCover = await MediaCacheService.instance.saveCover(
+        'Reset Artist',
+        'Reset Title',
+        [1, 2, 3, 4, 5],
+      );
+      track.customMetadata.customCoverPath = savedCover;
+      track.artStatus = FetchStatus.success;
+      await db.saveTrack(track);
+
+      expect(File(savedCover).existsSync(), isTrue);
+
+      final fetcher = AlbumArtFetcherService.internal(db: db);
+      await fetcher.resetTrackArtStatus(track, deleteCachedFile: true);
+
+      final updated = await db.getTrackByTrackId('track_reset');
+      expect(updated, isNotNull);
+      expect(updated!.artStatus, equals(FetchStatus.none));
+      expect(updated.customMetadata.customCoverPath, isNull);
+      expect(File(savedCover).existsSync(), isFalse);
+    });
+
+    test('updateTrackMetadata resets artStatus to none on text change and to custom on manual cover', () async {
+      final db = FakeLocalDatabase();
+      final track = Track()
+        ..trackId = 'track_edit'
+        ..filePath = '/music/test_edit.mp3'
+        ..title = 'Old Title'
+        ..artist = 'Old Artist'
+        ..artStatus = FetchStatus.notFound
+        ..fileType = FileType.mp3;
+
+      await db.saveTrack(track);
+
+      // 1. Text edit without custom cover with resetMediaFlags -> artStatus becomes none
+      await db.updateTrackMetadata(
+        track,
+        newTitle: 'New Title',
+        newArtist: 'New Artist',
+        newAlbum: 'New Album',
+        resetMediaFlags: true,
+      );
+
+      final updated1 = await db.getTrackByTrackId('track_edit');
+      expect(updated1!.customMetadata.isEdited, isTrue);
+      expect(updated1.displayTitle, equals('New Title'));
+      expect(updated1.displayArtist, equals('New Artist'));
+      expect(updated1.artStatus, equals(FetchStatus.none));
+
+      // 2. Edit with custom cover path -> artStatus becomes custom
+      await db.updateTrackMetadata(
+        track,
+        newTitle: 'New Title',
+        newArtist: 'New Artist',
+        newAlbum: 'New Album',
+        newCustomCoverPath: '/path/to/custom_cover.jpg',
+      );
+
+      final updated2 = await db.getTrackByTrackId('track_edit');
+      expect(updated2!.customMetadata.isEdited, isTrue);
+      expect(updated2.customMetadata.customCoverPath, equals('/path/to/custom_cover.jpg'));
+      expect(updated2.artStatus, equals(FetchStatus.custom));
+    });
   });
 }

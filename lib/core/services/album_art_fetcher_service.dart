@@ -118,12 +118,49 @@ class AlbumArtFetcherService {
     await _fetchArtForTrack(track);
   }
 
+  /// Resets the album art status of a [track] so background services or explicit
+  /// process requests will re-fetch artwork.
+  ///
+  /// If [deleteCachedFile] is true, deletes the cached cover file from disk
+  /// and clears [customCoverPath].
+  Future<void> resetTrackArtStatus(Track track, {bool deleteCachedFile = false}) async {
+    final musicDir = track.filePath.isNotEmpty ? File(track.filePath).parent.path : null;
+
+    if (deleteCachedFile) {
+      if (track.customMetadata.customCoverPath != null &&
+          track.customMetadata.customCoverPath!.isNotEmpty) {
+        try {
+          final file = File(track.customMetadata.customCoverPath!);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        } catch (_) {}
+      }
+      await MediaCacheService.instance.deleteCachedCover(
+        track.displayArtist,
+        track.displayTitle,
+        musicDir,
+      );
+      if (track.displayAlbum.isNotEmpty && track.displayAlbum != 'Unknown Album') {
+        await MediaCacheService.instance.deleteCachedCover(
+          track.displayArtist,
+          track.displayAlbum,
+          musicDir,
+        );
+      }
+      track.customMetadata.customCoverPath = null;
+    }
+
+    track.artStatus = FetchStatus.none;
+    await _db.saveTrack(track);
+  }
+
   /// Single-track lookup worker using iTunes Search API.
 
   Future<void> _fetchArtForTrack(Track track) async {
     if (track.artStatus == FetchStatus.custom ||
-        track.customMetadata.isEdited ||
-        (track.customMetadata.customCoverPath != null &&
+        (track.artStatus != FetchStatus.none &&
+            track.customMetadata.customCoverPath != null &&
             track.customMetadata.customCoverPath!.isNotEmpty)) {
       return;
     }
