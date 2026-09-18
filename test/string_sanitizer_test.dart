@@ -181,4 +181,30 @@ void main() {
       expect(StringSanitizer.splitArtists('Unknown Artist'), isEmpty);
     });
   });
+
+  group('StringSanitizer - cleanForApiQuery', () {
+    test('Cleans enclosed explicit Unicode symbols like 🅴', () {
+      expect(StringSanitizer.cleanForApiQuery('Miami 🅴'), equals('Miami'));
+      expect(StringSanitizer.cleanForApiQuery('Without Me 🅴'), equals('Without Me'));
+      expect(StringSanitizer.cleanForApiQuery('🅴 Song Title 🅴'), equals('Song Title'));
+    });
+
+    test('Cleans explicit and clean bracketed tags', () {
+      expect(StringSanitizer.cleanForApiQuery('Prosthetics (Explicit)'), equals('Prosthetics'));
+      expect(StringSanitizer.cleanForApiQuery('Without Me [E]'), equals('Without Me'));
+      expect(StringSanitizer.cleanForApiQuery('Track Name (E)'), equals('Track Name'));
+      expect(StringSanitizer.cleanForApiQuery('Song Title (Explicit Version)'), equals('Song Title'));
+      expect(StringSanitizer.cleanForApiQuery('Song Title [Explicit Version]'), equals('Song Title'));
+      expect(StringSanitizer.cleanForApiQuery('Song Title (Clean)'), equals('Song Title'));
+      expect(StringSanitizer.cleanForApiQuery('Song Title [Clean Version]'), equals('Song Title'));
+      expect(StringSanitizer.cleanForApiQuery('Song Title - Explicit'), equals('Song Title'));
+    });
+
+    test('Combines cosmetic noise, downloaders, and explicit markers', () {
+      expect(
+        StringSanitizer.cleanForApiQuery('y2mate.com - Linkin Park - In the End (Official Video) [Explicit] 🅴'),
+        equals('Linkin Park - In the End'),
+      );
+    });
+  });
 }

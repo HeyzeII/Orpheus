@@ -24,6 +24,16 @@ class StringSanitizer {
     RegExp(r'_mc', caseSensitive: false),
   ];
 
+  // Explicit markers and version qualifiers to clean for API queries
+  static final _explicitPatterns = [
+    // Enclosed Unicode alphanumeric symbols (e.g. 🅴 \u{1F174}, 🅈, 🅲, \u{1F100}-\u{1F1FF}, \u{2460}-\u{24FF}, \u{3200}-\u{32FF})
+    RegExp(r'[\u{1F100}-\u{1F1FF}\u{2460}-\u{24FF}\u{3200}-\u{32FF}]', unicode: true),
+    // (Explicit), [Explicit], (Explicit Version), [Explicit Version], (Clean), [Clean], [E], (E), [Clean Version], etc.
+    RegExp(r'[\(\[]\s*(?:explicit(?:\s+version)?|clean(?:\s+version)?|e)\s*[\)\]]', caseSensitive: false),
+    // Standalone explicit/clean suffix preceded by hyphen (e.g. " - Explicit", " - Clean")
+    RegExp(r'\s*-\s*(?:explicit|clean)\b', caseSensitive: false),
+  ];
+
   /// Cleans the input string by removing downloader footprints and cosmetic modisms.
   /// Replaces multiple spaces and handles hanging punctuation cleanly.
   static String sanitize(String input) {
@@ -47,6 +57,27 @@ class StringSanitizer {
     cleaned = cleaned.replaceAll(RegExp(r'\[\s*\]'), '');
 
     // 5. Clean up hanging hyphens or spaces at borders
+    cleaned = cleaned.trim();
+    cleaned = _trimHangingPunctuation(cleaned);
+
+    return cleaned;
+  }
+
+  /// Cleans a string specifically for external API queries (LRCLIB, iTunes, etc.).
+  /// Removes explicit markers (Unicode enclosed characters like 🅴 \u{1F174}),
+  /// explicit/clean bracket tags ([Explicit], (Clean), [E]), and generic cosmetic noise
+  /// without altering original database or UI metadata.
+  static String cleanForApiQuery(String input) {
+    var cleaned = sanitize(input);
+
+    for (final pattern in _explicitPatterns) {
+      cleaned = cleaned.replaceAll(pattern, '');
+    }
+
+    // Collapse spaces and trim
+    cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ');
+    cleaned = cleaned.replaceAll(RegExp(r'\(\s*\)'), '');
+    cleaned = cleaned.replaceAll(RegExp(r'\[\s*\]'), '');
     cleaned = cleaned.trim();
     cleaned = _trimHangingPunctuation(cleaned);
 
@@ -101,7 +132,7 @@ class StringSanitizer {
     bool fallbackToFilename = true,
   }) {
     if (id3Tag != null && id3Tag.trim().isNotEmpty) {
-      return sanitize(id3Tag);
+      return cleanForApiQuery(id3Tag);
     }
 
     if (!fallbackToFilename) {
@@ -123,7 +154,7 @@ class StringSanitizer {
     stem = stem.replaceAll(RegExp(r'\(\s*\)'), '');
     stem = stem.replaceAll(RegExp(r'\[\s*\]'), '');
 
-    return sanitize(stem);
+    return cleanForApiQuery(stem);
   }
 
   /// Regular expression for detecting multi-artist collaborations.

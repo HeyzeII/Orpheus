@@ -100,8 +100,7 @@ class AudioScannerService {
       if (visitedPaths.contains(currentPath)) continue;
       visitedPaths.add(currentPath);
 
-      final dirName = currentPath.split('/').last;
-      if (dirName == '.trash') continue;
+      if (_isIgnoredDirectory(currentPath) && currentPath != rootDir.path) continue;
 
       List<FileSystemEntity> entities;
       try {
@@ -113,14 +112,14 @@ class AudioScannerService {
 
       for (final entity in entities) {
         if (entity is Directory) {
-          final subName = entity.path.split('/').last;
-          if (subName != '.trash') {
+          if (!_isIgnoredDirectory(entity.path)) {
             dirQueue.add(entity);
           }
           continue;
         }
 
         if (entity is! File) continue;
+        if (_isIgnoredFile(entity.path)) continue;
 
         final extension = _extensionOf(entity.path);
         if (!_kSupportedExtensions.contains(extension)) continue;
@@ -435,6 +434,8 @@ class AudioScannerService {
         if (batch.length >= _kBatchSize) {
           await _db.saveTracks(batch);
           batch.clear();
+          // Yield execution to the event loop so UI animations stay at 60/120fps.
+          await Future.delayed(Duration.zero);
         }
 
         yield ScanResult(
@@ -564,5 +565,34 @@ class AudioScannerService {
     final name = path.split('/').last;
     final dot = name.lastIndexOf('.');
     return dot == -1 ? name : name.substring(0, dot);
+  }
+
+  /// Known system or non-media directories to exclude from recursion.
+  static const _kIgnoredDirectoryNames = {
+    '__macosx',
+    'node_modules',
+    'lost+found',
+    'android',
+    '.trash',
+    '.git',
+    '.orpheus_cache',
+    '.thumbnails',
+    '.cache',
+    '.stversions',
+  };
+
+  /// Returns `true` if [dirPath] corresponds to a hidden or system directory.
+  static bool _isIgnoredDirectory(String dirPath) {
+    final name = dirPath.split('/').last.trim();
+    if (name.isEmpty) return false;
+    if (name.startsWith('.')) return true;
+    return _kIgnoredDirectoryNames.contains(name.toLowerCase());
+  }
+
+  /// Returns `true` if [filePath] corresponds to a hidden or system file (e.g. AppleDouble, .DS_Store).
+  static bool _isIgnoredFile(String filePath) {
+    final name = filePath.split('/').last.trim();
+    if (name.isEmpty) return true;
+    return name.startsWith('.');
   }
 }

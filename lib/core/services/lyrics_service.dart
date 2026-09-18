@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../database/local_database.dart';
 import '../models/track.dart';
+import '../utils/string_sanitizer.dart';
 import 'media_cache_service.dart';
 import 'network_guard_service.dart';
 
@@ -145,10 +146,13 @@ class LyricsService {
       return null;
     }
 
-    // ── 6. Build request URL ──────────────────────────────────────────────
+    // ── 6. Build request URL using sanitized search terms ─────────────────
+    final queryArtist = StringSanitizer.cleanForApiQuery(artist);
+    final queryTitle = StringSanitizer.cleanForApiQuery(title);
+
     final uri = Uri.parse(_baseUrl).replace(queryParameters: {
-      'artist_name': artist,
-      'track_name': title,
+      'artist_name': queryArtist.isNotEmpty ? queryArtist : artist,
+      'track_name': queryTitle.isNotEmpty ? queryTitle : title,
     });
 
     // ── 7. Network call with timeout ──────────────────────────────────────
