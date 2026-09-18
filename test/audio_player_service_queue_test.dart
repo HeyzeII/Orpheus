@@ -524,5 +524,56 @@ void main() {
       await player.previous();
       expect(player.currentTrack?.trackId, initialTrackId);
     });
+
+    test('manual jump in userQueue under sequential mode resets navigation stack and syncs contextIndex so previous() goes sequentially in active context', () async {
+      final tracks = List.generate(10, (i) => Track()..trackId = 't${i + 1}');
+
+      // Play track 2 (index 1) from 10-track playlist
+      await player.playFromExternalContext(
+        tracks[1],
+        tracks,
+        contextName: 'Album: Test 10',
+      );
+      expect(player.currentTrack?.trackId, 't2');
+
+      // Add track 8 (from same album) to userQueue
+      player.addToQueue(tracks[7]); // t8
+      expect(player.userQueue.map((t) => t.trackId), ['t8']);
+
+      // User jumps into userQueue item (t8)
+      await player.playUserQueueItem(0);
+      expect(player.currentTrack?.trackId, 't8');
+
+      // Press previous (< 3s)
+      player.setMockPosition(Duration.zero);
+      await player.previous();
+
+      // Navigation stack was cleared and _contextIndex synced to 7 (t8), so previous() goes to track 7 (index 6, t7)
+      expect(player.currentTrack?.trackId, 't7');
+    });
+
+    test('manual jump in userQueue under shuffle mode preserves navigation stack so previous() unwinds to pre-jump track', () async {
+      final tracks = List.generate(10, (i) => Track()..trackId = 't${i + 1}');
+
+      await player.playFromExternalContext(
+        tracks[0],
+        tracks,
+        contextName: 'Album: Test 10',
+      );
+      player.toggleShuffle(); // shuffle enabled
+      expect(player.shuffleEnabled, isTrue);
+
+      final initialTrackId = player.currentTrack!.trackId;
+
+      // Add a track to userQueue and play it
+      player.addToQueue(tracks[5]);
+      await player.playUserQueueItem(0);
+      expect(player.currentTrack?.trackId, 't6');
+
+      // previous (< 3s) in shuffle unwinds navigation stack to initialTrackId
+      player.setMockPosition(Duration.zero);
+      await player.previous();
+      expect(player.currentTrack?.trackId, initialTrackId);
+    });
   });
 }

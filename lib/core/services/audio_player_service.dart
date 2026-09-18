@@ -745,11 +745,22 @@ class AudioPlayerService {
     if (index < 0 || index >= _userQueue.length) return;
     if (_currentTrack != null) {
       _pushHistory(_currentTrack!);
-      _pushNavigation(_currentTrack!);
+      if (_shuffle) {
+        _pushNavigation(_currentTrack!);
+      } else {
+        _navigationStack.clear();
+      }
     }
 
     final target = _userQueue[index];
     _userQueue.removeRange(0, index + 1);
+
+    final active = _activeContext;
+    final matchIdx = active.lastIndexOf(target);
+    if (matchIdx != -1) {
+      _contextIndex = matchIdx;
+    }
+
     _currentTrack = target;
     await _openTrack(target);
     _notifyState();
