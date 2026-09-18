@@ -168,6 +168,12 @@ class LocalDatabase {
         .map((list) => list.isEmpty ? null : list.first);
   }
 
+  /// Returns the [Track] whose Isar auto-incremented [id] matches [id], or `null`.
+  Future<Track?> getTrackById(int id) async {
+    if (_isTestUninitialized) return null;
+    return _isar.tracks.get(id);
+  }
+
   /// Returns the [Track] whose [Track.trackId] matches [trackId], or `null`.
   Future<Track?> getTrackByTrackId(String trackId) async {
     if (_isTestUninitialized) return null;
@@ -458,6 +464,7 @@ class LocalDatabase {
     await _isar.writeTxn(() async {
       await _isar.playlists.put(playlist);
     });
+    unawaited(syncLibraryStateToDisk());
   }
 
   /// Returns all playlists ordered by Isar insertion order.
@@ -562,9 +569,10 @@ class LocalDatabase {
         }
       }
     } catch (e) {
-      debugPrint('Error persisting optimistic like for : ');
+      debugPrint('Error persisting optimistic like for $trackId: $e');
     } finally {
       completer.complete();
+      unawaited(syncLibraryStateToDisk());
     }
 
     return targetLiked;
@@ -588,6 +596,30 @@ class LocalDatabase {
       final newSet = Set<String>.from(likedTrackIdsNotifier.value);
       newSet.remove(trackId);
       likedTrackIdsNotifier.value = newSet;
+    }
+  }
+
+  /// Removes the track at position [index] from [playlist].
+  ///
+  /// Safe for duplicate tracks in custom playlists as it operates strictly by position.
+  Future<void> removeTrackFromPlaylistAt({
+    required Playlist playlist,
+    required int index,
+  }) async {
+    if (index < 0 || index >= playlist.trackIds.length) return;
+    final intId = playlist.trackIds[index];
+    final updated = List<int>.from(playlist.trackIds);
+    updated.removeAt(index);
+    playlist.trackIds = updated;
+    await savePlaylist(playlist);
+
+    if (playlist.playlistId == '__liked__') {
+      final track = await getTrackById(intId);
+      if (track != null && !updated.contains(intId)) {
+        final newSet = Set<String>.from(likedTrackIdsNotifier.value);
+        newSet.remove(track.trackId);
+        likedTrackIdsNotifier.value = newSet;
+      }
     }
   }
 
@@ -617,6 +649,33 @@ class LocalDatabase {
     await _isar.writeTxn(() async {
       await _isar.playlists.delete(id);
     });
+    unawaited(syncLibraryStateToDisk());
+  }
+
+  /// Exports current library state (likes and playlists) to `.orpheus_cache/library_state.json`
+  /// across all configured scan directories.
+  Future<void> syncLibraryStateToDisk() async {
+    try {
+      if (_isTestUninitialized) return;
+      final config = await getConfig();
+      final scanDirs = config.scanDirectories;
+      if (scanDirs.isEmpty) return;
+
+      final allTracks = await getAllTracks();
+      final allPlaylists = await getAllPlaylists();
+      final likedIds = likedTrackIdsNotifier.value;
+
+      for (final dir in scanDirs) {
+        await MediaCacheService.instance.exportLibraryState(
+          allTracks: allTracks,
+          likedTrackIds: likedIds,
+          customPlaylists: allPlaylists,
+          musicDirectoryPath: dir,
+        );
+      }
+    } catch (e) {
+      debugPrint('[LocalDatabase] Error syncing library state to disk: $e');
+    }
   }
 
   // ══════════════════════════════════════════════════════════════════════════

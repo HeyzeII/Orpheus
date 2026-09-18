@@ -501,7 +501,34 @@ void main() {
       expect(player.currentTrack?.trackId, 't7');
     });
 
-    test('manual jump in context queue under shuffle mode preserves navigation stack so previous() returns to previous played track', () async {
+    test('manual jump in context queue under shuffle mode sets _contextIndex and previous() goes strictly to _contextIndex - 1', () async {
+      final tracks = List.generate(10, (i) => Track()..trackId = 't${i + 1}');
+
+      await player.playFromExternalContext(
+        tracks[0],
+        tracks,
+        contextName: 'Album: Test 10',
+      );
+      player.toggleShuffle(); // shuffle enabled
+      expect(player.shuffleEnabled, isTrue);
+
+      // We are at _contextIndex = 0. Upcoming context tracks has 9 items.
+      // Jump to relativeIndex = 4 (which is _contextIndex = 5)
+      await player.playContextQueueItem(4);
+      expect(player.currentContextIndex, 5);
+
+      // When pressing previous (< 3s), must go strictly to _contextIndex = 4
+      player.setMockPosition(Duration.zero);
+      await player.previous();
+      expect(player.currentContextIndex, 4);
+
+      // Press previous again -> _contextIndex = 3
+      player.setMockPosition(Duration.zero);
+      await player.previous();
+      expect(player.currentContextIndex, 3);
+    });
+
+    test('manual jump in userQueue preserves navigation stack so previous() unwinds to pre-jump track', () async {
       final tracks = List.generate(10, (i) => Track()..trackId = 't${i + 1}');
 
       await player.playFromExternalContext(
@@ -514,66 +541,81 @@ void main() {
 
       final initialTrackId = player.currentTrack!.trackId;
 
-      // Jump to an upcoming item in context queue
-      await player.playContextQueueItem(0);
-      final jumpedTrackId = player.currentTrack!.trackId;
-      expect(jumpedTrackId, isNot(initialTrackId));
-
-      // previous (< 3s) in shuffle unwinds to initialTrackId
-      player.setMockPosition(Duration.zero);
-      await player.previous();
-      expect(player.currentTrack?.trackId, initialTrackId);
-    });
-
-    test('manual jump in userQueue under sequential mode resets navigation stack and syncs contextIndex so previous() goes sequentially in active context', () async {
-      final tracks = List.generate(10, (i) => Track()..trackId = 't${i + 1}');
-
-      // Play track 2 (index 1) from 10-track playlist
-      await player.playFromExternalContext(
-        tracks[1],
-        tracks,
-        contextName: 'Album: Test 10',
-      );
-      expect(player.currentTrack?.trackId, 't2');
-
-      // Add track 8 (from same album) to userQueue
-      player.addToQueue(tracks[7]); // t8
-      expect(player.userQueue.map((t) => t.trackId), ['t8']);
-
-      // User jumps into userQueue item (t8)
+      // Add a track outside active context to userQueue and play it
+      final userTrack = Track()..trackId = 'user_track_99';
+      player.addToQueue(userTrack);
       await player.playUserQueueItem(0);
-      expect(player.currentTrack?.trackId, 't8');
-
-      // Press previous (< 3s)
-      player.setMockPosition(Duration.zero);
-      await player.previous();
-
-      // Navigation stack was cleared and _contextIndex synced to 7 (t8), so previous() goes to track 7 (index 6, t7)
-      expect(player.currentTrack?.trackId, 't7');
-    });
-
-    test('manual jump in userQueue under shuffle mode preserves navigation stack so previous() unwinds to pre-jump track', () async {
-      final tracks = List.generate(10, (i) => Track()..trackId = 't${i + 1}');
-
-      await player.playFromExternalContext(
-        tracks[0],
-        tracks,
-        contextName: 'Album: Test 10',
-      );
-      player.toggleShuffle(); // shuffle enabled
-      expect(player.shuffleEnabled, isTrue);
-
-      final initialTrackId = player.currentTrack!.trackId;
-
-      // Add a track to userQueue and play it
-      player.addToQueue(tracks[5]);
-      await player.playUserQueueItem(0);
-      expect(player.currentTrack?.trackId, 't6');
+      expect(player.currentTrack?.trackId, 'user_track_99');
 
       // previous (< 3s) in shuffle unwinds navigation stack to initialTrackId
       player.setMockPosition(Duration.zero);
       await player.previous();
       expect(player.currentTrack?.trackId, initialTrackId);
     });
+
+    test('previous() with repeatMode == PlayerRepeatMode.single always restarts current track at 0:00 without popping history', () async {
+      await player.loadPlaylist([track1, track2], initialIndex: 0);
+      await player.next(); // current = track2, history = [t1]
+      expect(player.currentTrack?.trackId, 't2');
+
+      // Toggle repeat mode to single
+      player.toggleRepeat(); // playlist
+      player.toggleRepeat(); // single
+      expect(player.repeatMode, PlayerRepeatMode.single);
+      expect(player.canSkipPrevious, isTrue);
+
+      // Set position to 1 second (< 3s)
+      player.setMockPosition(const Duration(seconds: 1));
+      expect(player.position, const Duration(seconds: 1));
+
+      // previous() in repeat-single mode must restart track2 without switching to track1
+      await player.previous();
+      expect(player.currentTrack?.trackId, 't2');
+      expect(player.position, Duration.zero);
+      expect(player.history.map((t) => t.trackId), ['t1']);
+    });
+
+    test('playContextPastItem sets _contextIndex and previous() moves strictly to previous item in context', () async {
+      final tracks = List.generate(6, (i) => Track()..trackId = 't${i + 1}');
+
+      await player.playFromExternalContext(tracks[0], tracks, contextName: 'Album: Test 6');
+      player.toggleShuffle();
+      expect(player.shuffleEnabled, isTrue);
+
+      // Advance 4 steps -> _contextIndex = 4
+      await player.next();
+      await player.next();
+      await player.next();
+      await player.next();
+      expect(player.currentContextIndex, 4);
+
+      // Jump to past item at absoluteIndex = 2
+      await player.playContextPastItem(2);
+      expect(player.currentContextIndex, 2);
+
+      // Press previous (< 3s) -> moves strictly to index 1
+      player.setMockPosition(Duration.zero);
+      await player.previous();
+      expect(player.currentContextIndex, 1);
+    });
+
+    test('skipToIndex on upcoming context item sets _contextIndex and previous() steps back strictly to index - 1', () async {
+      final tracks = List.generate(8, (i) => Track()..trackId = 't${i + 1}');
+
+      await player.playFromExternalContext(tracks[0], tracks, contextName: 'Album: Test 8');
+      player.toggleShuffle();
+      expect(player.shuffleEnabled, isTrue);
+
+      // Queue = [Current, ...UpcomingContext] (length 8)
+      // Skip to index 4 (absolute index 4 in _activeContext)
+      await player.skipToIndex(4);
+      expect(player.currentContextIndex, 4);
+
+      // Press previous (< 3s) -> must step back to index 3
+      player.setMockPosition(Duration.zero);
+      await player.previous();
+      expect(player.currentContextIndex, 3);
+    });
   });
 }
+

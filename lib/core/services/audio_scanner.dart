@@ -4,9 +4,11 @@ import 'package:metadata_god/metadata_god.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../database/local_database.dart';
+import '../models/playlist.dart';
 import '../models/track.dart';
 import '../utils/fuzzy_matcher.dart';
 import '../utils/string_sanitizer.dart';
+import '../utils/vorbis_lyrics_reader.dart';
 import 'media_cache_service.dart';
 import 'scan_result.dart';
 
@@ -77,9 +79,45 @@ class AudioScannerService {
       throw ArgumentError('Directory does not exist: $directoryPath');
     }
 
+    final mediaCache = MediaCacheService.instance;
+    final scanDir = directoryPath;
+
     // Load config once for the entire scan (artist ignore list + scan dirs).
     final config = await _db.getConfig();
     final ignoredPairs = config.conflictResolution.ignoredPairs;
+
+    // Load portable library_state.json if available in scan directory.
+    final libraryState = await mediaCache.readLibraryState(directoryPath);
+    final likedFingerprints = <String>{
+      if (libraryState['likedTracks'] is List)
+        for (final item in (libraryState['likedTracks'] as List))
+          if (item is Map && item['fingerprint'] is String)
+            item['fingerprint'] as String,
+    };
+
+    final portablePlaylists = <String, Map<String, dynamic>>{};
+    if (libraryState['playlists'] is List) {
+      for (final pl in (libraryState['playlists'] as List)) {
+        if (pl is Map && pl['playlistId'] is String) {
+          final plId = pl['playlistId'] as String;
+          final trackList = pl['tracks'];
+          final fps = <String>[];
+          if (trackList is List) {
+            for (final tr in trackList) {
+              if (tr is Map && tr['fingerprint'] is String) {
+                fps.add(tr['fingerprint'] as String);
+              }
+            }
+          }
+          portablePlaylists[plId] = {
+            'name': pl['name'] as String? ?? 'Playlist',
+            'description': pl['description'] as String?,
+            'customCoverPath': pl['customCoverPath'] as String?,
+            'fingerprints': fps,
+          };
+        }
+      }
+    }
 
     // Collect all known artist names for fuzzy comparison.
     final knownArtists = await _collectKnownArtists();
@@ -150,9 +188,6 @@ class AudioScannerService {
             (existingTrack.customMetadata.isEdited ||
                 (existingTrack.customMetadata.customCoverPath != null &&
                     existingTrack.customMetadata.customCoverPath!.isNotEmpty));
-
-        final mediaCache = MediaCacheService.instance;
-        final scanDir = directoryPath;
 
         String cleanTitle;
         String cleanArtist;
@@ -428,6 +463,25 @@ class AudioScannerService {
           }
         }
 
+        // 3. Letras embebidas en Vorbis comments (archivos FLAC)
+        if ((track.syncedLyrics == null || track.syncedLyrics!.isEmpty) && extension == 'flac') {
+          try {
+            final embeddedLyrics = await VorbisLyricsReader.extractLyricsFromFile(entity.path);
+            if (embeddedLyrics != null && embeddedLyrics.trim().isNotEmpty) {
+              track.syncedLyrics = embeddedLyrics;
+              track.lyricsStatus = FetchStatus.success;
+              try {
+                await mediaCache.saveLyrics(
+                  lookupArtist,
+                  lookupTitle,
+                  embeddedLyrics,
+                  scanDir,
+                );
+              } catch (_) {}
+            }
+          } catch (_) {}
+        }
+
         batch.add(track);
 
         // Flush batch when it reaches the configured size.
@@ -451,6 +505,87 @@ class AudioScannerService {
     if (batch.isNotEmpty) {
       await _db.saveTracks(batch);
     }
+
+    // Auto-recover Liked Tracks & Custom Playlists from library_state.json
+    if (likedFingerprints.isNotEmpty || portablePlaylists.isNotEmpty) {
+      final allDbTracks = await _db.getAllTracks();
+      final fpToTrack = <String, Track>{};
+      for (final t in allDbTracks) {
+        final fp = StringSanitizer.generateTrackFingerprint(
+          artist: t.displayArtist,
+          title: t.displayTitle,
+          durationMs: t.duration * 1000,
+        );
+        fpToTrack[fp] = t;
+      }
+
+      // 1. Recover Liked Tracks
+      if (likedFingerprints.isNotEmpty) {
+        final likedPlaylist = await _db.getPlaylistById('__liked__');
+        if (likedPlaylist != null) {
+          final currentLikedIds = List<int>.from(likedPlaylist.trackIds);
+          final newlyLikedTrackIds = Set<String>.from(_db.likedTrackIdsNotifier.value);
+          var likedChanged = false;
+
+          for (final fp in likedFingerprints) {
+            final matchedTrack = fpToTrack[fp];
+            if (matchedTrack != null) {
+              if (!currentLikedIds.contains(matchedTrack.id)) {
+                currentLikedIds.add(matchedTrack.id);
+                likedChanged = true;
+              }
+              newlyLikedTrackIds.add(matchedTrack.trackId);
+            }
+          }
+
+          if (likedChanged) {
+            likedPlaylist.trackIds = currentLikedIds;
+            await _db.savePlaylist(likedPlaylist);
+            _db.likedTrackIdsNotifier.value = newlyLikedTrackIds;
+          }
+        }
+      }
+
+      // 2. Recover Custom Playlists
+      for (final entry in portablePlaylists.entries) {
+        final plId = entry.key;
+        final plData = entry.value;
+        final fps = plData['fingerprints'] as List<String>;
+
+        var playlist = await _db.getPlaylistById(plId);
+        playlist ??= Playlist()
+          ..playlistId = plId
+          ..name = plData['name'] as String
+          ..description = plData['description'] as String?
+          ..customCoverPath = plData['customCoverPath'] as String?
+          ..isDefault = false;
+
+        final targetIntIds = <int>[];
+        for (final fp in fps) {
+          final matched = fpToTrack[fp];
+          if (matched != null) {
+            targetIntIds.add(matched.id);
+          }
+        }
+
+        if (targetIntIds.isNotEmpty) {
+          playlist.trackIds = targetIntIds;
+          await _db.savePlaylist(playlist);
+        }
+      }
+    }
+
+    // Sync current library state back to .orpheus_cache/library_state.json
+    try {
+      final allTracks = await _db.getAllTracks();
+      final allPlaylists = await _db.getAllPlaylists();
+      await mediaCache.exportLibraryState(
+        allTracks: allTracks,
+        likedTrackIds: _db.likedTrackIdsNotifier.value,
+        customPlaylists: allPlaylists,
+        musicDirectoryPath: directoryPath,
+      );
+    } catch (_) {}
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────

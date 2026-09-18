@@ -50,6 +50,7 @@ class _LibraryViewState extends State<LibraryView> {
   Playlist? _selectedPlaylist;
 
   StreamSubscription<void>? _tracksSubscription;
+  StreamSubscription<void>? _playlistsSubscription;
 
   @override
   void initState() {
@@ -58,11 +59,15 @@ class _LibraryViewState extends State<LibraryView> {
     _tracksSubscription = LocalDatabase.instance.watchTracks().listen((_) {
       _refreshData(showSpinner: false);
     });
+    _playlistsSubscription = LocalDatabase.instance.watchPlaylists().listen((_) {
+      _refreshData(showSpinner: false);
+    });
   }
 
   @override
   void dispose() {
     _tracksSubscription?.cancel();
+    _playlistsSubscription?.cancel();
     super.dispose();
   }
 
@@ -150,6 +155,15 @@ class _LibraryViewState extends State<LibraryView> {
     setState(() {
       playlist.trackIds.remove(track.id);
     });
+    _refreshData();
+  }
+
+  // Remove track at specific index from custom playlist (safe for duplicates)
+  Future<void> _removeTrackFromPlaylistAt(Playlist playlist, int index) async {
+    await LocalDatabase.instance.removeTrackFromPlaylistAt(
+      playlist: playlist,
+      index: index,
+    );
     _refreshData();
   }
 
@@ -645,7 +659,7 @@ class _LibraryViewState extends State<LibraryView> {
     return LayoutBuilder(builder: (context, constraints) {
       final isMobile = constraints.maxWidth < 600;
       final int cols = isMobile ? 2 : 5;
-      final double ratio = isMobile ? 0.75 : 0.8;
+      const double ratio = 0.72;
 
       return Column(
         children: [
@@ -655,8 +669,8 @@ class _LibraryViewState extends State<LibraryView> {
               padding: EdgeInsets.only(top: 16, bottom: bottomPad > 0 ? bottomPad : 16),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: cols,
-                crossAxisSpacing: isMobile ? 10 : 16,
-                mainAxisSpacing: isMobile ? 10 : 16,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 20,
                 childAspectRatio: ratio,
               ),
               itemCount: filtered.length,
@@ -768,9 +782,15 @@ class _LibraryViewState extends State<LibraryView> {
                     border: Border.all(color: AppTheme.divider),
                   ),
                   child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: AppTheme.bgHover,
-                      child: const Icon(Icons.person_rounded, color: AppTheme.accent),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    leading: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: const BoxDecoration(
+                        color: AppTheme.bgHover,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.person_rounded, color: AppTheme.accent, size: 26),
                     ),
                     title: Text(
                       artistName,
@@ -842,8 +862,8 @@ class _LibraryViewState extends State<LibraryView> {
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: cols,
                         crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                        childAspectRatio: 0.78,
+                        mainAxisSpacing: 20,
+                        childAspectRatio: 0.72,
                       ),
                       itemCount: _playlists.length,
                       itemBuilder: (context, idx) {
@@ -1248,11 +1268,11 @@ class _LibraryViewState extends State<LibraryView> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      // Compact Header: Cover Art (160px max) + Info
+                      // Compact Header: Cover Art (140px max) + Info
                       Center(
                         child: SizedBox(
-                          width: 160,
-                          height: 160,
+                          width: 140,
+                          height: 140,
                           child: _PlaylistCoverPicker(
                             playlist: playlist,
                             allTracks: _allTracks,
@@ -1294,7 +1314,7 @@ class _LibraryViewState extends State<LibraryView> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      // Compact action buttons row
+                      // Compact action buttons row (36px height)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -1302,7 +1322,8 @@ class _LibraryViewState extends State<LibraryView> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.accent,
                               foregroundColor: AppTheme.bgDeep,
-                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                              minimumSize: const Size(0, 36),
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 0),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                               elevation: 0,
                             ),
@@ -1319,7 +1340,8 @@ class _LibraryViewState extends State<LibraryView> {
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.redAccent,
                                 side: const BorderSide(color: Colors.redAccent, width: 1),
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                minimumSize: const Size(0, 36),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                               ),
                               onPressed: () => _deletePlaylist(playlist),
@@ -1330,7 +1352,7 @@ class _LibraryViewState extends State<LibraryView> {
                           ],
                         ],
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 16),
                       const Divider(color: AppTheme.divider, height: 1),
                     ],
                   ),
@@ -1361,19 +1383,16 @@ class _LibraryViewState extends State<LibraryView> {
                           builder: (context, snap) {
                             final currentTrack = snap.data;
                             final isPlayingThisTrack = currentTrack != null && currentTrack.trackId == track.trackId;
-                            final queue = AudioPlayerService.instance.queue;
-                            final currentIdx = OrpheusAudioHandler.instance.currentIndex;
+                            final currentCtxIdx = AudioPlayerService.instance.currentContextIndex;
+                            final activeCtxName = AudioPlayerService.instance.contextName;
 
-                            // Disambiguate duplicate songs in playlist when the queue matches this playlist
-                            final isExactIndexInQueue = currentIdx >= 0 &&
-                                currentIdx < queue.length &&
-                                currentIdx == idx &&
-                                queue[currentIdx].trackId == track.trackId;
+                            // Disambiguate duplicate songs in playlist when the current context is this playlist
+                            final isSamePlaylistContext = activeCtxName == playlist.name ||
+                                activeCtxName == 'Playlist: ${playlist.name}' ||
+                                (activeCtxName == 'Canciones que te gustan' && playlist.playlistId == '__liked__');
 
                             final isCurrent = isPlayingThisTrack &&
-                                (isExactIndexInQueue ||
-                                    queue.length != playlistTracks.length ||
-                                    playlistTracks.where((t) => t.trackId == track.trackId).length <= 1);
+                                (isSamePlaylistContext ? currentCtxIdx == idx : true);
 
                             return AnimatedContainer(
                               duration: const Duration(milliseconds: 250),
@@ -1462,7 +1481,12 @@ class _LibraryViewState extends State<LibraryView> {
                                 trailing: IconButton(
                                   icon: Icon(Icons.more_vert_rounded,
                                       color: isCurrent ? AppTheme.accent : AppTheme.textSecondary, size: 20),
-                                  onPressed: () => _showTrackOptionsModal(context, track),
+                                  onPressed: () => _showTrackOptionsModal(
+                                    context,
+                                    track,
+                                    playlistSource: playlist,
+                                    trackIndexInPlaylist: idx,
+                                  ),
                                 ),
                               ),
                             ),
@@ -1586,7 +1610,12 @@ class _LibraryViewState extends State<LibraryView> {
     );
   }
 
-  void _showTrackOptionsModal(BuildContext context, Track track) {
+  void _showTrackOptionsModal(
+    BuildContext context,
+    Track track, {
+    Playlist? playlistSource,
+    int? trackIndexInPlaylist,
+  }) {
     final coverPath = track.customMetadata.customCoverPath;
     final hasArt = coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
     final db = LocalDatabase.instance;
@@ -1686,6 +1715,16 @@ class _LibraryViewState extends State<LibraryView> {
                         OrpheusAudioHandler.instance.addToQueue(track);
                       },
                     ),
+                    if (playlistSource != null && !playlistSource.isDefault && trackIndexInPlaylist != null)
+                      ListTile(
+                        leading: const Icon(Icons.remove_circle_outline_rounded, color: Colors.redAccent),
+                        title: const Text('Quitar de la playlist',
+                            style: TextStyle(color: Colors.redAccent, fontSize: 14)),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _removeTrackFromPlaylistAt(playlistSource, trackIndexInPlaylist);
+                        },
+                      ),
                     ListTile(
                       leading: const Icon(Icons.playlist_add_rounded, color: AppTheme.textPrimary),
                       title: const Text('Añadir a playlist',
@@ -2124,6 +2163,7 @@ class _LibraryViewState extends State<LibraryView> {
         key: ValueKey('row_${index}_${track.id}'),
         track: track,
         index: index + 1, // 1-based display number
+        playlistIndex: index,
         durationStr: durationStr,
         isLiked: isLiked,
         customPlaylists: _playlists.where((p) => p.playlistId != '__liked__').toList(),
@@ -2135,6 +2175,9 @@ class _LibraryViewState extends State<LibraryView> {
         onCreatePlaylistWithTrack: () => _createAndAddTrackToPlaylist(track),
         onAddToPlaylist: (p) => _addTrackToPlaylist(track, p),
         onRemoveFromPlaylist: (p) => _removeTrackFromPlaylist(track, p),
+        onRemoveFromPlaylistAt: playlistSource != null
+            ? () => _removeTrackFromPlaylistAt(playlistSource, index)
+            : null,
         onDelete: () => _deleteTrack(track),
         onEditMetadata: () => _editTrackMetadata(track),
       );
@@ -2206,6 +2249,7 @@ class _TrackRow extends StatefulWidget {
     super.key,
     required this.track,
     required this.index,
+    required this.playlistIndex,
     required this.durationStr,
     required this.isLiked,
     required this.customPlaylists,
@@ -2217,12 +2261,14 @@ class _TrackRow extends StatefulWidget {
     required this.onCreatePlaylistWithTrack,
     required this.onAddToPlaylist,
     required this.onRemoveFromPlaylist,
+    this.onRemoveFromPlaylistAt,
     required this.onDelete,
     required this.onEditMetadata,
   });
 
   final Track track;
   final int index;
+  final int playlistIndex;
   final String durationStr;
   final bool isLiked;
   final List<Playlist> customPlaylists;
@@ -2234,6 +2280,7 @@ class _TrackRow extends StatefulWidget {
   final VoidCallback onCreatePlaylistWithTrack;
   final ValueChanged<Playlist> onAddToPlaylist;
   final ValueChanged<Playlist> onRemoveFromPlaylist;
+  final VoidCallback? onRemoveFromPlaylistAt;
   final VoidCallback onDelete;
   final VoidCallback onEditMetadata;
 
@@ -2251,7 +2298,18 @@ class _TrackRowState extends State<_TrackRow> {
       initialData: OrpheusAudioHandler.instance.currentTrack,
       builder: (context, snap) {
         final currentTrack = snap.data;
-        final isCurrent = currentTrack != null && currentTrack.trackId == widget.track.trackId;
+        final isPlayingThisTrack = currentTrack != null && currentTrack.trackId == widget.track.trackId;
+        final isPlaylistContext = widget.playlistSource != null;
+        final currentCtxIdx = AudioPlayerService.instance.currentContextIndex;
+        final activeCtxName = AudioPlayerService.instance.contextName;
+
+        final isSamePlaylistContext = isPlaylistContext &&
+            (activeCtxName == widget.playlistSource!.name ||
+                activeCtxName == 'Playlist: ${widget.playlistSource!.name}' ||
+                (activeCtxName == 'Canciones que te gustan' && widget.playlistSource!.playlistId == '__liked__'));
+
+        final isCurrent = isPlayingThisTrack &&
+            (isSamePlaylistContext ? currentCtxIdx == widget.playlistIndex : true);
 
         return MouseRegion(
           onEnter: (_) => setState(() => _hovered = true),
@@ -2449,6 +2507,12 @@ class _TrackRowState extends State<_TrackRow> {
                           widget.onPlayNext();
                         } else if (value == 'add_to_queue') {
                           widget.onAddToQueue();
+                        } else if (value == 'remove_from_current_playlist') {
+                          if (widget.onRemoveFromPlaylistAt != null) {
+                            widget.onRemoveFromPlaylistAt!();
+                          } else if (widget.playlistSource != null) {
+                            widget.onRemoveFromPlaylist(widget.playlistSource!);
+                          }
                         } else if (value == 'new_playlist') {
                           widget.onCreatePlaylistWithTrack();
                         } else if (value == 'edit') {
@@ -2458,7 +2522,11 @@ class _TrackRowState extends State<_TrackRow> {
                         } else if (value is Playlist) {
                           if (widget.playlistSource != null &&
                               widget.playlistSource!.playlistId == value.playlistId) {
-                            widget.onRemoveFromPlaylist(value);
+                            if (widget.onRemoveFromPlaylistAt != null) {
+                              widget.onRemoveFromPlaylistAt!();
+                            } else {
+                              widget.onRemoveFromPlaylist(value);
+                            }
                           } else {
                             widget.onAddToPlaylist(value);
                           }
@@ -2496,9 +2564,9 @@ class _TrackRowState extends State<_TrackRow> {
                         // Show option to remove if looking at a custom playlist detail view
                         if (widget.playlistSource != null && !widget.playlistSource!.isDefault) {
                           items.add(
-                            PopupMenuItem<dynamic>(
-                              value: widget.playlistSource,
-                              child: const Row(
+                            const PopupMenuItem<dynamic>(
+                              value: 'remove_from_current_playlist',
+                              child: Row(
                                 children: [
                                   Icon(Icons.remove_circle_outline_rounded,
                                       size: 14, color: Colors.redAccent),

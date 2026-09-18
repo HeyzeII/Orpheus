@@ -7,6 +7,9 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../database/local_database.dart';
+import '../models/playlist.dart';
+import '../models/track.dart';
+import '../utils/string_sanitizer.dart';
 
 /// Singleton service responsible for managing persistent media cache (covers, lyrics,
 /// and metadata index) stored in a hidden `.orpheus_cache/` directory inside the user's
@@ -560,5 +563,189 @@ class MediaCacheService {
       }
     } catch (_) {}
     return null;
+  }
+
+  // ── Portable Library State Persistence (Fingerprinting) ────────────────────
+
+  /// Reads and returns the portable library state from `<musicDir>/.orpheus_cache/library_state.json`.
+  Future<Map<String, dynamic>> readLibraryState([String? musicDirectoryPath]) async {
+    try {
+      final baseDir = await getBaseCacheDirectory(musicDirectoryPath);
+      final stateFile = File('${baseDir.path}/library_state.json');
+      if (await stateFile.exists()) {
+        final content = await stateFile.readAsString();
+        if (content.trim().isNotEmpty) {
+          final decoded = jsonDecode(content);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[MediaCacheService] Error reading library_state.json: $e');
+    }
+    return <String, dynamic>{};
+  }
+
+  /// Writes [state] map to `<musicDir>/.orpheus_cache/library_state.json`.
+  Future<void> saveLibraryState(
+    Map<String, dynamic> state, [
+    String? musicDirectoryPath,
+  ]) async {
+    try {
+      final baseDir = await getBaseCacheDirectory(musicDirectoryPath);
+      final stateFile = File('${baseDir.path}/library_state.json');
+      final updated = Map<String, dynamic>.from(state);
+      updated['version'] = 1;
+      updated['updatedAt'] = DateTime.now().millisecondsSinceEpoch;
+
+      final jsonString = const JsonEncoder.withIndent('  ').convert(updated);
+      await stateFile.writeAsString(jsonString);
+    } catch (e) {
+      debugPrint('[MediaCacheService] Error saving library_state.json: $e');
+    }
+  }
+
+  /// Exports current library state (liked tracks and custom playlists) to `library_state.json`.
+  ///
+  /// Uses a Smart Merge strategy: preserves existing fingerprints for tracks that might be
+  /// temporarily missing from disk / local DB, while updating active tracks and playlists.
+  Future<void> exportLibraryState({
+    required List<Track> allTracks,
+    required Set<String> likedTrackIds,
+    required List<Playlist> customPlaylists,
+    String? musicDirectoryPath,
+  }) async {
+    final existingState = await readLibraryState(musicDirectoryPath);
+    final existingLiked = (existingState['likedTracks'] as List?)
+            ?.whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList() ??
+        <Map<String, dynamic>>[];
+    final existingPlaylists = (existingState['playlists'] as List?)
+            ?.whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList() ??
+        <Map<String, dynamic>>[];
+
+    final trackMap = <int, Track>{
+      for (final t in allTracks) t.id: t,
+    };
+
+    // Set of all fingerprints present in the local database
+    final localDbFingerprints = <String>{};
+    final trackIdToFp = <String, String>{};
+    for (final t in allTracks) {
+      final fp = StringSanitizer.generateTrackFingerprint(
+        artist: t.displayArtist,
+        title: t.displayTitle,
+        durationMs: t.duration * 1000,
+      );
+      localDbFingerprints.add(fp);
+      trackIdToFp[t.trackId] = fp;
+    }
+
+    // 1. Liked Tracks Merge
+    final likedList = <Map<String, dynamic>>[];
+    final exportedLikedFps = <String>{};
+
+    for (final t in allTracks) {
+      if (likedTrackIds.contains(t.trackId)) {
+        final fp = trackIdToFp[t.trackId]!;
+        likedList.add({
+          'fingerprint': fp,
+          'artist': t.displayArtist,
+          'title': t.displayTitle,
+          'durationSec': t.duration,
+        });
+        exportedLikedFps.add(fp);
+      }
+    }
+
+    // Preserve liked tracks from existing JSON that are NOT present in current local DB
+    for (final ex in existingLiked) {
+      final fp = ex['fingerprint'] as String?;
+      if (fp != null && !localDbFingerprints.contains(fp) && !exportedLikedFps.contains(fp)) {
+        likedList.add(ex);
+        exportedLikedFps.add(fp);
+      }
+    }
+
+    // 2. Playlists Merge
+    final existingPlaylistsMap = <String, Map<String, dynamic>>{
+      for (final p in existingPlaylists)
+        if (p['playlistId'] != null) p['playlistId'] as String: p,
+    };
+
+    final playlistsList = <Map<String, dynamic>>[];
+    final processedPlaylistIds = <String>{};
+
+    for (final pl in customPlaylists) {
+      if (pl.isDefault || pl.playlistId == '__liked__') continue;
+      processedPlaylistIds.add(pl.playlistId);
+
+      final existingPl = existingPlaylistsMap[pl.playlistId];
+      final existingTracks = (existingPl?['tracks'] as List?)
+              ?.whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList() ??
+          <Map<String, dynamic>>[];
+
+      final playlistTracks = <Map<String, dynamic>>[];
+      final handledFps = <String>{};
+
+      for (final intId in pl.trackIds) {
+        final t = trackMap[intId];
+        if (t != null) {
+          final fp = trackIdToFp[t.trackId] ??
+              StringSanitizer.generateTrackFingerprint(
+                artist: t.displayArtist,
+                title: t.displayTitle,
+                durationMs: t.duration * 1000,
+              );
+          playlistTracks.add({
+            'fingerprint': fp,
+            'artist': t.displayArtist,
+            'title': t.displayTitle,
+            'durationSec': t.duration,
+          });
+          handledFps.add(fp);
+        }
+      }
+
+      // Preserve tracks from existing playlist whose files are absent from local DB
+      for (final exTrack in existingTracks) {
+        final fp = exTrack['fingerprint'] as String?;
+        if (fp != null && !localDbFingerprints.contains(fp) && !handledFps.contains(fp)) {
+          playlistTracks.add(exTrack);
+          handledFps.add(fp);
+        }
+      }
+
+      playlistsList.add({
+        'playlistId': pl.playlistId,
+        'name': pl.name,
+        'description': pl.description,
+        'customCoverPath': pl.customCoverPath,
+        'tracks': playlistTracks,
+      });
+    }
+
+    // Preserve any playlists entirely absent from local DB
+    for (final exPl in existingPlaylists) {
+      final plId = exPl['playlistId'] as String?;
+      if (plId != null && !processedPlaylistIds.contains(plId)) {
+        playlistsList.add(exPl);
+      }
+    }
+
+    final state = <String, dynamic>{
+      'version': 1,
+      'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      'likedTracks': likedList,
+      'playlists': playlistsList,
+    };
+
+    await saveLibraryState(state, musicDirectoryPath);
   }
 }

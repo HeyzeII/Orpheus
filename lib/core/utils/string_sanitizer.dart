@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+
 /// Utility class for cleaning string fields (title, artist) and detecting download sources.
 class StringSanitizer {
   StringSanitizer._();
@@ -173,5 +177,19 @@ class StringSanitizer {
         .where((a) => a.isNotEmpty && a.toLowerCase() != 'unknown artist')
         .toSet()
         .toList();
+  }
+
+  /// Generates a portable, filesystem-agnostic SHA-256 fingerprint for a track.
+  /// Format: sha256("${cleanArtist}_${cleanTitle}_${durationInSeconds}")
+  static String generateTrackFingerprint({
+    required String artist,
+    required String title,
+    required int durationMs,
+  }) {
+    final cleanArtist = cleanForApiQuery(artist).toLowerCase().trim();
+    final cleanTitle = cleanForApiQuery(title).toLowerCase().trim();
+    final durationSec = (durationMs / 1000).round();
+    final raw = '${cleanArtist}_${cleanTitle}_$durationSec';
+    return sha256.convert(utf8.encode(raw)).toString();
   }
 }

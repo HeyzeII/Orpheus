@@ -283,6 +283,12 @@ class AudioPlayerService {
 
   String get contextName => _contextName;
 
+  /// Stable index pointer into the active context list ([_activeContext]).
+  int get currentContextIndex => _contextIndex;
+
+  /// Ordered context tracks (e.g. album, playlist, library).
+  List<Track> get contextTracks => List.unmodifiable(_contextTracks);
+
   /// Virtual index within the consolidated [queue] pointing to the current track.
   int get currentIndex => _currentTrack == null ? -1 : _history.length;
 
@@ -295,7 +301,8 @@ class AudioPlayerService {
       _navigationStack.isNotEmpty ||
       position > const Duration(seconds: 3) ||
       _contextIndex > 0 ||
-      _repeatMode == PlayerRepeatMode.playlist;
+      _repeatMode == PlayerRepeatMode.playlist ||
+      _repeatMode == PlayerRepeatMode.single;
 
   @visibleForTesting
   void setMockPosition(Duration pos) {
@@ -482,6 +489,7 @@ class AudioPlayerService {
       }
       _shuffledContextTracks = null;
     }
+    _navigationStack.clear();
     _shuffleController.add(_shuffle);
     _notifyState();
   }
@@ -506,16 +514,21 @@ class AudioPlayerService {
   Future<void> next() async {
     if (_currentTrack != null) {
       _pushHistory(_currentTrack!);
-      _pushNavigation(_currentTrack!);
     }
 
     // 1. Priority: consume next FIFO item from userQueue
     if (_userQueue.isNotEmpty) {
+      if (_currentTrack != null) {
+        _pushNavigation(_currentTrack!);
+      }
       _currentTrack = _userQueue.removeAt(0);
       await _openTrack(_currentTrack!);
       _notifyState();
       return;
     }
+
+    // Resuming/advancing in context: clear navigation stack so previous() is purely index-based
+    _navigationStack.clear();
 
     // 2. Otherwise advance in contextQueue
     final active = _activeContext;
@@ -543,8 +556,16 @@ class AudioPlayerService {
     _notifyState();
   }
 
-  /// Reverse navigation through navigation stack with 3-second restart rule.
+  /// Reverse navigation through deterministic index / navigation stack with 3-second restart rule.
   Future<void> previous() async {
+    // 0. Modo repetir canción actual: reiniciar a 0:00 siempre
+    if (_repeatMode == PlayerRepeatMode.single) {
+      await seek(Duration.zero);
+      await play();
+      _notifyState();
+      return;
+    }
+
     // 1. Regla de los 3 segundos: reiniciar pista si ya transcurrieron > 3s
     if (position > const Duration(seconds: 3)) {
       await seek(Duration.zero);
@@ -552,7 +573,7 @@ class AudioPlayerService {
       return;
     }
 
-    // 2. Desandar la pila de navegación de retroceso (inmune a bucles y a Shuffle)
+    // 2. Desandar la pila de navegación (reservada para pistas fuera de contexto como userQueue)
     if (_navigationStack.isNotEmpty) {
       final prevTrack = _navigationStack.removeLast();
       if (_currentTrack != null) {
@@ -569,10 +590,8 @@ class AudioPlayerService {
       return;
     }
 
-    // 3. Fallback de contexto: retroceder un paso en el álbum/playlist activo
-    //    (cubre el caso donde _navigationStack está vacía pero hay pistas anteriores en el contexto,
-    //     ej. pista 50 de un álbum al abrir el reproductor sin haber avanzado vía next()).
-    if (_contextIndex > 0) {
+    // 3. Navegación estrictamente ordinal sobre el contexto activo (secuencial o shuffle determinista)
+    if (_activeContext.isNotEmpty && _contextIndex > 0) {
       if (_currentTrack != null) {
         _pushHistory(_currentTrack!);
       }
@@ -745,11 +764,7 @@ class AudioPlayerService {
     if (index < 0 || index >= _userQueue.length) return;
     if (_currentTrack != null) {
       _pushHistory(_currentTrack!);
-      if (_shuffle) {
-        _pushNavigation(_currentTrack!);
-      } else {
-        _navigationStack.clear();
-      }
+      _pushNavigation(_currentTrack!);
     }
 
     final target = _userQueue[index];
@@ -775,12 +790,8 @@ class AudioPlayerService {
 
     if (_currentTrack != null) {
       _pushHistory(_currentTrack!);
-      if (_shuffle) {
-        _pushNavigation(_currentTrack!);
-      } else {
-        _navigationStack.clear();
-      }
     }
+    _navigationStack.clear();
 
     _contextIndex = targetIndex;
     _currentTrack = active[_contextIndex];
@@ -801,12 +812,8 @@ class AudioPlayerService {
 
     if (_currentTrack != null) {
       _pushHistory(_currentTrack!);
-      if (_shuffle) {
-        _pushNavigation(_currentTrack!);
-      } else {
-        _navigationStack.clear();
-      }
     }
+    _navigationStack.clear();
 
     _contextIndex = absoluteIndex;
     _currentTrack = active[_contextIndex];
@@ -828,13 +835,17 @@ class AudioPlayerService {
 
     if (_currentTrack != null) {
       _pushHistory(_currentTrack!);
-      _pushNavigation(_currentTrack!);
     }
 
     final active = _activeContext;
     final matchIdx = active.lastIndexOf(targetTrack);
     if (matchIdx != -1) {
+      _navigationStack.clear();
       _contextIndex = matchIdx;
+    } else {
+      if (_currentTrack != null) {
+        _pushNavigation(_currentTrack!);
+      }
     }
 
     _currentTrack = targetTrack;
