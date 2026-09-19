@@ -64,6 +64,7 @@ class AudioPlayerService {
   Track? _currentTrack;
 
   bool _shuffle = false;
+  List<int>? _shuffledOriginalIndices;
   PlayerRepeatMode _repeatMode = PlayerRepeatMode.off;
 
   /// Human-readable label for the context source (e.g. "Album: Abbey Road").
@@ -286,6 +287,17 @@ class AudioPlayerService {
   /// Stable index pointer into the active context list ([_activeContext]).
   int get currentContextIndex => _contextIndex;
 
+  /// Original index pointer into [_contextTracks] (mapped correctly even in shuffle mode).
+  int get currentOriginalIndex {
+    if (_contextIndex < 0) return -1;
+    if (_shuffle && _shuffledOriginalIndices != null) {
+      if (_contextIndex >= 0 && _contextIndex < _shuffledOriginalIndices!.length) {
+        return _shuffledOriginalIndices![_contextIndex];
+      }
+    }
+    return _contextIndex;
+  }
+
   /// Ordered context tracks (e.g. album, playlist, library).
   List<Track> get contextTracks => List.unmodifiable(_contextTracks);
 
@@ -334,6 +346,7 @@ class AudioPlayerService {
   Future<void> playFromExternalContext(
     Track track,
     List<Track> newContext, {
+    int? initialIndex,
     String? contextName,
   }) async {
     if (newContext.isEmpty) {
@@ -350,17 +363,27 @@ class AudioPlayerService {
     }
 
     _contextTracks = List<Track>.from(newContext);
-    final targetIdx = _contextTracks.indexWhere((t) => t.trackId == track.trackId);
-    final actualIdx = targetIdx >= 0 ? targetIdx : 0;
+    final int actualIdx;
+    if (initialIndex != null &&
+        initialIndex >= 0 &&
+        initialIndex < _contextTracks.length &&
+        _contextTracks[initialIndex].trackId == track.trackId) {
+      actualIdx = initialIndex;
+    } else {
+      final targetIdx = _contextTracks.indexWhere((t) => t.trackId == track.trackId);
+      actualIdx = targetIdx >= 0 ? targetIdx : 0;
+    }
 
     if (_shuffle) {
-      final remaining = List<Track>.from(_contextTracks)..removeAt(actualIdx);
-      remaining.shuffle(Random());
-      _shuffledContextTracks = [_contextTracks[actualIdx], ...remaining];
+      final remainingIndices = List<int>.generate(_contextTracks.length, (i) => i)..removeAt(actualIdx);
+      remainingIndices.shuffle(Random());
+      _shuffledOriginalIndices = [actualIdx, ...remainingIndices];
+      _shuffledContextTracks = _shuffledOriginalIndices!.map((i) => _contextTracks[i]).toList();
       _contextIndex = 0;
       _currentTrack = _shuffledContextTracks![0];
     } else {
       _shuffledContextTracks = null;
+      _shuffledOriginalIndices = null;
       _contextIndex = actualIdx;
       _currentTrack = _contextTracks[_contextIndex];
     }
@@ -383,6 +406,7 @@ class AudioPlayerService {
     await playFromExternalContext(
       tracks[targetIdx],
       tracks,
+      initialIndex: targetIdx,
       contextName: contextName,
     );
   }
@@ -429,6 +453,7 @@ class AudioPlayerService {
     await _safeSetActive(false);
     _contextTracks.clear();
     _shuffledContextTracks = null;
+    _shuffledOriginalIndices = null;
     _contextIndex = -1;
     _userQueue.clear();
     _navigationStack.clear();
@@ -468,26 +493,26 @@ class AudioPlayerService {
     _shuffle = !_shuffle;
     if (_shuffle) {
       if (_contextTracks.isNotEmpty) {
-        final currentContextTrack = (_contextIndex >= 0 && _contextIndex < _contextTracks.length)
-            ? _contextTracks[_contextIndex]
-            : _currentTrack;
-        final remaining = List<Track>.from(_contextTracks);
-        if (currentContextTrack != null) {
-          remaining.removeWhere((t) => t.trackId == currentContextTrack.trackId);
-        }
-        remaining.shuffle(Random());
-        _shuffledContextTracks = [
-          ?currentContextTrack,
-          ...remaining,
-        ];
+        final currentIdx = (_contextIndex >= 0 && _contextIndex < _contextTracks.length)
+            ? _contextIndex
+            : 0;
+        final remainingIndices = List<int>.generate(_contextTracks.length, (i) => i)..removeAt(currentIdx);
+        remainingIndices.shuffle(Random());
+        _shuffledOriginalIndices = [currentIdx, ...remainingIndices];
+        _shuffledContextTracks = _shuffledOriginalIndices!.map((i) => _contextTracks[i]).toList();
         _contextIndex = 0;
       }
     } else {
-      if (_shuffledContextTracks != null && _currentTrack != null) {
+      if (_shuffledOriginalIndices != null &&
+          _contextIndex >= 0 &&
+          _contextIndex < _shuffledOriginalIndices!.length) {
+        _contextIndex = _shuffledOriginalIndices![_contextIndex];
+      } else if (_currentTrack != null) {
         final origIdx = _contextTracks.indexWhere((t) => t.trackId == _currentTrack!.trackId);
         _contextIndex = origIdx != -1 ? origIdx : _contextIndex.clamp(0, _contextTracks.length - 1);
       }
       _shuffledContextTracks = null;
+      _shuffledOriginalIndices = null;
     }
     _navigationStack.clear();
     _shuffleController.add(_shuffle);
@@ -717,10 +742,12 @@ class AudioPlayerService {
     if (_currentTrack != null) {
       _contextTracks = [_currentTrack!];
       _shuffledContextTracks = null;
+      _shuffledOriginalIndices = null;
       _contextIndex = 0;
     } else {
       _contextTracks.clear();
       _shuffledContextTracks = null;
+      _shuffledOriginalIndices = null;
       _contextIndex = -1;
     }
     _notifyState();
@@ -756,6 +783,12 @@ class AudioPlayerService {
     final targetRelIdx = newIndex > oldIndex ? newIndex - 1 : newIndex;
     final absNew = _contextIndex + 1 + targetRelIdx;
     targetContext.insert(absNew.clamp(0, targetContext.length), track);
+
+    if (_shuffle && _shuffledOriginalIndices != null && absOld < _shuffledOriginalIndices!.length) {
+      final origIdx = _shuffledOriginalIndices!.removeAt(absOld);
+      _shuffledOriginalIndices!.insert(absNew.clamp(0, _shuffledOriginalIndices!.length), origIdx);
+    }
+
     _notifyState();
   }
 
@@ -988,10 +1021,12 @@ class AudioPlayerService {
 
       if (saved.shuffleModeEnabled && _contextTracks.isNotEmpty) {
         _shuffle = true;
-        final remaining = List<Track>.from(_contextTracks)
-          ..removeWhere((t) => t.trackId == _currentTrack!.trackId);
-        remaining.shuffle(Random());
-        _shuffledContextTracks = [_currentTrack!, ...remaining];
+        final targetIdx = _contextTracks.indexWhere((t) => t.trackId == _currentTrack!.trackId);
+        final actualIdx = targetIdx >= 0 ? targetIdx : 0;
+        final remainingIndices = List<int>.generate(_contextTracks.length, (i) => i)..removeAt(actualIdx);
+        remainingIndices.shuffle(Random());
+        _shuffledOriginalIndices = [actualIdx, ...remainingIndices];
+        _shuffledContextTracks = _shuffledOriginalIndices!.map((i) => _contextTracks[i]).toList();
         _contextIndex = 0;
         _shuffleController.add(true);
       }

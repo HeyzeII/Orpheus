@@ -339,15 +339,19 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
   // ── Delegated Actions from OS / Bluetooth / UI controls ─────────────────
 
+  int get currentOriginalIndex => AudioPlayerService.instance.currentOriginalIndex;
+
   Future<void> playFromExternalContext(
     Track track,
     List<Track> contextTracks, {
+    int? initialIndex,
     String? contextName,
   }) async {
     mediaItem.add(_mapTrackToMediaItem(track));
     await AudioPlayerService.instance.playFromExternalContext(
       track,
       contextTracks,
+      initialIndex: initialIndex,
       contextName: contextName,
     );
   }
@@ -365,6 +369,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     await playFromExternalContext(
       tracks[targetIdx],
       tracks,
+      initialIndex: targetIdx,
       contextName: contextName,
     );
   }

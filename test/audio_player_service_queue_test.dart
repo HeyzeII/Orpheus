@@ -616,6 +616,48 @@ void main() {
       await player.previous();
       expect(player.currentContextIndex, 3);
     });
+
+    test('duplicate tracks in context respect initialIndex in sequential mode', () async {
+      final dup1 = Track()..trackId = 'duplicate_track';
+      final other = Track()..trackId = 'middle_track';
+      final dup2 = Track()..trackId = 'duplicate_track';
+      final playlist = [dup1, other, dup2];
+
+      // Play the second duplicate (index 2)
+      await player.playFromExternalContext(dup2, playlist, initialIndex: 2, contextName: 'Playlist: Dup');
+
+      expect(player.currentContextIndex, 2);
+      expect(player.currentOriginalIndex, 2);
+      expect(player.currentTrack?.trackId, 'duplicate_track');
+      expect(player.contextQueue, isEmpty);
+      expect(player.pastContext.length, 2);
+      expect(player.pastContext[0].trackId, 'duplicate_track');
+      expect(player.pastContext[1].trackId, 'middle_track');
+    });
+
+    test('duplicate tracks in context respect initialIndex and track original index in shuffle mode', () async {
+      final dup1 = Track()..trackId = 'dup_id';
+      final middle1 = Track()..trackId = 'mid_1';
+      final dup2 = Track()..trackId = 'dup_id';
+      final middle2 = Track()..trackId = 'mid_2';
+      final playlist = [dup1, middle1, dup2, middle2];
+
+      player.toggleShuffle();
+      expect(player.shuffleEnabled, isTrue);
+
+      // Play the second duplicate (index 2) directly with shuffle active
+      await player.playFromExternalContext(dup2, playlist, initialIndex: 2, contextName: 'Playlist: Dup Shuffle');
+
+      expect(player.currentContextIndex, 0); // Front of shuffled context
+      expect(player.currentOriginalIndex, 2); // Mapped back to original index 2
+      expect(player.currentTrack?.trackId, 'dup_id');
+
+      // Toggling shuffle off should land cleanly on original index 2
+      player.toggleShuffle();
+      expect(player.shuffleEnabled, isFalse);
+      expect(player.currentContextIndex, 2);
+      expect(player.currentOriginalIndex, 2);
+    });
   });
 }
 
