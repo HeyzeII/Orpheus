@@ -47,6 +47,50 @@ class AppToast {
     );
   }
 
+  /// Shows a toast notification for adding multiple tracks to a playlist.
+  static void showTracksAddedToPlaylist(
+    BuildContext context, {
+    required int count,
+    required Playlist playlist,
+    String? collectionTitle,
+  }) {
+    showCustom(
+      context,
+      child: RichText(
+        text: TextSpan(
+          style: const TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 14,
+          ),
+          children: [
+            TextSpan(
+              text: collectionTitle != null ? '$collectionTitle ($count)' : '$count canciones',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            TextSpan(
+              text: ' agregadas a ',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.6),
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+            TextSpan(
+              text: playlist.name,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+      icon: Icons.playlist_add_check_rounded,
+    );
+  }
+
   /// Shows a premium generic toast notification.
   static void showText(
     BuildContext context,

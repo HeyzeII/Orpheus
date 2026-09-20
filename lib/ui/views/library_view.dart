@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:file_picker/file_picker.dart' as fp;
@@ -127,9 +128,10 @@ class _LibraryViewState extends State<LibraryView> {
     if (tracks.isEmpty) return;
     final handler = OrpheusAudioHandler.instance;
     if (!handler.shuffleEnabled) handler.toggleShuffle();
+    final initialIndex = Random().nextInt(tracks.length);
     await handler.loadQueue(
       tracks,
-      initialIndex: 0,
+      initialIndex: initialIndex,
       contextName: contextName,
     );
   }
@@ -150,6 +152,23 @@ class _LibraryViewState extends State<LibraryView> {
       context,
       track: track,
       playlist: playlist,
+    );
+    _refreshData();
+  }
+
+  // Add multiple tracks to custom playlist
+  Future<void> _addTracksToPlaylist(List<Track> tracks, Playlist playlist, {String? collectionTitle}) async {
+    if (tracks.isEmpty) return;
+    await LocalDatabase.instance.addTracksToPlaylist(
+      playlist: playlist,
+      trackIds: tracks.map((t) => t.trackId).toList(),
+    );
+    if (!mounted) return;
+    AppToast.showTracksAddedToPlaylist(
+      context,
+      count: tracks.length,
+      playlist: playlist,
+      collectionTitle: collectionTitle,
     );
     _refreshData();
   }
@@ -312,9 +331,8 @@ class _LibraryViewState extends State<LibraryView> {
     );
   }
 
-  /// Express playlist creation from the track context menu.
-  /// Creates the playlist and immediately adds the given track to it.
-  Future<void> _createAndAddTrackToPlaylist(Track track) async {
+  /// Express playlist creation and adding multiple tracks to it.
+  Future<void> _createAndAddTracksToPlaylist(List<Track> tracks, {String? collectionTitle}) async {
     final controller = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
@@ -367,18 +385,18 @@ class _LibraryViewState extends State<LibraryView> {
         ..name = controller.text.trim()
         ..isDefault = false;
       await LocalDatabase.instance.savePlaylist(playlist);
-      await LocalDatabase.instance.addTrackToPlaylist(
-        playlist: playlist,
-        trackId: track.trackId,
-      );
-      _refreshData();
-      if (!mounted) return;
-      AppToast.showAddedToPlaylist(
-        context,
-        track: track,
-        playlist: playlist,
-      );
+      if (tracks.isNotEmpty) {
+        await _addTracksToPlaylist(tracks, playlist, collectionTitle: collectionTitle);
+      } else {
+        _refreshData();
+      }
     }
+  }
+
+  /// Express playlist creation from the track context menu.
+  /// Creates the playlist and immediately adds the given track to it.
+  Future<void> _createAndAddTrackToPlaylist(Track track) async {
+    await _createAndAddTracksToPlaylist([track], collectionTitle: track.displayTitle);
   }
 
   /// Opens a file picker to let the user select a custom cover for a [playlist].
@@ -1020,6 +1038,66 @@ class _LibraryViewState extends State<LibraryView> {
                         '${albumTracks.length} canciones',
                         style: const TextStyle(fontSize: 12, color: AppTheme.textHint),
                       ),
+                      const SizedBox(height: 16),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        children: [
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.accent,
+                              foregroundColor: AppTheme.bgDeep,
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              elevation: 0,
+                            ),
+                            onPressed: () => _shufflePlayTracks(albumTracks, contextName: 'Álbum: $albumName'),
+                            icon: const Icon(Icons.shuffle_rounded, size: 16, color: AppTheme.bgDeep),
+                            label: const Text(
+                              'Reproducción Aleatoria',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                          ),
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppTheme.textPrimary,
+                              side: const BorderSide(color: AppTheme.divider, width: 1),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            ),
+                            onPressed: () => _playTracks(albumTracks, 0, contextName: 'Álbum: $albumName'),
+                            icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                            label: const Text('Reproducir',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          ),
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert_rounded, size: 20, color: AppTheme.textSecondary),
+                            tooltip: 'Más opciones',
+                            color: AppTheme.bgSurface,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: const BorderSide(color: AppTheme.divider),
+                            ),
+                            onSelected: (value) {
+                              if (value == 'add_to_playlist') {
+                                _showAddTracksToPlaylistModal(context, albumTracks, collectionTitle: 'Álbum: $albumName');
+                              }
+                            },
+                            itemBuilder: (ctx) => [
+                              const PopupMenuItem<String>(
+                                value: 'add_to_playlist',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.playlist_add_rounded, size: 18, color: AppTheme.textPrimary),
+                                    SizedBox(width: 12),
+                                    Text('Añadir a playlist', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -1095,6 +1173,66 @@ class _LibraryViewState extends State<LibraryView> {
                       Text(
                         '${artistTracks.length} canciones en tu biblioteca',
                         style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                      ),
+                      const SizedBox(height: 16),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        children: [
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.accent,
+                              foregroundColor: AppTheme.bgDeep,
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              elevation: 0,
+                            ),
+                            onPressed: () => _shufflePlayTracks(artistTracks, contextName: 'Artista: $artistName'),
+                            icon: const Icon(Icons.shuffle_rounded, size: 16, color: AppTheme.bgDeep),
+                            label: const Text(
+                              'Reproducción Aleatoria',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                          ),
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppTheme.textPrimary,
+                              side: const BorderSide(color: AppTheme.divider, width: 1),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            ),
+                            onPressed: () => _playTracks(artistTracks, 0, contextName: 'Artista: $artistName'),
+                            icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                            label: const Text('Reproducir',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          ),
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert_rounded, size: 20, color: AppTheme.textSecondary),
+                            tooltip: 'Más opciones',
+                            color: AppTheme.bgSurface,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: const BorderSide(color: AppTheme.divider),
+                            ),
+                            onSelected: (value) {
+                              if (value == 'add_to_playlist') {
+                                _showAddTracksToPlaylistModal(context, artistTracks, collectionTitle: 'Artista: $artistName');
+                              }
+                            },
+                            itemBuilder: (ctx) => [
+                              const PopupMenuItem<String>(
+                                value: 'add_to_playlist',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.playlist_add_rounded, size: 18, color: AppTheme.textPrimary),
+                                    SizedBox(width: 12),
+                                    Text('Añadir a playlist', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -1231,6 +1369,32 @@ class _LibraryViewState extends State<LibraryView> {
                           icon: const Icon(Icons.play_arrow_rounded, size: 16),
                           label: const Text('Reproducir',
                               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        ),
+                        PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_vert_rounded, size: 20, color: AppTheme.textSecondary),
+                          tooltip: 'Más opciones',
+                          color: AppTheme.bgSurface,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: const BorderSide(color: AppTheme.divider),
+                          ),
+                          onSelected: (value) {
+                            if (value == 'add_to_playlist') {
+                              _showAddTracksToPlaylistModal(context, albumTracks, collectionTitle: albumName);
+                            }
+                          },
+                          itemBuilder: (ctx) => [
+                            const PopupMenuItem<String>(
+                              value: 'add_to_playlist',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.playlist_add_rounded, size: 18, color: AppTheme.textPrimary),
+                                  SizedBox(width: 12),
+                                  Text('Añadir a playlist', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -1476,6 +1640,32 @@ class _LibraryViewState extends State<LibraryView> {
                           icon: const Icon(Icons.play_arrow_rounded, size: 16),
                           label: const Text('Reproducir',
                               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        ),
+                        PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_vert_rounded, size: 20, color: AppTheme.textSecondary),
+                          tooltip: 'Más opciones',
+                          color: AppTheme.bgSurface,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: const BorderSide(color: AppTheme.divider),
+                          ),
+                          onSelected: (value) {
+                            if (value == 'add_to_playlist') {
+                              _showAddTracksToPlaylistModal(context, artistTracks, collectionTitle: artistName);
+                            }
+                          },
+                          itemBuilder: (ctx) => [
+                            const PopupMenuItem<String>(
+                              value: 'add_to_playlist',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.playlist_add_rounded, size: 18, color: AppTheme.textPrimary),
+                                  SizedBox(width: 12),
+                                  Text('Añadir a playlist', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -1881,6 +2071,32 @@ class _LibraryViewState extends State<LibraryView> {
                               label: const Text('Eliminar',
                                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                             ),
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert_rounded, size: 20, color: AppTheme.textSecondary),
+                            tooltip: 'Más opciones',
+                            color: AppTheme.bgSurface,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: const BorderSide(color: AppTheme.divider),
+                            ),
+                            onSelected: (value) {
+                              if (value == 'add_to_playlist') {
+                                _showAddTracksToPlaylistModal(context, playlistTracks, collectionTitle: playlist.name);
+                              }
+                            },
+                            itemBuilder: (ctx) => [
+                              const PopupMenuItem<String>(
+                                value: 'add_to_playlist',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.playlist_add_rounded, size: 18, color: AppTheme.textPrimary),
+                                    SizedBox(width: 12),
+                                    Text('Añadir a playlist', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -2110,6 +2326,32 @@ class _LibraryViewState extends State<LibraryView> {
                 label: const Text('Eliminar',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
               ),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded, size: 20, color: AppTheme.textSecondary),
+              tooltip: 'Más opciones',
+              color: AppTheme.bgSurface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: AppTheme.divider),
+              ),
+              onSelected: (value) {
+                if (value == 'add_to_playlist') {
+                  _showAddTracksToPlaylistModal(context, playlistTracks, collectionTitle: playlist.name);
+                }
+              },
+              itemBuilder: (ctx) => [
+                const PopupMenuItem<String>(
+                  value: 'add_to_playlist',
+                  child: Row(
+                    children: [
+                      Icon(Icons.playlist_add_rounded, size: 18, color: AppTheme.textPrimary),
+                      SizedBox(width: 12),
+                      Text('Añadir a playlist', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ],
@@ -2326,7 +2568,12 @@ class _LibraryViewState extends State<LibraryView> {
   );
   }
 
-  void _showAddToPlaylistModal(BuildContext context, Track track) {
+  void _showAddTracksToPlaylistModal(
+    BuildContext context,
+    List<Track> tracks, {
+    String? collectionTitle,
+  }) {
+    if (tracks.isEmpty) return;
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.bgSurface,
@@ -2346,12 +2593,18 @@ class _LibraryViewState extends State<LibraryView> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Añadir a playlist',
-                      style: TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                    Expanded(
+                      child: Text(
+                        collectionTitle != null
+                            ? 'Añadir "$collectionTitle" a playlist'
+                            : (tracks.length == 1 ? 'Añadir a playlist' : 'Añadir ${tracks.length} canciones a playlist'),
+                        style: const TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     IconButton(
@@ -2372,7 +2625,7 @@ class _LibraryViewState extends State<LibraryView> {
                   ),
                   onTap: () {
                     Navigator.pop(ctx);
-                    _createAndAddTrackToPlaylist(track);
+                    _createAndAddTracksToPlaylist(tracks, collectionTitle: collectionTitle);
                   },
                 ),
                 const Divider(color: AppTheme.divider),
@@ -2394,7 +2647,7 @@ class _LibraryViewState extends State<LibraryView> {
                         ),
                         onTap: () {
                           Navigator.pop(ctx);
-                          _addTrackToPlaylist(track, p);
+                          _addTracksToPlaylist(tracks, p, collectionTitle: collectionTitle);
                         },
                       );
                     },
@@ -2406,6 +2659,10 @@ class _LibraryViewState extends State<LibraryView> {
         );
       },
     );
+  }
+
+  void _showAddToPlaylistModal(BuildContext context, Track track) {
+    _showAddTracksToPlaylistModal(context, [track], collectionTitle: track.displayTitle);
   }
 
   void _showEditMetadataDialog(BuildContext context, Track track) {

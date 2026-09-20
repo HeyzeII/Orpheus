@@ -518,6 +518,43 @@ class LocalDatabase {
     }
   }
 
+  /// Adds multiple [trackIds] to [playlist] atomically in a single operation.
+  ///
+  /// For custom playlists, tracks are appended.
+  /// For the default Liked playlist ('__liked__'), duplicate entries are filtered out.
+  Future<void> addTracksToPlaylist({
+    required Playlist playlist,
+    required List<String> trackIds,
+  }) async {
+    if (trackIds.isEmpty) return;
+
+    final isLiked = playlist.playlistId == '__liked__';
+    final updated = List<int>.from(playlist.trackIds);
+    final newlyLikedStrings = <String>[];
+
+    for (final trackId in trackIds) {
+      final track = await getTrackByTrackId(trackId);
+      final intId = track?.id ?? trackId.hashCode;
+
+      if (isLiked) {
+        if (!updated.contains(intId)) {
+          updated.add(intId);
+          newlyLikedStrings.add(trackId);
+        }
+      } else {
+        updated.add(intId);
+      }
+    }
+
+    playlist.trackIds = updated;
+    await savePlaylist(playlist);
+
+    if (isLiked && newlyLikedStrings.isNotEmpty) {
+      final newSet = Set<String>.from(likedTrackIdsNotifier.value)..addAll(newlyLikedStrings);
+      likedTrackIdsNotifier.value = newSet;
+    }
+  }
+
   Future<void>? _likeTxChain;
 
   /// Optimistically toggles the liked status of [trackId].
