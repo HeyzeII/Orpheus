@@ -19,6 +19,7 @@ import '../widgets/animated_equalizer.dart';
 import '../widgets/app_toast.dart';
 
 enum LibraryTab { tracks, albums, artists, playlists }
+enum _DuplicateResolution { onlyNew, all, cancel }
 
 /// Main Library View — Browsing and playback controller for the local music database.
 class LibraryView extends StatefulWidget {
@@ -141,36 +142,203 @@ class _LibraryViewState extends State<LibraryView> {
     await LocalDatabase.instance.toggleLikeOptimistic(track.trackId);
   }
 
-  // Add track to custom playlist
-  Future<void> _addTrackToPlaylist(Track track, Playlist playlist) async {
-    await LocalDatabase.instance.addTrackToPlaylist(
-      playlist: playlist,
-      trackId: track.trackId,
-    );
-    if (!mounted) return;
-    AppToast.showAddedToPlaylist(
-      context,
-      track: track,
-      playlist: playlist,
-    );
-    _refreshData();
-  }
-
-  // Add multiple tracks to custom playlist
-  Future<void> _addTracksToPlaylist(List<Track> tracks, Playlist playlist, {String? collectionTitle}) async {
+  // Direct persistence helper (bypasses duplicate confirmation)
+  Future<void> _addTracksDirectly(
+    List<Track> tracks,
+    Playlist playlist, {
+    String? collectionTitle,
+  }) async {
     if (tracks.isEmpty) return;
     await LocalDatabase.instance.addTracksToPlaylist(
       playlist: playlist,
       trackIds: tracks.map((t) => t.trackId).toList(),
     );
     if (!mounted) return;
-    AppToast.showTracksAddedToPlaylist(
-      context,
-      count: tracks.length,
-      playlist: playlist,
-      collectionTitle: collectionTitle,
-    );
+    if (tracks.length == 1) {
+      AppToast.showAddedToPlaylist(
+        context,
+        track: tracks.first,
+        playlist: playlist,
+      );
+    } else {
+      AppToast.showTracksAddedToPlaylist(
+        context,
+        count: tracks.length,
+        playlist: playlist,
+        collectionTitle: collectionTitle,
+      );
+    }
     _refreshData();
+  }
+
+  // Centralized interceptor with duplicate detection and user resolution dialogs
+  Future<void> _processAddTracksToPlaylist(
+    BuildContext context,
+    List<Track> tracks,
+    Playlist playlist, {
+    String? collectionTitle,
+  }) async {
+    if (tracks.isEmpty) return;
+
+    // For default Liked playlist, LocalDatabase already deduplicates silently
+    if (playlist.playlistId == '__liked__') {
+      await _addTracksDirectly(tracks, playlist, collectionTitle: collectionTitle);
+      return;
+    }
+
+    final existingIds = playlist.trackIds.toSet();
+    final duplicates = tracks.where((t) => existingIds.contains(t.id)).toList();
+    final newTracks = tracks.where((t) => !existingIds.contains(t.id)).toList();
+
+    // CASO 1: Sin duplicados
+    if (duplicates.isEmpty) {
+      await _addTracksDirectly(tracks, playlist, collectionTitle: collectionTitle);
+      return;
+    }
+
+    // CASO 2: Pista individual duplicada
+    if (tracks.length == 1) {
+      final track = tracks.first;
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppTheme.bgSurface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: AppTheme.divider),
+          ),
+          title: const Text(
+            'Canción duplicada',
+            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            '"${track.displayTitle}" ya está en "${playlist.name}". ¿Deseas agregarla de todos modos?',
+            style: const TextStyle(color: AppTheme.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar', style: TextStyle(color: AppTheme.textSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accent,
+                foregroundColor: AppTheme.bgDeep,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Agregar de todos modos', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm == true) {
+        await _addTracksDirectly(tracks, playlist, collectionTitle: collectionTitle);
+      }
+      return;
+    }
+
+    // CASO 3: Lote / Colección con duplicados parciales o totales
+    if (newTracks.isEmpty) {
+      // Todas las canciones del lote ya están en la playlist
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppTheme.bgSurface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: AppTheme.divider),
+          ),
+          title: const Text(
+            'Canciones repetidas detectadas',
+            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'Todas las canciones (${duplicates.length}) ya forman parte de "${playlist.name}". ¿Deseas agregarlas de todos modos?',
+            style: const TextStyle(color: AppTheme.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar', style: TextStyle(color: AppTheme.textSecondary)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accent,
+                foregroundColor: AppTheme.bgDeep,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Agregar todas de todos modos', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm == true) {
+        await _addTracksDirectly(tracks, playlist, collectionTitle: collectionTitle);
+      }
+    } else {
+      // Duplicados parciales
+      final result = await showDialog<_DuplicateResolution>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppTheme.bgSurface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: AppTheme.divider),
+          ),
+          title: const Text(
+            'Canciones repetidas detectadas',
+            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            '${duplicates.length} de ${tracks.length} canciones ya forman parte de "${playlist.name}".',
+            style: const TextStyle(color: AppTheme.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, _DuplicateResolution.cancel),
+              child: const Text('Cancelar', style: TextStyle(color: AppTheme.textSecondary)),
+            ),
+            OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.textPrimary,
+                side: const BorderSide(color: AppTheme.divider),
+              ),
+              onPressed: () => Navigator.pop(ctx, _DuplicateResolution.all),
+              child: const Text('Agregar todas de todos modos'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accent,
+                foregroundColor: AppTheme.bgDeep,
+              ),
+              onPressed: () => Navigator.pop(ctx, _DuplicateResolution.onlyNew),
+              child: Text(
+                'Agregar solo las ${newTracks.length} nuevas',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      );
+
+      if (result == _DuplicateResolution.onlyNew) {
+        await _addTracksDirectly(newTracks, playlist, collectionTitle: collectionTitle);
+      } else if (result == _DuplicateResolution.all) {
+        await _addTracksDirectly(tracks, playlist, collectionTitle: collectionTitle);
+      }
+    }
+  }
+
+  // Add track to custom playlist (delegates to centralized interceptor)
+  Future<void> _addTrackToPlaylist(Track track, Playlist playlist) async {
+    await _processAddTracksToPlaylist(context, [track], playlist, collectionTitle: track.displayTitle);
+  }
+
+  // Add multiple tracks to custom playlist (delegates to centralized interceptor)
+  Future<void> _addTracksToPlaylist(List<Track> tracks, Playlist playlist, {String? collectionTitle}) async {
+    await _processAddTracksToPlaylist(context, tracks, playlist, collectionTitle: collectionTitle);
   }
 
   // Remove track from custom playlist
@@ -386,7 +554,7 @@ class _LibraryViewState extends State<LibraryView> {
         ..isDefault = false;
       await LocalDatabase.instance.savePlaylist(playlist);
       if (tracks.isNotEmpty) {
-        await _addTracksToPlaylist(tracks, playlist, collectionTitle: collectionTitle);
+        await _addTracksDirectly(tracks, playlist, collectionTitle: collectionTitle);
       } else {
         _refreshData();
       }

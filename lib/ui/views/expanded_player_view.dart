@@ -1484,20 +1484,74 @@ class _TrackMoreMenuState extends State<_TrackMoreMenu> {
           OrpheusAudioHandler.instance.addToQueue(widget.track);
           AppToast.showText(context, 'Añadida a la cola');
         } else if (value is Playlist) {
-          LocalDatabase.instance
-              .addTrackToPlaylist(
-            playlist: value,
-            trackId: widget.track.trackId,
-          )
-              .then((_) {
-            if (context.mounted) {
-              AppToast.showAddedToPlaylist(
-                context,
-                track: widget.track,
-                playlist: value,
-              );
-            }
-          });
+          final playlist = value;
+          final isDuplicate = playlist.trackIds.contains(widget.track.id);
+          if (isDuplicate && playlist.playlistId != '__liked__') {
+            showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: AppTheme.bgSurface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: const BorderSide(color: AppTheme.divider),
+                ),
+                title: const Text(
+                  'Canción duplicada',
+                  style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+                ),
+                content: Text(
+                  '"${widget.track.displayTitle}" ya está en "${playlist.name}". ¿Deseas agregarla de todos modos?',
+                  style: const TextStyle(color: AppTheme.textSecondary),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Cancelar', style: TextStyle(color: AppTheme.textSecondary)),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.accent,
+                      foregroundColor: AppTheme.bgDeep,
+                    ),
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Agregar de todos modos', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ).then((confirm) {
+              if (confirm == true) {
+                LocalDatabase.instance
+                    .addTrackToPlaylist(
+                  playlist: playlist,
+                  trackId: widget.track.trackId,
+                )
+                    .then((_) {
+                  if (context.mounted) {
+                    AppToast.showAddedToPlaylist(
+                      context,
+                      track: widget.track,
+                      playlist: playlist,
+                    );
+                  }
+                });
+              }
+            });
+          } else {
+            LocalDatabase.instance
+                .addTrackToPlaylist(
+              playlist: playlist,
+              trackId: widget.track.trackId,
+            )
+                .then((_) {
+              if (context.mounted) {
+                AppToast.showAddedToPlaylist(
+                  context,
+                  track: widget.track,
+                  playlist: playlist,
+                );
+              }
+            });
+          }
         }
       },
       itemBuilder: (context) {
