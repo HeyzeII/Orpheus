@@ -8,10 +8,12 @@ import 'package:flutter/services.dart';
 import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
 import '../../core/services/audio_handler.dart';
+import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_equalizer.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/marquee_text.dart';
+import '../widgets/video_canvas.dart';
 import 'lyrics_view.dart';
 
 /// The premium Now Playing "Theater View" (Expanded Player) replacing Explore.
@@ -44,7 +46,7 @@ class _ExpandedPlayerViewState extends State<ExpandedPlayerView> {
         }
       },
       child: Scaffold(
-        backgroundColor: Colors.transparent,
+        backgroundColor: const Color(0xFF0F0F0F),
         body: StreamBuilder<Track?>(
           stream: OrpheusAudioHandler.instance.currentTrackStream,
           initialData: OrpheusAudioHandler.instance.currentTrack,
@@ -93,10 +95,15 @@ class _BlurredImageBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (track.isVideo) {
+      return const ColoredBox(color: Color(0xFF0B0B0B));
+    }
     final coverPath = track.customMetadata.customCoverPath;
     return Stack(
       fit: StackFit.expand,
       children: [
+        // Solid opaque base layer prevents BackdropFilter from bleeding into underlying routes
+        const ColoredBox(color: Color(0xFF0F0F0F)),
         if (coverPath != null && File(coverPath).existsSync())
           Transform.scale(
             scale: 1.15,
@@ -112,8 +119,8 @@ class _BlurredImageBackground extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  const Color(0xFF141414).withValues(alpha: 0.55),
-                  const Color(0xFF141414).withValues(alpha: 0.92),
+                  const Color(0xFF141414).withValues(alpha: 0.70),
+                  const Color(0xFF141414).withValues(alpha: 0.96),
                 ],
               ),
             ),
@@ -244,41 +251,63 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
         systemNavigationBarContrastEnforced: false,
       ),
       child: Padding(
-        padding: EdgeInsets.fromLTRB(16, topPad + 4, 16, bottomPad + 4),
+        padding: EdgeInsets.fromLTRB(0, topPad + 4, 0, bottomPad + 4),
         child: Column(
           children: [
             // ── Top Bar ───────────────────────────────────────────────────────
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.keyboard_arrow_down_rounded,
-                      size: 32, color: Colors.white70),
-                  onPressed: () {
-                    if (isOverlay) {
-                      widget.onModeChanged(_MobileOverlayMode.artwork);
-                    } else {
-                      Navigator.of(context).pop();
-                    }
-                  },
-                  tooltip: isOverlay ? 'Cerrar' : 'Minimizar',
-                ),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 250),
-                  child: Text(
-                    headerTitle,
-                    key: ValueKey(headerTitle),
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.5,
-                      color: Colors.white54,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                        size: 32, color: Colors.white70),
+                    onPressed: () {
+                      if (isOverlay) {
+                        widget.onModeChanged(_MobileOverlayMode.artwork);
+                      } else {
+                        Navigator.of(context).pop();
+                      }
+                    },
+                    tooltip: isOverlay ? 'Cerrar' : 'Minimizar',
+                  ),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    child: Text(
+                      headerTitle,
+                      key: ValueKey(headerTitle),
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.5,
+                        color: Colors.white54,
+                      ),
                     ),
                   ),
-                ),
-                _TrackMoreMenu(track: track, iconSize: 22),
-              ],
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (track.isVideo &&
+                          AudioPlayerService.instance.videoController != null)
+                        IconButton(
+                          icon: const Icon(
+                            Icons.fullscreen_rounded,
+                            size: 26,
+                            color: Colors.white,
+                          ),
+                          tooltip: 'Pantalla completa',
+                          onPressed: () => VideoCanvas.enterFullscreen(
+                            context,
+                            AudioPlayerService.instance.videoController!,
+                          ),
+                        ),
+                      _TrackMoreMenu(track: track, iconSize: 22),
+                    ],
+                  ),
+                ],
+              ),
             ),
 
             // ── Main Body Content with Tidal-style organic transitions ────────
@@ -316,37 +345,62 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                         key: const ValueKey('mobile_artwork_view'),
                         children: [
                           const Spacer(flex: 1),
-                          GestureDetector(
-                            onHorizontalDragEnd: _handleSwipe,
-                            child: Container(
-                              width: 280,
-                              height: 280,
-                              margin: const EdgeInsets.symmetric(vertical: 16),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.55),
-                                    blurRadius: 36,
-                                    offset: const Offset(0, 10),
-                                  ),
-                                ],
-                                image: hasArt
-                                    ? DecorationImage(
-                                        image: FileImage(File(coverPath)),
-                                        fit: BoxFit.cover,
+                          if (track.isVideo)
+                            SizedBox(
+                              width: double.infinity,
+                              child: AspectRatio(
+                                aspectRatio: 16 / 9,
+                                child: AudioPlayerService
+                                            .instance.videoController !=
+                                        null
+                                    ? VideoCanvas(
+                                        controller: AudioPlayerService
+                                            .instance.videoController!,
+                                        borderRadius: 0.0,
                                       )
-                                    : null,
-                                color: hasArt ? null : const Color(0xFF282828),
+                                    : const Center(
+                                        child: CircularProgressIndicator(
+                                            color: AppTheme.accent),
+                                      ),
                               ),
-                              child: hasArt
-                                  ? null
-                                  : const Center(
-                                      child: Icon(Icons.music_note_rounded,
-                                          size: 72, color: Colors.white24),
+                            )
+                          else
+                            GestureDetector(
+                              onHorizontalDragEnd: _handleSwipe,
+                              child: Container(
+                                width: 280,
+                                height: 280,
+                                margin: const EdgeInsets.symmetric(
+                                    vertical: 16),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black
+                                          .withValues(alpha: 0.55),
+                                      blurRadius: 36,
+                                      offset: const Offset(0, 10),
                                     ),
+                                  ],
+                                  image: hasArt
+                                      ? DecorationImage(
+                                          image: FileImage(File(coverPath)),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : null,
+                                  color: hasArt
+                                      ? null
+                                      : const Color(0xFF282828),
+                                ),
+                                child: hasArt
+                                    ? null
+                                    : const Center(
+                                        child: Icon(Icons.music_note_rounded,
+                                            size: 72,
+                                            color: Colors.white24),
+                                      ),
+                              ),
                             ),
-                          ),
                           const Spacer(flex: 1),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -385,21 +439,29 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                             ),
                           ),
                           const SizedBox(height: 12),
-                          const _ExpandedProgressBar(),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: const _ExpandedProgressBar(),
+                          ),
                           const SizedBox(height: 8),
                           const _ExpandedPlaybackControls(),
                           const SizedBox(height: 8),
                         ],
                       )
                     : isQueue
-                        ? Container(
-                            key: const ValueKey('mobile_queue_fullscreen_pane'),
-                            margin: const EdgeInsets.only(top: 4, bottom: 4),
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                            child: const _QueueTab(),
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Container(
+                              key: const ValueKey('mobile_queue_fullscreen_pane'),
+                              margin: const EdgeInsets.only(top: 4, bottom: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                              child: const _QueueTab(),
+                            ),
                           )
-                        : Column(
-                            key: const ValueKey('mobile_lyrics_container'),
+                        : Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Column(
+                              key: const ValueKey('mobile_lyrics_container'),
                             children: [
                               // Peek header: compact artwork & title in peek phase
                               AnimatedSize(
@@ -526,6 +588,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                               ),
                             ],
                           ),
+                        ),
               ),
             ),
 
@@ -567,15 +630,19 @@ class _BottomUtilityRow extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          IconButton(
-            icon: Icon(
-              Icons.lyrics_rounded,
-              color: isLyrics ? AppTheme.accent : Colors.white70,
-              size: 26,
-            ),
-            onPressed: onLyricsTap,
-            tooltip: 'Letras',
-          ),
+          // Lyrics button — hidden for video tracks (no lyrics panel)
+          if (!track.isVideo)
+            IconButton(
+              icon: Icon(
+                Icons.lyrics_rounded,
+                color: isLyrics ? AppTheme.accent : Colors.white70,
+                size: 26,
+              ),
+              onPressed: onLyricsTap,
+              tooltip: 'Letras',
+            )
+          else
+            const SizedBox(width: 48),
           _AudioHdBadge(track: track),
           IconButton(
             icon: Icon(
@@ -629,46 +696,59 @@ class _ExpandedArtisticCore extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Huge Cover Art
+          // Huge Cover Art or Video Canvas
           Expanded(
             child: Center(
               child: AspectRatio(
-                aspectRatio: 1,
-                child: GestureDetector(
-                  onHorizontalDragEnd: (details) {
-                    if (details.primaryVelocity != null) {
-                      if (details.primaryVelocity! < -200) {
-                        OrpheusAudioHandler.instance.skipToNext();
-                      } else if (details.primaryVelocity! > 200) {
-                        OrpheusAudioHandler.instance.skipToPrevious();
-                      }
-                    }
-                  },
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.40),
-                          blurRadius: 40,
-                          offset: const Offset(0, 20),
-                        ),
-                      ],
-                      image: coverPath != null && File(coverPath).existsSync()
-                          ? DecorationImage(
-                              image: FileImage(File(coverPath)),
-                              fit: BoxFit.cover,
-                            )
-                          : null,
-                    ),
-                    child: coverPath == null || !File(coverPath).existsSync()
-                        ? const Center(
-                            child: Icon(Icons.music_note_rounded,
-                                size: 80, color: Colors.white24),
+                aspectRatio: track.isVideo ? (16 / 9) : 1,
+                child: track.isVideo
+                    ? (AudioPlayerService.instance.videoController != null
+                        ? VideoCanvas(
+                            controller:
+                                AudioPlayerService.instance.videoController!,
+                            borderRadius: 16.0,
                           )
-                        : null,
-                  ),
-                ),
+                        : const Center(
+                            child: CircularProgressIndicator(
+                                color: AppTheme.accent),
+                          ))
+                    : GestureDetector(
+                        onHorizontalDragEnd: (details) {
+                          if (details.primaryVelocity != null) {
+                            if (details.primaryVelocity! < -200) {
+                              OrpheusAudioHandler.instance.skipToNext();
+                            } else if (details.primaryVelocity! > 200) {
+                              OrpheusAudioHandler.instance.skipToPrevious();
+                            }
+                          }
+                        },
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.40),
+                                blurRadius: 40,
+                                offset: const Offset(0, 20),
+                              ),
+                            ],
+                            image: coverPath != null &&
+                                    File(coverPath).existsSync()
+                                ? DecorationImage(
+                                    image: FileImage(File(coverPath)),
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
+                          ),
+                          child: coverPath == null ||
+                                  !File(coverPath).existsSync()
+                              ? const Center(
+                                  child: Icon(Icons.music_note_rounded,
+                                      size: 80, color: Colors.white24),
+                                )
+                              : null,
+                        ),
+                      ),
               ),
             ),
           ),

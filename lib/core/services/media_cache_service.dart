@@ -32,6 +32,24 @@ class MediaCacheService {
 
   final LocalDatabase _db;
   Directory? _customBaseDir;
+  final Set<String> _deletedPlaylistIds = {};
+
+  /// Set of blacklisted (permanently deleted) playlist IDs to prevent resurrection.
+  Set<String> get deletedPlaylistIds => Set.unmodifiable(_deletedPlaylistIds);
+
+  /// Permanently marks a playlist as deleted.
+  void markPlaylistAsDeleted(String playlistId) {
+    if (playlistId.isNotEmpty && playlistId != '__liked__') {
+      _deletedPlaylistIds.add(playlistId);
+    }
+  }
+
+  /// Bulk marks multiple playlist IDs as deleted.
+  void markPlaylistsAsDeleted(Iterable<String> playlistIds) {
+    for (final id in playlistIds) {
+      markPlaylistAsDeleted(id);
+    }
+  }
 
   /// Allows setting a custom base directory (useful for testing or overrides).
   @visibleForTesting
@@ -577,6 +595,11 @@ class MediaCacheService {
         if (content.trim().isNotEmpty) {
           final decoded = jsonDecode(content);
           if (decoded is Map<String, dynamic>) {
+            if (decoded['deletedPlaylistIds'] is List) {
+              for (final id in (decoded['deletedPlaylistIds'] as List)) {
+                if (id is String) markPlaylistAsDeleted(id);
+              }
+            }
             return decoded;
           }
         }
@@ -680,8 +703,16 @@ class MediaCacheService {
     final playlistsList = <Map<String, dynamic>>[];
     final processedPlaylistIds = <String>{};
 
+    // Merge deleted playlist blacklist
+    final existingDeleted = (existingState['deletedPlaylistIds'] as List?)
+            ?.whereType<String>()
+            .toSet() ??
+        <String>{};
+    final mergedDeleted = {...existingDeleted, ..._deletedPlaylistIds};
+    _deletedPlaylistIds.addAll(mergedDeleted);
+
     for (final pl in customPlaylists) {
-      if (pl.isDefault || pl.playlistId == '__liked__') continue;
+      if (pl.isDefault || pl.playlistId == '__liked__' || mergedDeleted.contains(pl.playlistId)) continue;
       processedPlaylistIds.add(pl.playlistId);
 
       final existingPl = existingPlaylistsMap[pl.playlistId];
@@ -731,19 +762,12 @@ class MediaCacheService {
       });
     }
 
-    // Preserve any playlists entirely absent from local DB
-    for (final exPl in existingPlaylists) {
-      final plId = exPl['playlistId'] as String?;
-      if (plId != null && !processedPlaylistIds.contains(plId)) {
-        playlistsList.add(exPl);
-      }
-    }
-
     final state = <String, dynamic>{
       'version': 1,
       'updatedAt': DateTime.now().millisecondsSinceEpoch,
       'likedTracks': likedList,
       'playlists': playlistsList,
+      'deletedPlaylistIds': mergedDeleted.toList(),
     };
 
     await saveLibraryState(state, musicDirectoryPath);

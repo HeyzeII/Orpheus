@@ -683,9 +683,29 @@ class LocalDatabase {
         'Cannot delete system playlist "${playlist.name}".',
       );
     }
+
+    // 1. Blacklist playlistId so it never resurrects during future rescans
+    MediaCacheService.instance.markPlaylistAsDeleted(playlist.playlistId);
+
+    // 2. Delete physical custom cover file if present on disk
+    final coverPath = playlist.customCoverPath;
+    if (coverPath != null && coverPath.isNotEmpty) {
+      try {
+        final coverFile = File(coverPath);
+        if (await coverFile.exists()) {
+          await coverFile.delete();
+        }
+      } catch (e) {
+        debugPrint('[LocalDatabase] Error deleting custom cover for playlist: $e');
+      }
+    }
+
+    // 3. Delete from Isar DB
     await _isar.writeTxn(() async {
       await _isar.playlists.delete(id);
     });
+
+    // 4. Update library_state.json across all scan directories
     unawaited(syncLibraryStateToDisk());
   }
 

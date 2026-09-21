@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart' hide Track;
+import 'package:media_kit_video/media_kit_video.dart';
 
 import '../database/local_database.dart';
 import '../models/playback_state.dart' as local;
@@ -36,6 +37,9 @@ class AudioPlayerService {
 
   final LocalDatabase _db;
   late final Player _player;
+  /// Exposes the media_kit [VideoController] for rendering frames in [VideoCanvas].
+  /// Null in unit-test environments where the Player is never created.
+  VideoController? _videoController;
 
   /// Ordered context tracks (e.g. album, playlist, library).
   /// Invariant: context is not mutated when user tracks play or history is browsed.
@@ -107,6 +111,19 @@ class AudioPlayerService {
         pitch: false,
       ),
     );
+
+    // Optimize libmpv properties for background audio continuity:
+    // Sinks video-sync to audio clock and prevents frame stalling when the
+    // surface/texture is suspended or minimized on mobile OS.
+    try {
+      (_player.platform as dynamic)?.setProperty('video-sync', 'audio');
+      (_player.platform as dynamic)?.setProperty('keep-open', 'yes');
+      (_player.platform as dynamic)?.setProperty('hwdec', 'auto-safe');
+    } catch (_) {}
+
+    // Bind the VideoController to the same Player so the Video widget can
+    // render frames without any extra configuration.
+    _videoController = VideoController(_player);
 
     _initAudioSession();
 
@@ -236,6 +253,10 @@ class AudioPlayerService {
   // ── Public Getters ─────────────────────────────────────────────────────────
 
   Track? get currentTrack => _currentTrack;
+
+  /// The [VideoController] bound to the active [Player].
+  /// Returns `null` when running in a test environment.
+  VideoController? get videoController => _videoController;
 
   bool get isPlaying =>
       Platform.environment.containsKey('FLUTTER_TEST') ? false : _player.state.playing;
@@ -1069,6 +1090,7 @@ class AudioPlayerService {
       await sub.cancel();
     }
     _subscriptions.clear();
+    _videoController = null; // release before player disposal
     await _player.dispose();
 
     await _currentTrackController.close();

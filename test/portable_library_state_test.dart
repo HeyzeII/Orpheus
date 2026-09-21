@@ -403,5 +403,55 @@ void main() {
       expect(fps, contains(fpPresent));
       expect(fps, contains(fpMissing));
     });
+
+    test('Deleted playlist is blacklisted, removed from library_state.json and not resurrected during rescan', () async {
+      final cacheService = MediaCacheService.instance;
+
+      // 1. Save state with 2 playlists
+      final initialJson = {
+        'version': 1,
+        'updatedAt': 1000,
+        'likedTracks': [],
+        'playlists': [
+          {
+            'playlistId': 'pl_active',
+            'name': 'Active Playlist',
+            'tracks': [],
+          },
+          {
+            'playlistId': 'pl_to_delete',
+            'name': 'Playlist To Delete',
+            'tracks': [],
+          }
+        ],
+        'deletedPlaylistIds': [],
+      };
+      await cacheService.saveLibraryState(initialJson, musicDir.path);
+
+      // 2. Mark pl_to_delete as deleted
+      cacheService.markPlaylistAsDeleted('pl_to_delete');
+      expect(cacheService.deletedPlaylistIds, contains('pl_to_delete'));
+
+      // 3. Export library state with only pl_active
+      final activePlaylist = Playlist()
+        ..playlistId = 'pl_active'
+        ..name = 'Active Playlist';
+
+      await cacheService.exportLibraryState(
+        allTracks: [],
+        likedTrackIds: {},
+        customPlaylists: [activePlaylist],
+        musicDirectoryPath: musicDir.path,
+      );
+
+      // 4. Read back state and verify pl_to_delete is gone and recorded in deletedPlaylistIds
+      final updatedState = await cacheService.readLibraryState(musicDir.path);
+      final playlists = (updatedState['playlists'] as List);
+      expect(playlists.length, equals(1));
+      expect(playlists.first['playlistId'], equals('pl_active'));
+
+      final deletedList = (updatedState['deletedPlaylistIds'] as List);
+      expect(deletedList, contains('pl_to_delete'));
+    });
   });
 }

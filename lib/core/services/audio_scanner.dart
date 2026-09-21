@@ -20,6 +20,7 @@ const _kSupportedExtensions = {
   'flac',
   'm4a',
   'mp4',
+  'm4v', // Apple video container (identical to MP4)
   'wav',
   'ogg',
   'opus',
@@ -88,6 +89,14 @@ class AudioScannerService {
 
     // Load portable library_state.json if available in scan directory.
     final libraryState = await mediaCache.readLibraryState(directoryPath);
+    final deletedPlaylistIds = <String>{
+      ...mediaCache.deletedPlaylistIds,
+      if (libraryState['deletedPlaylistIds'] is List)
+        for (final item in (libraryState['deletedPlaylistIds'] as List))
+          if (item is String) item,
+    };
+    mediaCache.markPlaylistsAsDeleted(deletedPlaylistIds);
+
     final likedFingerprints = <String>{
       if (libraryState['likedTracks'] is List)
         for (final item in (libraryState['likedTracks'] as List))
@@ -347,7 +356,12 @@ class AudioScannerService {
             ..artists = individualArtists
             ..album = cleanAlbum
             ..genre = meta?.genre?.trim()
-            ..downloadSource = downloadSource;
+            ..downloadSource = downloadSource
+            ..audioQuality = fileType == FileType.mp4
+                ? 'VIDEO'
+                : (fileType == FileType.flac || fileType == FileType.wav
+                    ? 'HI-FI'
+                    : 'HQ');
 
           for (final a in individualArtists) {
             if (!knownArtists.contains(a)) knownArtists.add(a);
@@ -549,6 +563,10 @@ class AudioScannerService {
       // 2. Recover Custom Playlists
       for (final entry in portablePlaylists.entries) {
         final plId = entry.key;
+        if (deletedPlaylistIds.contains(plId)) {
+          // Skip permanently deleted playlists to prevent resurrection
+          continue;
+        }
         final plData = entry.value;
         final fps = plData['fingerprints'] as List<String>;
 
@@ -678,7 +696,7 @@ class AudioScannerService {
     return switch (ext) {
       'mp3' => FileType.mp3,
       'flac' => FileType.flac,
-      'mp4' => FileType.mp4,
+      'mp4' || 'm4v' => FileType.mp4, // m4v is functionally identical to mp4
       'm4a' => FileType.m4a,
       'wav' => FileType.wav,
       _ => FileType.unknown,

@@ -13,7 +13,7 @@
     "fileStem": "test_edit",
     "originalArtist": "New Artist",
     "originalTitle": "New Title",
-    "updatedAt": 1789884617476
+    "updatedAt": 1789966077971
   },
   "rel:music/test_edit.mp3": {
     "title": "New Title",
@@ -29,7 +29,7 @@
     "fileStem": "test_edit",
     "originalArtist": "New Artist",
     "originalTitle": "New Title",
-    "updatedAt": 1789884617476
+    "updatedAt": 1789966077971
   },
   "rel:test_edit.mp3": {
     "title": "New Title",
@@ -45,7 +45,7 @@
     "fileStem": "test_edit",
     "originalArtist": "New Artist",
     "originalTitle": "New Title",
-    "updatedAt": 1789884617476
+    "updatedAt": 1789966077971
   },
   "stem:test_edit": {
     "title": "New Title",
@@ -61,7 +61,7 @@
     "fileStem": "test_edit",
     "originalArtist": "New Artist",
     "originalTitle": "New Title",
-    "updatedAt": 1789884617476
+    "updatedAt": 1789966077971
   },
   "hash:38fab659dc809086446091c18afa649c8147b8f0be2bd7d77874e6d52f741152": {
     "title": "New Title",
@@ -77,7 +77,7 @@
     "fileStem": "test_edit",
     "originalArtist": "New Artist",
     "originalTitle": "New Title",
-    "updatedAt": 1789884617476
+    "updatedAt": 1789966077971
   },
   "38fab659dc809086446091c18afa649c8147b8f0be2bd7d77874e6d52f741152": {
     "title": "New Title",
@@ -93,6 +93,6 @@
     "fileStem": "test_edit",
     "originalArtist": "New Artist",
     "originalTitle": "New Title",
-    "updatedAt": 1789884617476
+    "updatedAt": 1789966077971
   }
 }

@@ -128,6 +128,12 @@ class Track {
     return album ?? 'Unknown Album';
   }
 
+  /// Returns `true` if this track is a video file (MP4 / m4v container).
+  ///
+  /// Derived from [fileType] — never stored in Isar.
+  @ignore
+  bool get isVideo => fileType == FileType.mp4;
+
   /// Strips directory and extension from a file path to derive a fallback title.
   static String _stemFromPath(String path) {
     final name = path.split('/').last;

@@ -25,7 +25,8 @@ dependencies:
 
   # ── Audio playback ────────────────────────────────────────
   media_kit: ^1.2.6
-  media_kit_libs_audio: ^1.0.7
+  media_kit_libs_video: ^1.0.7   # superset of audio-only — includes video decoders
+  media_kit_video: ^1.2.6        # VideoController + Video widget
   audio_service: ^0.18.18
   audio_session: ^0.1.21
 
