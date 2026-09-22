@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -20,12 +21,18 @@ import 'marquee_text.dart';
 /// - In **Fullscreen mode**: rotates the device to landscape with immersive UI,
 ///   providing Tidal-style on-screen controls (-10s, previous, play/pause, next,
 ///   +10s, shuffle, repeat, and scrubber) that auto-hide after 3.5 seconds.
-class VideoCanvas extends StatelessWidget {
+/// - **Resilient Lifecycle (UI Unmounting)**: Dynamically unmounts the native [Video]
+///   widget whenever the app lifecycle state is NOT [AppLifecycleState.resumed]
+///   (e.g., when notification panel is pulled down or app is minimized). This
+///   completely liberates the native SurfaceTexture, eliminating any micro-cuts
+///   or unwanted playback pauses while preserving 100% continuous audio stream.
+class VideoCanvas extends StatefulWidget {
   const VideoCanvas({
     super.key,
     required this.controller,
     this.borderRadius = 0.0,
     this.aspectRatio = 16 / 9,
+    this.track,
   });
 
   final VideoController controller;
@@ -35,6 +42,9 @@ class VideoCanvas extends StatelessWidget {
 
   /// Fallback aspect ratio for the non-fullscreen container.
   final double aspectRatio;
+
+  /// Optional track for rendering static fallback artwork when unmounted.
+  final Track? track;
 
   /// Global helper to enter fullscreen landscape mode with immersive sticky UI.
   static Future<void> enterFullscreen(
@@ -74,16 +84,98 @@ class VideoCanvas extends StatelessWidget {
   }
 
   @override
+  State<VideoCanvas> createState() => _VideoCanvasState();
+}
+
+class _VideoCanvasState extends State<VideoCanvas> with WidgetsBindingObserver {
+  AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
+
+  /// P0: Pending timer that delays remounting of the [Video] widget after
+  /// resume, giving the native [VideoController] time to reinitialize its
+  /// SurfaceTexture before the Flutter rasterizer tries to composite frames.
+  Timer? _resumeTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _lifecycleState =
+        WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
+  }
+
+  @override
+  void dispose() {
+    _resumeTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// P0: Delays Video widget remounting by 250 ms on [AppLifecycleState.resumed]
+  /// so the native VideoController has time to reinitialize its SurfaceTexture
+  /// before Flutter's rasterizer attempts to composite frames from it.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _resumeTimer?.cancel();
+      _resumeTimer = Timer(const Duration(milliseconds: 250), () {
+        if (mounted) setState(() => _lifecycleState = state);
+      });
+    } else {
+      _resumeTimer?.cancel();
+      if (_lifecycleState != state) {
+        setState(() => _lifecycleState = state);
+      }
+    }
+  }
+
+  /// P1: Static fallback shown while the [VideoController]'s SurfaceTexture
+  /// is not yet ready (rect == null or Rect.zero after a resume).
+  Widget _buildFallback(String? coverPath) {
+    return Container(
+      color: const Color(0xFF000000),
+      child: (coverPath != null &&
+              coverPath.isNotEmpty &&
+              File(coverPath).existsSync())
+          ? Image.file(File(coverPath), fit: BoxFit.contain)
+          : const Center(
+              child: Icon(
+                Icons.music_video_rounded,
+                color: Colors.white24,
+                size: 48,
+              ),
+            ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final isResumed = _lifecycleState == AppLifecycleState.resumed;
+    final currentTrack =
+        widget.track ?? AudioPlayerService.instance.currentTrack;
+    final coverPath = currentTrack?.customMetadata.customCoverPath;
+
     return ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
+      borderRadius: BorderRadius.circular(widget.borderRadius),
       child: AspectRatio(
-        aspectRatio: aspectRatio,
-        child: Video(
-          controller: controller,
-          fit: BoxFit.contain,
-          controls: NoVideoControls,
-        ),
+        aspectRatio: widget.aspectRatio,
+        // P1: Only mount the native Video widget when the VideoController's
+        // rect is confirmed valid, preventing double-binding race conditions
+        // and rasterizer stalls on a not-yet-ready SurfaceTexture.
+        child: isResumed
+            ? ValueListenableBuilder<Rect?>(
+                valueListenable: widget.controller.rect,
+                builder: (context, rect, _) {
+                  final isRectValid = rect != null && rect != Rect.zero;
+                  return isRectValid
+                      ? Video(
+                          controller: widget.controller,
+                          fit: BoxFit.contain,
+                          controls: NoVideoControls,
+                        )
+                      : _buildFallback(coverPath);
+                },
+              )
+            : _buildFallback(coverPath),
       ),
     );
   }
@@ -104,9 +196,14 @@ class _FullscreenVideoPage extends StatefulWidget {
 }
 
 class _FullscreenVideoPageState extends State<_FullscreenVideoPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   bool _controlsVisible = true;
   Timer? _hideTimer;
+  AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
+
+  /// P0: Pending timer that delays remounting of the [Video] widget after
+  /// resume in fullscreen mode.
+  Timer? _resumeTimer;
 
   late final AnimationController _fadeCtrl;
   late final Animation<double> _fadeAnim;
@@ -114,6 +211,9 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _lifecycleState =
+        WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
     _fadeCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 250),
@@ -125,9 +225,28 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage>
 
   @override
   void dispose() {
+    _resumeTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
     _fadeCtrl.dispose();
     super.dispose();
+  }
+
+  /// P0: Same 250 ms delay as [_VideoCanvasState] applied to the fullscreen
+  /// page to prevent double-binding the VideoController to two surfaces.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _resumeTimer?.cancel();
+      _resumeTimer = Timer(const Duration(milliseconds: 250), () {
+        if (mounted) setState(() => _lifecycleState = state);
+      });
+    } else {
+      _resumeTimer?.cancel();
+      if (_lifecycleState != state) {
+        setState(() => _lifecycleState = state);
+      }
+    }
   }
 
   void _scheduleHide() {
@@ -174,6 +293,7 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage>
     final audioHandler = OrpheusAudioHandler.hasInstance
         ? OrpheusAudioHandler.instance
         : null;
+    final isResumed = _lifecycleState == AppLifecycleState.resumed;
 
     return PopScope(
       canPop: true,
@@ -181,7 +301,7 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage>
         // Safe exit
       },
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF000000),
         body: GestureDetector(
           onTap: _toggleControls,
           behavior: HitTestBehavior.opaque,
@@ -189,11 +309,51 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage>
             fit: StackFit.expand,
             children: [
               // ── Full-bleed video ─────────────────────────────────────────
-              Video(
-                controller: widget.controller,
-                fit: BoxFit.contain,
-                controls: NoVideoControls,
-              ),
+              // P1: Only mount Video when the VideoController's rect is valid,
+              // preventing double-binding with _VideoCanvasState on the same
+              // VideoController instance during concurrent resume.
+              if (isResumed)
+                ValueListenableBuilder<Rect?>(
+                  valueListenable: widget.controller.rect,
+                  builder: (context, rect, _) {
+                    final isRectValid = rect != null && rect != Rect.zero;
+                    if (!isRectValid) {
+                      return const ColoredBox(color: Color(0xFF000000));
+                    }
+                    return Video(
+                      controller: widget.controller,
+                      fit: BoxFit.contain,
+                      controls: NoVideoControls,
+                    );
+                  },
+                )
+              else
+                Container(
+                  color: const Color(0xFF000000),
+                  child: Center(
+                    child: StreamBuilder<Track?>(
+                      stream: handler.currentTrackStream,
+                      initialData: handler.currentTrack,
+                      builder: (_, snap) {
+                        final track = snap.data;
+                        final coverPath = track?.customMetadata.customCoverPath;
+                        if (coverPath != null &&
+                            coverPath.isNotEmpty &&
+                            File(coverPath).existsSync()) {
+                          return Image.file(
+                            File(coverPath),
+                            fit: BoxFit.contain,
+                          );
+                        }
+                        return const Icon(
+                          Icons.music_video_rounded,
+                          color: Colors.white24,
+                          size: 64,
+                        );
+                      },
+                    ),
+                  ),
+                ),
 
               // ── Tidal-style fullscreen overlay ───────────────────────────
               FadeTransition(

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:metadata_god/metadata_god.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -60,6 +61,12 @@ class AudioScannerService {
 
   final LocalDatabase _db;
 
+  /// Reactive notifier indicating whether a library scan is currently in progress.
+  static final ValueNotifier<bool> isScanningNotifier = ValueNotifier<bool>(false);
+
+  /// Current scan state convenience getter.
+  static bool get isScanning => isScanningNotifier.value;
+
   // ── Public API ─────────────────────────────────────────────────────────────
 
   /// Recursively scans [directoryPath] for supported media files and persists
@@ -71,17 +78,19 @@ class AudioScannerService {
   /// Throws [ArgumentError] if [directoryPath] does not exist or is not a
   /// directory.
   Stream<ScanResult> scanDirectory(String directoryPath) async* {
-    if (!directoryPath.startsWith('/')) {
-      throw ArgumentError(
-          'El escáner requiere una ruta POSIX nativa válida que inicie con "/": $directoryPath');
-    }
-    final rootDir = Directory(directoryPath);
-    if (!rootDir.existsSync()) {
-      throw ArgumentError('Directory does not exist: $directoryPath');
-    }
+    isScanningNotifier.value = true;
+    try {
+      if (!directoryPath.startsWith('/')) {
+        throw ArgumentError(
+            'El escáner requiere una ruta POSIX nativa válida que inicie con "/": $directoryPath');
+      }
+      final rootDir = Directory(directoryPath);
+      if (!rootDir.existsSync()) {
+        throw ArgumentError('Directory does not exist: $directoryPath');
+      }
 
-    final mediaCache = MediaCacheService.instance;
-    final scanDir = directoryPath;
+      final mediaCache = MediaCacheService.instance;
+      final scanDir = directoryPath;
 
     // Load config once for the entire scan (artist ignore list + scan dirs).
     final config = await _db.getConfig();
@@ -604,6 +613,9 @@ class AudioScannerService {
         musicDirectoryPath: directoryPath,
       );
     } catch (_) {}
+    } finally {
+      isScanningNotifier.value = false;
+    }
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────

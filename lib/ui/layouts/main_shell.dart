@@ -57,12 +57,22 @@ class _DesktopNavigationShellState extends State<DesktopNavigationShell> with Wi
   /// an immediate state snapshot so that the position is captured even if
   /// the OS suspends the process milliseconds later (e.g. Command+Q on macOS,
   /// home button on Android, or screen lock).
+  ///
+  /// On [AppLifecycleState.resumed] we reset the position-throttle timestamp
+  /// (P2) so that the first position event is forwarded immediately to
+  /// audio_service without waiting for the 800 ms gate.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
       if (OrpheusAudioHandler.hasInstance) {
         OrpheusAudioHandler.instance.savePlaybackStateNow();
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      // P2: Reset position throttle so the first event after resume is emitted
+      // immediately, preventing stale MediaSession state in audio_service.
+      if (OrpheusAudioHandler.hasInstance) {
+        OrpheusAudioHandler.instance.resetPositionThrottle();
       }
     }
   }
@@ -306,6 +316,12 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
         state == AppLifecycleState.paused) {
       if (OrpheusAudioHandler.hasInstance) {
         OrpheusAudioHandler.instance.savePlaybackStateNow();
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      // P2: Reset position throttle so the first event after resume is emitted
+      // immediately, preventing stale MediaSession state in audio_service.
+      if (OrpheusAudioHandler.hasInstance) {
+        OrpheusAudioHandler.instance.resetPositionThrottle();
       }
     }
   }

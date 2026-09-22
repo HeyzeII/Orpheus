@@ -117,6 +117,7 @@ class AudioPlayerService {
     // surface/texture is suspended or minimized on mobile OS.
     try {
       (_player.platform as dynamic)?.setProperty('video-sync', 'audio');
+      (_player.platform as dynamic)?.setProperty('framedrop', 'decoder');
       (_player.platform as dynamic)?.setProperty('keep-open', 'yes');
       (_player.platform as dynamic)?.setProperty('hwdec', 'auto-safe');
     } catch (_) {}

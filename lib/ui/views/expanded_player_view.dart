@@ -9,6 +9,7 @@ import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
 import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
+import '../../core/services/audio_scanner.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_equalizer.dart';
 import '../widgets/app_toast.dart';
@@ -289,19 +290,41 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (track.isVideo &&
-                          AudioPlayerService.instance.videoController != null)
-                        IconButton(
-                          icon: const Icon(
-                            Icons.fullscreen_rounded,
-                            size: 26,
-                            color: Colors.white,
-                          ),
-                          tooltip: 'Pantalla completa',
-                          onPressed: () => VideoCanvas.enterFullscreen(
-                            context,
-                            AudioPlayerService.instance.videoController!,
-                          ),
+                      if (track.isVideo)
+                        ValueListenableBuilder<bool>(
+                          valueListenable: AudioScannerService.isScanningNotifier,
+                          builder: (context, isScanning, _) {
+                            final hasController =
+                                AudioPlayerService.instance.videoController != null;
+                            return IconButton(
+                              icon: Icon(
+                                Icons.fullscreen_rounded,
+                                size: 26,
+                                color: (isScanning || !hasController)
+                                    ? Colors.white38
+                                    : Colors.white,
+                              ),
+                              tooltip: isScanning
+                                  ? 'Escaneando biblioteca...'
+                                  : 'Pantalla completa',
+                              onPressed: () {
+                                if (isScanning) {
+                                  AppToast.showText(
+                                    context,
+                                    'Escaneo en curso. Pantalla completa temporalmente deshabilitada.',
+                                    icon: Icons.sync_rounded,
+                                  );
+                                  return;
+                                }
+                                if (hasController) {
+                                  VideoCanvas.enterFullscreen(
+                                    context,
+                                    AudioPlayerService.instance.videoController!,
+                                  );
+                                }
+                              },
+                            );
+                          },
                         ),
                       _TrackMoreMenu(track: track, iconSize: 22),
                     ],
@@ -346,8 +369,9 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                         children: [
                           const Spacer(flex: 1),
                           if (track.isVideo)
-                            SizedBox(
+                            Container(
                               width: double.infinity,
+                              color: const Color(0xFF000000),
                               child: AspectRatio(
                                 aspectRatio: 16 / 9,
                                 child: AudioPlayerService
@@ -357,6 +381,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                                         controller: AudioPlayerService
                                             .instance.videoController!,
                                         borderRadius: 0.0,
+                                        track: track,
                                       )
                                     : const Center(
                                         child: CircularProgressIndicator(
@@ -703,10 +728,18 @@ class _ExpandedArtisticCore extends StatelessWidget {
                 aspectRatio: track.isVideo ? (16 / 9) : 1,
                 child: track.isVideo
                     ? (AudioPlayerService.instance.videoController != null
-                        ? VideoCanvas(
-                            controller:
-                                AudioPlayerService.instance.videoController!,
-                            borderRadius: 16.0,
+                        ? Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF000000),
+                              borderRadius: BorderRadius.circular(16.0),
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: VideoCanvas(
+                              controller:
+                                  AudioPlayerService.instance.videoController!,
+                              borderRadius: 16.0,
+                              track: track,
+                            ),
                           )
                         : const Center(
                             child: CircularProgressIndicator(

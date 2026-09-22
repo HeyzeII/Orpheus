@@ -474,6 +474,14 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     await AudioPlayerService.instance.savePlaybackStateNow();
   }
 
+  /// P2: Resets the position-throttle timestamp so that the first position
+  /// event emitted after a foreground resume is forwarded immediately to
+  /// [audio_service], preventing stale [MediaSession] state and Event Loop
+  /// backpressure that can exacerbate the rasterizer freeze on resume.
+  void resetPositionThrottle() {
+    _lastPositionEmit = null;
+  }
+
   @override
   Future<void> play() async {
     DebugLogger.log('[TRAZA] OrpheusAudioHandler.play() invocado — delegando a AudioPlayerService.play()');

@@ -16,6 +16,70 @@ import 'core/utils/debug_logger.dart';
 import 'ui/layouts/main_shell.dart';
 import 'ui/theme/app_theme.dart';
 
+/// Runs the linear canonical startup sequence with isolated timeouts per critical service.
+Future<void> runOrpheusStartupSequence() async {
+  try {
+    DebugLogger.log('Iniciando MediaKit.ensureInitialized()...');
+    MediaKit.ensureInitialized();
+  } catch (e, s) {
+    DebugLogger.log('ERROR en MediaKit: $e\n$s');
+  }
+
+  try {
+    DebugLogger.log('Solicitando permisos de notificación en arranque...');
+    await PermissionService.requestNotificationPermission();
+  } catch (e, s) {
+    DebugLogger.log('Advertencia permisos notificación: $e\n$s');
+  }
+
+  try {
+    DebugLogger.log('Iniciando AudioService.init() (timeout 8s)...');
+    final audioHandler = await AudioService.init(
+      builder: () => OrpheusAudioHandler(),
+      config: const AudioServiceConfig(
+        androidNotificationChannelId: 'com.heyzell.orpheus.channel.playback_v2',
+        androidNotificationChannelName: 'Orpheus Reproduccion',
+        androidNotificationChannelDescription:
+            'Controles de reproduccion de musica de Orpheus',
+        androidNotificationOngoing: true,
+        androidStopForegroundOnPause: true,
+        androidShowNotificationBadge: true,
+        androidNotificationClickStartsActivity: true,
+        androidNotificationIcon: 'mipmap/ic_launcher',
+        preloadArtwork: true,
+      ),
+    ).timeout(
+      const Duration(seconds: 8),
+      onTimeout: () => throw TimeoutException(
+          'AudioService.init() excedió el tiempo límite de 8 segundos.'),
+    );
+    DebugLogger.log('AudioService.init() completado — handler: ${audioHandler.runtimeType}');
+  } catch (e, s) {
+    DebugLogger.log('ERROR en AudioService.init: $e\n$s');
+  }
+
+  try {
+    await MetadataGod.initialize();
+  } catch (e, s) {
+    DebugLogger.log('ERROR en MetadataGod: $e\n$s');
+  }
+
+  // Base de Datos Local con Autorreparación Nivel 1 integrada
+  DebugLogger.log('Iniciando LocalDatabase.initialize()...');
+  await LocalDatabase.instance.initialize();
+
+  try {
+    DebugLogger.log('Hydratando estado de AudioPlayerService...');
+    await AudioPlayerService.instance.hydratePlaybackState();
+  } catch (e, s) {
+    DebugLogger.log('ERROR en AudioPlayerService hydration: $e\n$s');
+  }
+
+  if (OrpheusAudioHandler.hasInstance) {
+    OrpheusAudioHandler.instance.initAfterDatabaseReady();
+  }
+}
+
 /// Entry point for Orpheus.
 void main() {
   runZonedGuarded(() async {
@@ -61,82 +125,29 @@ void main() {
       ),
     );
 
-    // ── Linear Canonical Startup Sequence ───────────────────────────────────
-
+    // ── Resilient Startup with Global 15s Timeout (Nivel 2 Fallback) ────────
     try {
-      DebugLogger.log('Iniciando MediaKit.ensureInitialized()...');
-      MediaKit.ensureInitialized();
-    } catch (e, s) {
-      DebugLogger.log('ERROR en MediaKit: $e\n$s');
-    }
-
-    try {
-      DebugLogger.log('Solicitando permisos de notificación en arranque...');
-      await PermissionService.requestNotificationPermission();
-    } catch (e, s) {
-      DebugLogger.log('Advertencia permisos notificación: $e\n$s');
-    }
-
-    try {
-      DebugLogger.log('Iniciando AudioService.init()...');
-      // Capture the return value so the native bridge confirms the handler is registered.
-      final audioHandler = await AudioService.init(
-        builder: () => OrpheusAudioHandler(),
-        config: const AudioServiceConfig(
-          androidNotificationChannelId: 'com.heyzell.orpheus.channel.playback_v2',
-          androidNotificationChannelName: 'Orpheus Reproduccion',
-          androidNotificationChannelDescription:
-              'Controles de reproduccion de musica de Orpheus',
-          // Con androidNotificationOngoing: true y androidStopForegroundOnPause: true,
-          // la notificacion es fija e inmune a swipe durante la reproduccion en primer plano,
-          // y se puede pausar/descartar limpiamente sin romper la asercion.
-          androidNotificationOngoing: true,
-          androidStopForegroundOnPause: true,
-          androidShowNotificationBadge: true,
-          androidNotificationClickStartsActivity: true,
-          androidNotificationIcon: 'mipmap/ic_launcher',
-          preloadArtwork: true,
-        ),
+      await runOrpheusStartupSequence().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => throw TimeoutException(
+            'El arranque global de Orpheus excedió el tiempo máximo de 15s.'),
       );
-      DebugLogger.log('AudioService.init() completado — handler: ${audioHandler.runtimeType}');
-    } catch (e, s) {
-      DebugLogger.log('ERROR CRÍTICO en AudioService.init: $e\n$s');
+
+      runApp(const OrpheusApp());
+
+      Future.delayed(const Duration(seconds: 3), () {
+        AlbumArtFetcherService.instance.processLibrary();
+      });
+    } catch (error, stack) {
+      DebugLogger.log('FALLO CRÍTICO EN ARRANQUE: $error\n$stack');
+      runApp(OrpheusRecoveryApp(
+        errorMessage: error.toString(),
+        stackTrace: stack,
+      ));
     }
-
-
-    try {
-      await MetadataGod.initialize();
-    } catch (e, s) {
-      DebugLogger.log('ERROR en MetadataGod: $e\n$s');
-    }
-
-    try {
-      DebugLogger.log('Iniciando LocalDatabase.initialize()...');
-      await LocalDatabase.instance.initialize();
-    } catch (e, s) {
-      DebugLogger.log('ERROR en LocalDatabase: $e\n$s');
-    }
-
-    try {
-      DebugLogger.log('Hydratando estado de AudioPlayerService...');
-      await AudioPlayerService.instance.hydratePlaybackState();
-    } catch (e, s) {
-      DebugLogger.log('ERROR en AudioPlayerService hydration: $e\n$s');
-    }
-
-    if (OrpheusAudioHandler.hasInstance) {
-      OrpheusAudioHandler.instance.initAfterDatabaseReady();
-    }
-
-    runApp(const OrpheusApp());
-
-    Future.delayed(const Duration(seconds: 3), () {
-      AlbumArtFetcherService.instance.processLibrary();
-    });
   }, (Object error, StackTrace stack) {
-    runApp(OrpheusErrorScreenApp(
-      serviceName: 'Excepción Global (Zoned)',
-      error: error,
+    runApp(OrpheusRecoveryApp(
+      errorMessage: error.toString(),
       stackTrace: stack,
     ));
   });
@@ -168,36 +179,239 @@ class OrpheusApp extends StatelessWidget {
   }
 }
 
-/// App wrapper to display initialization errors nicely.
-class OrpheusErrorScreenApp extends StatelessWidget {
-  final String serviceName;
-  final Object error;
-  final StackTrace stackTrace;
+/// Nivel 2: Interactive Recovery Screen presented when silent auto-repair fails.
+/// Prevents black screen deadlocks and bootloops, providing safe restoration options.
+class OrpheusRecoveryApp extends StatefulWidget {
+  final String errorMessage;
+  final StackTrace? stackTrace;
 
-  const OrpheusErrorScreenApp({
+  const OrpheusRecoveryApp({
     super.key,
-    required this.serviceName,
-    required this.error,
-    required this.stackTrace,
+    required this.errorMessage,
+    this.stackTrace,
   });
+
+  @override
+  State<OrpheusRecoveryApp> createState() => _OrpheusRecoveryAppState();
+}
+
+class _OrpheusRecoveryAppState extends State<OrpheusRecoveryApp> {
+  bool _isRecovering = false;
+  String? _statusText;
+
+  Future<void> _handleRestoreDatabase() async {
+    setState(() {
+      _isRecovering = true;
+      _statusText = 'Restaurando base de datos y eliminando archivos residuales...';
+    });
+
+    try {
+      await LocalDatabase.instance.restoreDatabase();
+      setState(() {
+        _statusText = 'Reiniciando servicios del sistema...';
+      });
+
+      await runOrpheusStartupSequence().timeout(const Duration(seconds: 15));
+
+      if (mounted) {
+        runApp(const OrpheusApp());
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isRecovering = false;
+          _statusText = 'Fallo en la restauración: $e';
+        });
+      }
+    }
+  }
+
+  Future<void> _handleRetryStartup() async {
+    setState(() {
+      _isRecovering = true;
+      _statusText = 'Reintentando inicio de Orpheus...';
+    });
+
+    try {
+      await runOrpheusStartupSequence().timeout(const Duration(seconds: 15));
+      if (mounted) {
+        runApp(const OrpheusApp());
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isRecovering = false;
+          _statusText = 'El reintento falló: $e';
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Error de Inicio - Orpheus',
+      title: 'Recuperación - Orpheus',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF121212),
+        scaffoldBackgroundColor: const Color(0xFF0F0F0F),
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFFF5252),
+          seedColor: const Color(0xFFE50914),
           brightness: Brightness.dark,
         ),
       ),
       home: Scaffold(
-        body: OrpheusErrorScreen(
-          title: 'Fallo al inicializar $serviceName',
-          error: error.toString(),
-          stackTrace: stackTrace,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE50914).withAlpha(30),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFE50914).withAlpha(80)),
+                      ),
+                      child: const Icon(
+                        Icons.shield_outlined,
+                        color: Color(0xFFE50914),
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Modo de Recuperación',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Orpheus Resilient Guard',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 12,
+                              color: Colors.white54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'No se pudo inicializar la base de datos o el motor de audio debido a un bloqueo o corrupción residual.',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 14,
+                    height: 1.4,
+                    color: Colors.white70,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.black45,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: SelectableText(
+                    widget.errorMessage,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      color: Color(0xFFFF8A8A),
+                    ),
+                  ),
+                ),
+                if (_statusText != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _statusText!,
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF64B5F6),
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                if (_isRecovering)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16.0),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Color(0xFFE50914),
+                      ),
+                    ),
+                  )
+                else ...[
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFE50914),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onPressed: _handleRestoreDatabase,
+                      icon: const Icon(Icons.refresh_rounded, size: 20),
+                      label: const Text(
+                        'Restaurar Base de Datos',
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: const BorderSide(color: Colors.white24),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      onPressed: _handleRetryStartup,
+                      icon: const Icon(Icons.play_arrow_rounded, size: 20),
+                      label: const Text(
+                        'Reintentar Inicio',
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
