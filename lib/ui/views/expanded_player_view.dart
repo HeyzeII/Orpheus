@@ -46,16 +46,17 @@ class _ExpandedPlayerViewState extends State<ExpandedPlayerView> {
           Navigator.of(context).pop();
         }
       },
-      child: Scaffold(
-        backgroundColor: const Color(0xFF0F0F0F),
-        body: StreamBuilder<Track?>(
-          stream: OrpheusAudioHandler.instance.currentTrackStream,
-          initialData: OrpheusAudioHandler.instance.currentTrack,
-          builder: (context, snap) {
-            final track = snap.data;
-            final isMobile = MediaQuery.sizeOf(context).width < 600;
+      child: StreamBuilder<Track?>(
+        stream: OrpheusAudioHandler.instance.currentTrackStream,
+        initialData: OrpheusAudioHandler.instance.currentTrack,
+        builder: (context, snap) {
+          final track = snap.data;
+          final isMobile = MediaQuery.sizeOf(context).width < 600;
+          final isVideo = track?.isVideo == true;
 
-            return Stack(
+          return Scaffold(
+            backgroundColor: isVideo ? const Color(0xFF000000) : const Color(0xFF0F0F0F),
+            body: Stack(
               children: [
                 // 1. Dynamic blurred background (shared between both layouts)
                 if (track != null) _BlurredImageBackground(track: track),
@@ -78,9 +79,9 @@ class _ExpandedPlayerViewState extends State<ExpandedPlayerView> {
                     child: const _CollapseButton(alignment: 'right'),
                   ),
               ],
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -97,7 +98,7 @@ class _BlurredImageBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (track.isVideo) {
-      return const ColoredBox(color: Color(0xFF0B0B0B));
+      return const ColoredBox(color: Color(0xFF000000));
     }
     final coverPath = track.customMetadata.customCoverPath;
     return Stack(
@@ -242,11 +243,12 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
     if (isQueue) headerTitle = 'COLA DE REPRODUCCIÓN';
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
+      value: SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.light,
         statusBarBrightness: Brightness.dark,
-        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarColor:
+            track.isVideo ? const Color(0xFF000000) : Colors.transparent,
         systemNavigationBarDividerColor: Colors.transparent,
         systemNavigationBarIconBrightness: Brightness.light,
         systemNavigationBarContrastEnforced: false,

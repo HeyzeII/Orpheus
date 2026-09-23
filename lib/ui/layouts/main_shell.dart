@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/models/track.dart';
 import '../../core/services/audio_handler.dart';
+import '../../core/services/audio_scanner.dart';
 import '../../core/services/permission_service.dart';
 import '../theme/app_theme.dart';
 import '../views/expanded_player_view.dart';
@@ -15,6 +16,7 @@ import '../views/home_view.dart';
 import '../views/library_view.dart';
 import '../views/lyrics_view.dart';
 import '../views/settings_view.dart';
+import '../widgets/app_toast.dart';
 import '../widgets/marquee_text.dart';
 import '../widgets/player_bar.dart';
 import '../widgets/sidebar.dart';
@@ -89,14 +91,27 @@ class _DesktopNavigationShellState extends State<DesktopNavigationShell> with Wi
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Sidebar (hidden behind lyrics panel but always built)
-                Sidebar(
-                  selected: _selected,
-                  onSelect: (dest) {
-                    setState(() {
-                      _selected = dest;
-                      _showLyrics = false; // close lyrics on nav change
-                    });
+                ValueListenableBuilder<bool>(
+                  valueListenable: AudioScannerService.isScanningNotifier,
+                  builder: (context, isScanning, child) {
+                    return AbsorbPointer(
+                      absorbing: isScanning,
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 250),
+                        opacity: isScanning ? 0.45 : 1.0,
+                        child: child,
+                      ),
+                    );
                   },
+                  child: Sidebar(
+                    selected: _selected,
+                    onSelect: (dest) {
+                      setState(() {
+                        _selected = dest;
+                        _showLyrics = false; // close lyrics on nav change
+                      });
+                    },
+                  ),
                 ),
                 // Thin divider between sidebar and content
                 Container(width: 1, color: AppTheme.divider),
@@ -139,9 +154,18 @@ class _DesktopNavigationShellState extends State<DesktopNavigationShell> with Wi
             ),
           ),
           // ── Bottom: Player bar ────────────────────────────────────────────
-          PlayerBar(
-            lyricsActive: _showLyrics,
-            onToggleLyrics: _toggleLyrics,
+          ValueListenableBuilder<bool>(
+            valueListenable: AudioScannerService.isScanningNotifier,
+            builder: (context, isScanning, child) {
+              return AbsorbPointer(
+                absorbing: isScanning,
+                child: child,
+              );
+            },
+            child: PlayerBar(
+              lyricsActive: _showLyrics,
+              onToggleLyrics: _toggleLyrics,
+            ),
           ),
         ],
       ),
@@ -377,6 +401,16 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
         onPopInvokedWithResult: (didPop, _) {
           if (didPop) return;
 
+          // 0. Intercept if scanning
+          if (AudioScannerService.isScanning) {
+            AppToast.showText(
+              context,
+              'Escaneo de biblioteca en curso. Por favor espera a que finalice.',
+              icon: Icons.sync_rounded,
+            );
+            return;
+          }
+
           // 1. Close expanded player dialog if open
           if (_expandedPlayerOpen) {
             Navigator.of(context).pop();
@@ -495,43 +529,56 @@ class _UnifiedBottomPanel extends StatelessWidget {
               ),
             ],
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // ── Mini-player strip (only when a track is loaded) ─────
-              StreamBuilder<Track?>(
-                stream: OrpheusAudioHandler.instance.currentTrackStream,
-                initialData: OrpheusAudioHandler.instance.currentTrack,
-                builder: (context, snap) {
-                  final track = snap.data;
-                  if (track == null || track.trackId.isEmpty) {
-                    return const SizedBox.shrink();
-                  }
-                  return _MiniPlayerStrip(
-                    track: track,
-                    height: miniPlayerHeight,
-                    onTap: onMiniPlayerTap,
-                  );
-                },
-              ),
-
-              // ── Nav icons row ───────────────────────────────────────
-              SizedBox(
-                height: navBarHeight,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _NavBtn(icon: Icons.home_rounded,           label: 'Inicio',       index: 0, current: currentIndex, onTap: onNavTap),
-                    _NavBtn(icon: Icons.explore_rounded,        label: 'Explorar',     index: 1, current: currentIndex, onTap: onNavTap),
-                    _NavBtn(icon: Icons.library_music_rounded,  label: 'Biblioteca',   index: 2, current: currentIndex, onTap: onNavTap),
-                    _NavBtn(icon: Icons.settings_rounded,       label: 'Ajustes',      index: 3, current: currentIndex, onTap: onNavTap),
-                  ],
+          child: ValueListenableBuilder<bool>(
+            valueListenable: AudioScannerService.isScanningNotifier,
+            builder: (context, isScanning, child) {
+              return AbsorbPointer(
+                absorbing: isScanning,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 250),
+                  opacity: isScanning ? 0.45 : 1.0,
+                  child: child,
                 ),
-              ),
+              );
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Mini-player strip (only when a track is loaded) ─────
+                StreamBuilder<Track?>(
+                  stream: OrpheusAudioHandler.instance.currentTrackStream,
+                  initialData: OrpheusAudioHandler.instance.currentTrack,
+                  builder: (context, snap) {
+                    final track = snap.data;
+                    if (track == null || track.trackId.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    return _MiniPlayerStrip(
+                      track: track,
+                      height: miniPlayerHeight,
+                      onTap: onMiniPlayerTap,
+                    );
+                  },
+                ),
 
-              // System nav bar inset spacer if needed
-              SizedBox(height: MediaQuery.of(context).padding.bottom > 0 ? 4 : 0),
-            ],
+                // ── Nav icons row ───────────────────────────────────────
+                SizedBox(
+                  height: navBarHeight,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _NavBtn(icon: Icons.home_rounded,           label: 'Inicio',       index: 0, current: currentIndex, onTap: onNavTap),
+                      _NavBtn(icon: Icons.explore_rounded,        label: 'Explorar',     index: 1, current: currentIndex, onTap: onNavTap),
+                      _NavBtn(icon: Icons.library_music_rounded,  label: 'Biblioteca',   index: 2, current: currentIndex, onTap: onNavTap),
+                      _NavBtn(icon: Icons.settings_rounded,       label: 'Ajustes',      index: 3, current: currentIndex, onTap: onNavTap),
+                    ],
+                  ),
+                ),
+
+                // System nav bar inset spacer if needed
+                SizedBox(height: MediaQuery.of(context).padding.bottom > 0 ? 4 : 0),
+              ],
+            ),
           ),
         ),
       ),
