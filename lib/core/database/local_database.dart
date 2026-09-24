@@ -66,7 +66,7 @@ class LocalDatabase {
           return;
         }
         final Directory supportDir = await getApplicationSupportDirectory();
-        _isar = await _openIsarWithTimeout(supportDir.path);
+        _isar = await _openIsar(supportDir.path);
         _initialized = true;
       } catch (_) {
         return;
@@ -97,20 +97,20 @@ class LocalDatabase {
       final Directory supportDir = await getApplicationSupportDirectory();
 
       try {
-        _isar = await _openIsarWithTimeout(supportDir.path);
+        _isar = await _openIsar(supportDir.path);
       } catch (e) {
         debugPrint('LocalDatabase: Advertencia al abrir Isar: $e. Ejecutando Autorreparación Nivel 1 (_purgeStaleLockFiles)...');
         // Nivel 1: Autorreparación Silenciosa — Purgar lock file residual
         await _purgeStaleLockFiles(supportDir.path);
-        // Reintentar apertura de inmediato con timeout
-        _isar = await _openIsarWithTimeout(supportDir.path);
+        // Reintentar apertura limpia nativa
+        _isar = await _openIsar(supportDir.path);
       }
 
       await _seedDefaultData();
       _initialized = true;
       _initCompleter?.complete();
     } catch (e) {
-      _initCompleter?.complete();
+      _initCompleter?.completeError(e);
       rethrow;
     } finally {
       _isInitializing = false;
@@ -118,15 +118,12 @@ class LocalDatabase {
     }
   }
 
-  Future<Isar> _openIsarWithTimeout(String directoryPath) async {
+  Future<Isar> _openIsar(String directoryPath) async {
     return await Isar.open(
       [TrackSchema, PlaylistSchema, AppConfigSchema, PlaybackStateSchema],
       directory: directoryPath,
       name: 'orpheus_db',
       inspector: !_isRelease,
-    ).timeout(
-      const Duration(seconds: 5),
-      onTimeout: () => throw TimeoutException('Isar.open() excedió el tiempo límite de 5s debido a un bloqueo pendiente.'),
     );
   }
 
@@ -150,7 +147,7 @@ class LocalDatabase {
   /// en caso de corrupción real e irrecuperable.
   Future<void> restoreDatabase() async {
     try {
-      if (_initialized) {
+      if (_initialized && _isar.isOpen) {
         await _isar.close();
       } else {
         final existing = Isar.getInstance('orpheus_db');
@@ -166,8 +163,20 @@ class LocalDatabase {
       final isarFile = File('${supportDir.path}/orpheus_db.isar');
       final lockFile = File('${supportDir.path}/orpheus_db.isar.lock');
 
-      if (await isarFile.exists()) await isarFile.delete();
-      if (await lockFile.exists()) await lockFile.delete();
+      if (await isarFile.exists()) {
+        try {
+          await isarFile.delete();
+        } catch (e) {
+          debugPrint('LocalDatabase: Advertencia borrando isarFile: $e');
+        }
+      }
+      if (await lockFile.exists()) {
+        try {
+          await lockFile.delete();
+        } catch (e) {
+          debugPrint('LocalDatabase: Advertencia borrando lockFile: $e');
+        }
+      }
       debugPrint('LocalDatabase: Base de datos restaurada completamente.');
     } catch (e) {
       debugPrint('LocalDatabase: Error al restaurar base de datos: $e');

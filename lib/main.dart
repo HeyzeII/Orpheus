@@ -16,8 +16,11 @@ import 'core/utils/debug_logger.dart';
 import 'ui/layouts/main_shell.dart';
 import 'ui/theme/app_theme.dart';
 
-/// Runs the linear canonical startup sequence with isolated timeouts per critical service.
+bool _metadataGodInitialized = false;
+
+/// Runs the resilient startup sequence with parallelized independent services.
 Future<void> runOrpheusStartupSequence() async {
+  // 1. Independent essential C/FFI engines
   try {
     DebugLogger.log('Iniciando MediaKit.ensureInitialized()...');
     MediaKit.ensureInitialized();
@@ -25,132 +28,132 @@ Future<void> runOrpheusStartupSequence() async {
     DebugLogger.log('ERROR en MediaKit: $e\n$s');
   }
 
-  try {
-    DebugLogger.log('Solicitando permisos de notificación en arranque...');
-    await PermissionService.requestNotificationPermission();
-  } catch (e, s) {
-    DebugLogger.log('Advertencia permisos notificación: $e\n$s');
+  if (!_metadataGodInitialized) {
+    try {
+      await MetadataGod.initialize();
+      _metadataGodInitialized = true;
+    } catch (e, s) {
+      DebugLogger.log('ERROR en MetadataGod: $e\n$s');
+    }
   }
 
-  try {
-    DebugLogger.log('Iniciando AudioService.init() (timeout 8s)...');
-    final audioHandler = await AudioService.init(
-      builder: () => OrpheusAudioHandler(),
-      config: const AudioServiceConfig(
-        androidNotificationChannelId: 'com.heyzell.orpheus.channel.playback_v2',
-        androidNotificationChannelName: 'Orpheus Reproduccion',
-        androidNotificationChannelDescription:
-            'Controles de reproduccion de musica de Orpheus',
-        androidNotificationOngoing: true,
-        androidStopForegroundOnPause: true,
-        androidShowNotificationBadge: true,
-        androidNotificationClickStartsActivity: true,
-        androidNotificationIcon: 'mipmap/ic_launcher',
-        preloadArtwork: true,
-      ),
-    ).timeout(
-      const Duration(seconds: 8),
-      onTimeout: () => throw TimeoutException(
-          'AudioService.init() excedió el tiempo límite de 8 segundos.'),
-    );
-    DebugLogger.log('AudioService.init() completado — handler: ${audioHandler.runtimeType}');
-  } catch (e, s) {
-    DebugLogger.log('ERROR en AudioService.init: $e\n$s');
-  }
+  // 2. AudioService and LocalDatabase in parallel to eliminate sequential timeout sum
+  await Future.wait([
+    // AudioService init
+    (() async {
+      if (OrpheusAudioHandler.hasInstance) return;
+      try {
+        DebugLogger.log('Iniciando AudioService.init()...');
+        final audioHandler = await AudioService.init(
+          builder: () => OrpheusAudioHandler(),
+          config: const AudioServiceConfig(
+            androidNotificationChannelId: 'com.heyzell.orpheus.channel.playback_v2',
+            androidNotificationChannelName: 'Orpheus Reproduccion',
+            androidNotificationChannelDescription:
+                'Controles de reproduccion de musica de Orpheus',
+            androidNotificationOngoing: true,
+            androidStopForegroundOnPause: true,
+            androidShowNotificationBadge: true,
+            androidNotificationClickStartsActivity: true,
+            androidNotificationIcon: 'mipmap/ic_launcher',
+            preloadArtwork: true,
+          ),
+        );
+        DebugLogger.log('AudioService.init() completado — handler: ${audioHandler.runtimeType}');
+      } catch (e, s) {
+        DebugLogger.log('ERROR en AudioService.init: $e\n$s');
+      }
+    })(),
+    // LocalDatabase init
+    (() async {
+      DebugLogger.log('Iniciando LocalDatabase.initialize()...');
+      await LocalDatabase.instance.initialize();
+    })(),
+  ]);
 
-  try {
-    await MetadataGod.initialize();
-  } catch (e, s) {
-    DebugLogger.log('ERROR en MetadataGod: $e\n$s');
-  }
-
-  // Base de Datos Local con Autorreparación Nivel 1 integrada
-  DebugLogger.log('Iniciando LocalDatabase.initialize()...');
-  await LocalDatabase.instance.initialize();
-
-  try {
-    DebugLogger.log('Hydratando estado de AudioPlayerService...');
-    await AudioPlayerService.instance.hydratePlaybackState();
-  } catch (e, s) {
-    DebugLogger.log('ERROR en AudioPlayerService hydration: $e\n$s');
-  }
-
+  // 3. Post-DB setup: hook reactive database listeners
   if (OrpheusAudioHandler.hasInstance) {
     OrpheusAudioHandler.instance.initAfterDatabaseReady();
   }
+
+  // 4. Asynchronously restore playback state in the background without delaying startup frame
+  unawaited(
+    AudioPlayerService.instance.hydratePlaybackState().catchError((e, s) {
+      DebugLogger.log('ERROR en AudioPlayerService hydration: $e\n$s');
+    }),
+  );
 }
 
 /// Entry point for Orpheus.
 void main() {
-  runZonedGuarded(() async {
-    WidgetsFlutterBinding.ensureInitialized();
+  WidgetsFlutterBinding.ensureInitialized();
 
-    // Restrict orientation to vertical exclusively on mobile platforms
-    if (Platform.isAndroid || Platform.isIOS) {
-      await SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-      ]);
-    }
-
-    // Global error handlers
-    ErrorWidget.builder = (FlutterErrorDetails details) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF121212),
-        body: OrpheusErrorScreen(
-          title: 'Error de Renderizado (Widget)',
-          error: details.exception.toString(),
-          stackTrace: details.stack,
-        ),
-      );
-    };
-
-    FlutterError.onError = (FlutterErrorDetails details) {
-      FlutterError.presentError(details);
-    };
-
-    PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-      return true;
-    };
-
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-        systemNavigationBarColor: Colors.transparent,
-        systemNavigationBarDividerColor: Colors.transparent,
-        systemNavigationBarIconBrightness: Brightness.light,
-        systemNavigationBarContrastEnforced: false,
+  // Global error handlers
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF121212),
+      body: OrpheusErrorScreen(
+        title: 'Error de Renderizado (Widget)',
+        error: details.exception.toString(),
+        stackTrace: details.stack,
       ),
     );
+  };
 
-    // ── Resilient Startup with Global 15s Timeout (Nivel 2 Fallback) ────────
-    try {
-      await runOrpheusStartupSequence().timeout(
-        const Duration(seconds: 15),
-        onTimeout: () => throw TimeoutException(
-            'El arranque global de Orpheus excedió el tiempo máximo de 15s.'),
-      );
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+  };
 
-      runApp(const OrpheusApp());
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    DebugLogger.log('UNCAUGHT ASYNC ERROR: $error\n$stack');
+    return true;
+  };
 
-      Future.delayed(const Duration(seconds: 3), () {
-        AlbumArtFetcherService.instance.processLibrary();
-      });
-    } catch (error, stack) {
-      DebugLogger.log('FALLO CRÍTICO EN ARRANQUE: $error\n$stack');
-      runApp(OrpheusRecoveryApp(
-        errorMessage: error.toString(),
-        stackTrace: stack,
-      ));
-    }
-  }, (Object error, StackTrace stack) {
+  // Restrict orientation to vertical exclusively on mobile platforms
+  if (Platform.isAndroid || Platform.isIOS) {
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+  }
+
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      statusBarBrightness: Brightness.dark,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarContrastEnforced: false,
+    ),
+  );
+
+  _startApp();
+}
+
+Future<void> _startApp() async {
+  try {
+    await runOrpheusStartupSequence().timeout(
+      const Duration(seconds: 15),
+      onTimeout: () => throw TimeoutException(
+          'El arranque global de Orpheus excedió el tiempo máximo de 15s.'),
+    );
+
+    runApp(const OrpheusApp());
+
+    // Background tasks scheduled post-UI mount
+    Future.delayed(const Duration(seconds: 2), () {
+      PermissionService.requestNotificationPermission();
+      AlbumArtFetcherService.instance.processLibrary();
+    });
+  } catch (error, stack) {
+    DebugLogger.log('FALLO CRÍTICO EN ARRANQUE: $error\n$stack');
     runApp(OrpheusRecoveryApp(
       errorMessage: error.toString(),
       stackTrace: stack,
     ));
-  });
+  }
 }
 
 /// Root application widget.
@@ -208,13 +211,16 @@ class _OrpheusRecoveryAppState extends State<OrpheusRecoveryApp> {
     try {
       await LocalDatabase.instance.restoreDatabase();
       setState(() {
-        _statusText = 'Reiniciando servicios del sistema...';
+        _statusText = 'Base de datos restaurada con éxito. Cerrando aplicación para un reinicio limpio del sistema...';
       });
 
-      await runOrpheusStartupSequence().timeout(const Duration(seconds: 15));
+      await Future.delayed(const Duration(milliseconds: 1200));
 
-      if (mounted) {
-        runApp(const OrpheusApp());
+      if (Platform.isAndroid) {
+        SystemNavigator.pop(animated: true);
+        Future.delayed(const Duration(milliseconds: 300), () => exit(0));
+      } else {
+        exit(0);
       }
     } catch (e) {
       if (mounted) {
@@ -233,7 +239,7 @@ class _OrpheusRecoveryAppState extends State<OrpheusRecoveryApp> {
     });
 
     try {
-      await runOrpheusStartupSequence().timeout(const Duration(seconds: 15));
+      await runOrpheusStartupSequence().timeout(const Duration(seconds: 20));
       if (mounted) {
         runApp(const OrpheusApp());
       }
