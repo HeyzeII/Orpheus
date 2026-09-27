@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/models/track.dart';
+import '../../core/services/app_navigation_coordinator.dart';
 import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_scanner.dart';
 import '../../core/services/permission_service.dart';
@@ -36,21 +37,41 @@ class DesktopNavigationShell extends StatefulWidget {
 }
 
 class _DesktopNavigationShellState extends State<DesktopNavigationShell> with WidgetsBindingObserver {
-  NavDestination _selected = NavDestination.home;
-  bool _showLyrics = false;
+  NavDestination _selected = AppNavigationCoordinator.instance.currentDestination.value;
+  bool _showLyrics = AppNavigationCoordinator.instance.desktopLyricsOpen.value;
 
-  void _toggleLyrics() => setState(() => _showLyrics = !_showLyrics);
+  void _toggleLyrics() => AppNavigationCoordinator.instance.toggleDesktopLyrics();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    AppNavigationCoordinator.instance.currentDestination.addListener(_onNavCoordinatorChanged);
+    AppNavigationCoordinator.instance.desktopLyricsOpen.addListener(_onLyricsCoordinatorChanged);
   }
 
   @override
   void dispose() {
+    AppNavigationCoordinator.instance.currentDestination.removeListener(_onNavCoordinatorChanged);
+    AppNavigationCoordinator.instance.desktopLyricsOpen.removeListener(_onLyricsCoordinatorChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _onNavCoordinatorChanged() {
+    if (mounted) {
+      setState(() {
+        _selected = AppNavigationCoordinator.instance.currentDestination.value;
+      });
+    }
+  }
+
+  void _onLyricsCoordinatorChanged() {
+    if (mounted) {
+      setState(() {
+        _showLyrics = AppNavigationCoordinator.instance.desktopLyricsOpen.value;
+      });
+    }
   }
 
   /// Called by Flutter when the app lifecycle changes.
@@ -81,93 +102,115 @@ class _DesktopNavigationShellState extends State<DesktopNavigationShell> with Wi
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.bgDeep,
-      body: Column(
-        children: [
-          // ── Top row: Sidebar + Main content ──────────────────────────────
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Sidebar (hidden behind lyrics panel but always built)
-                ValueListenableBuilder<bool>(
-                  valueListenable: AudioScannerService.isScanningNotifier,
-                  builder: (context, isScanning, child) {
-                    return AbsorbPointer(
-                      absorbing: isScanning,
-                      child: AnimatedOpacity(
-                        duration: const Duration(milliseconds: 250),
-                        opacity: isScanning ? 0.45 : 1.0,
-                        child: child,
-                      ),
-                    );
-                  },
-                  child: Sidebar(
-                    selected: _selected,
-                    onSelect: (dest) {
-                      setState(() {
-                        _selected = dest;
-                        _showLyrics = false; // close lyrics on nav change
-                      });
-                    },
-                  ),
-                ),
-                // Thin divider between sidebar and content
-                Container(width: 1, color: AppTheme.divider),
-                // Main content + Lyrics overlay
-                Expanded(
-                  child: Stack(
-                    children: [
-                      _ContentArea(destination: _selected),
-                      // Lyrics slide-up panel
-                      AnimatedSlide(
-                        duration: const Duration(milliseconds: 350),
-                        curve: Curves.easeInOutCubic,
-                        offset: _showLyrics
-                            ? Offset.zero
-                            : const Offset(0, 1),
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 300),
-                          opacity: _showLyrics ? 1.0 : 0.0,
-                          child: StreamBuilder<Track?>(
-                            stream: OrpheusAudioHandler.hasInstance
-                                ? OrpheusAudioHandler.instance.currentTrackStream
-                                : const Stream.empty(),
-                            initialData: OrpheusAudioHandler.hasInstance
-                                ? OrpheusAudioHandler.instance.currentTrack
-                                : null,
-                            builder: (context, snap) {
-                              final track = snap.data;
-                              if (track == null) {
-                                return const _NoTrackLyricsPlaceholder();
-                              }
-                              return LyricsView(track: track);
-                            },
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () {
+          // 1. Close any open modal dialog or expanded player route
+          final rootNav = Navigator.of(context, rootNavigator: true);
+          if (rootNav.canPop()) {
+            rootNav.maybePop();
+            return;
+          }
+          // 2. Collapse desktop lyrics panel if open
+          if (_showLyrics) {
+            AppNavigationCoordinator.instance.setDesktopLyrics(false);
+            return;
+          }
+          // 3. Return to Home tab if on another destination
+          if (_selected != NavDestination.home) {
+            AppNavigationCoordinator.instance.navigateTo(NavDestination.home);
+            return;
+          }
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          backgroundColor: AppTheme.bgDeep,
+          body: Column(
+            children: [
+              // ── Top row: Sidebar + Main content ──────────────────────────────
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Sidebar (hidden behind lyrics panel but always built)
+                    ValueListenableBuilder<bool>(
+                      valueListenable: AudioScannerService.isScanningNotifier,
+                      builder: (context, isScanning, child) {
+                        return AbsorbPointer(
+                          absorbing: isScanning,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 250),
+                            opacity: isScanning ? 0.45 : 1.0,
+                            child: child,
                           ),
-                        ),
+                        );
+                      },
+                      child: Sidebar(
+                        selected: _selected,
+                        onSelect: (dest) {
+                          AppNavigationCoordinator.instance.navigateTo(dest);
+                        },
                       ),
-                    ],
-                  ),
+                    ),
+                    // Thin divider between sidebar and content
+                    Container(width: 1, color: AppTheme.divider),
+                    // Main content + Lyrics overlay
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          _ContentArea(destination: _selected),
+                          // Lyrics slide-up panel
+                          AnimatedSlide(
+                            duration: const Duration(milliseconds: 350),
+                            curve: Curves.easeInOutCubic,
+                            offset: _showLyrics
+                                ? Offset.zero
+                                : const Offset(0, 1),
+                            child: AnimatedOpacity(
+                              duration: const Duration(milliseconds: 300),
+                              opacity: _showLyrics ? 1.0 : 0.0,
+                              child: StreamBuilder<Track?>(
+                                stream: OrpheusAudioHandler.hasInstance
+                                    ? OrpheusAudioHandler.instance.currentTrackStream
+                                    : const Stream.empty(),
+                                initialData: OrpheusAudioHandler.hasInstance
+                                    ? OrpheusAudioHandler.instance.currentTrack
+                                    : null,
+                                builder: (context, snap) {
+                                  final track = snap.data;
+                                  if (track == null) {
+                                    return const _NoTrackLyricsPlaceholder();
+                                  }
+                                  return LyricsView(track: track);
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              // ── Bottom: Player bar ────────────────────────────────────────────
+              ValueListenableBuilder<bool>(
+                valueListenable: AudioScannerService.isScanningNotifier,
+                builder: (context, isScanning, child) {
+                  return AbsorbPointer(
+                    absorbing: isScanning,
+                    child: child,
+                  );
+                },
+                child: PlayerBar(
+                  lyricsActive: _showLyrics,
+                  onToggleLyrics: _toggleLyrics,
+                ),
+              ),
+            ],
           ),
-          // ── Bottom: Player bar ────────────────────────────────────────────
-          ValueListenableBuilder<bool>(
-            valueListenable: AudioScannerService.isScanningNotifier,
-            builder: (context, isScanning, child) {
-              return AbsorbPointer(
-                absorbing: isScanning,
-                child: child,
-              );
-            },
-            child: PlayerBar(
-              lyricsActive: _showLyrics,
-              onToggleLyrics: _toggleLyrics,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -294,7 +337,7 @@ class MobileNavigationShell extends StatefulWidget {
 
 class _MobileNavigationShellState extends State<MobileNavigationShell>
     with WidgetsBindingObserver {
-  int _currentIndex = 0;
+  int _currentIndex = AppNavigationCoordinator.instance.currentDestination.value.index;
   final List<int> _navigationHistory = [];
   bool _expandedPlayerOpen = false;
   StreamSubscription<bool>? _notificationSub;
@@ -303,6 +346,7 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    AppNavigationCoordinator.instance.currentDestination.addListener(_onMobileNavChanged);
     _notificationSub = AudioService.notificationClicked.listen((clicked) {
       if (clicked && !_expandedPlayerOpen && mounted) {
         _openExpandedPlayer();
@@ -315,11 +359,6 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
     // re-posts the media notification now that Android will accept it.
     PermissionService.requestNotificationPermission(
       onGranted: () {
-        // audio_service exposes the global handler via AudioService.notificationClicked,
-        // but to re-trigger the notification we call directly into the handler instance.
-        // The handler listens to AudioPlayerService streams which may not re-emit.
-        // Force a state push via the AudioService.notificationClicked stream by calling
-        // play (no-op if already playing) or by refreshing the handler's state manually.
         if (OrpheusAudioHandler.hasInstance && OrpheusAudioHandler.instance.isPlaying) {
           OrpheusAudioHandler.instance.play();
         }
@@ -329,9 +368,21 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
 
   @override
   void dispose() {
+    AppNavigationCoordinator.instance.currentDestination.removeListener(_onMobileNavChanged);
     _notificationSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _onMobileNavChanged() {
+    final newIndex = AppNavigationCoordinator.instance.currentDestination.value.index;
+    if (mounted && _currentIndex != newIndex) {
+      _navigationHistory.add(_currentIndex);
+      if (_navigationHistory.length > 10) {
+        _navigationHistory.removeAt(0);
+      }
+      setState(() => _currentIndex = newIndex);
+    }
   }
 
   @override
@@ -469,12 +520,7 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
                   currentIndex: _currentIndex,
                   onNavTap: (i) {
                     if (_currentIndex != i) {
-                      _navigationHistory.add(_currentIndex);
-                      // Keep the history stack bounded at 10 entries.
-                      if (_navigationHistory.length > 10) {
-                        _navigationHistory.removeAt(0);
-                      }
-                      setState(() => _currentIndex = i);
+                      AppNavigationCoordinator.instance.navigateTo(NavDestination.values[i]);
                     }
                   },
                   onMiniPlayerTap: _openExpandedPlayer,

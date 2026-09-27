@@ -8,8 +8,8 @@ import 'package:palette_generator/palette_generator.dart';
 import '../../core/models/track.dart';
 import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
+import '../../core/services/app_navigation_coordinator.dart';
 import '../../core/services/lyrics_service.dart';
-import 'settings_view.dart';
 import '../../core/utils/lrc_parser.dart';
 import '../theme/app_theme.dart';
 
@@ -140,20 +140,25 @@ class _LyricsViewState extends State<LyricsView> {
         ? Color.lerp(_dominantColor!, Colors.black, 0.55)!
         : const Color(0xFF0D1117);
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 500),
-      decoration: BoxDecoration(
-        color: widget.transparentBackground ? Colors.transparent : ambientBg,
-        gradient: widget.transparentBackground
-            ? null
-            : LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [ambientBg, AppTheme.bgDeep],
-                stops: const [0.0, 1.0],
-              ),
-      ),
-      child: FutureBuilder<String?>(
+    // Fix A: Material(transparency) ensures all descendant Text widgets
+    // inherit the correct typography theme and never trigger Flutter's
+    // yellow double-underline fallback rendering.
+    return Material(
+      type: MaterialType.transparency,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 500),
+        decoration: BoxDecoration(
+          color: widget.transparentBackground ? Colors.transparent : ambientBg,
+          gradient: widget.transparentBackground
+              ? null
+              : LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [ambientBg, AppTheme.bgDeep],
+                  stops: const [0.0, 1.0],
+                ),
+        ),
+        child: FutureBuilder<String?>(
         future: _lyricsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -219,6 +224,7 @@ class _LyricsViewState extends State<LyricsView> {
           return _PlainLyricsBody(plainText: raw);
         },
       ),
+    ), // closes Material
     );
   }
 
@@ -677,22 +683,25 @@ class _PlainLyricsBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ShaderMask(
-      shaderCallback: (Rect bounds) {
-        return const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.transparent,
-            Colors.white,
-            Colors.white,
-            Colors.transparent,
-          ],
-          stops: [0.0, 0.06, 0.92, 1.0],
-        ).createShader(bounds);
-      },
-      blendMode: BlendMode.dstIn,
-      child: Scrollbar(
+    // Fix A: Material wrapper prevents yellow-underline text artifacts.
+    return Material(
+      type: MaterialType.transparency,
+      child: ShaderMask(
+        shaderCallback: (Rect bounds) {
+          return const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.transparent,
+              Colors.white,
+              Colors.white,
+              Colors.transparent,
+            ],
+            stops: [0.0, 0.06, 0.92, 1.0],
+          ).createShader(bounds);
+        },
+        blendMode: BlendMode.dstIn,
+        child: Scrollbar(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 28),
           child: Text(
@@ -703,6 +712,7 @@ class _PlainLyricsBody extends StatelessWidget {
               fontWeight: FontWeight.w400,
               color: AppTheme.textPrimary,
               height: 1.8,
+            ),
             ),
           ),
         ),
@@ -784,64 +794,68 @@ class _NoLyricsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          physics: const ClampingScrollPhysics(),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Center(
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 360),
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: AppTheme.bgSurface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppTheme.divider),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.lyrics_outlined, size: 40, color: AppTheme.textHint),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No lyrics found',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium!
-                          .copyWith(color: AppTheme.textPrimary),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'LRCLIB has no entry for\n"${track.displayTitle}"',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 12,
-                        color: AppTheme.textSecondary,
-                        height: 1.5,
+    // Fix A: Material wrapper prevents yellow-underline text artifacts.
+    return Material(
+      type: MaterialType.transparency,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Center(
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 360),
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: AppTheme.bgSurface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppTheme.divider),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.lyrics_outlined, size: 40, color: AppTheme.textHint),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No lyrics found',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium!
+                            .copyWith(color: AppTheme.textPrimary),
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    OutlinedButton.icon(
-                      onPressed: onRetry,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.accent,
-                        side: const BorderSide(color: AppTheme.accentDim),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                      const SizedBox(height: 8),
+                      Text(
+                        'LRCLIB has no entry for\n"${track.displayTitle}"',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 12,
+                          color: AppTheme.textSecondary,
+                          height: 1.5,
                         ),
                       ),
-                      icon: const Icon(Icons.refresh, size: 16),
-                      label: const Text('Retry'),
-                    ),
-                  ],
+                      const SizedBox(height: 24),
+                      OutlinedButton.icon(
+                        onPressed: onRetry,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.accent,
+                          side: const BorderSide(color: AppTheme.accentDim),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        icon: const Icon(Icons.refresh, size: 16),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
@@ -855,95 +869,95 @@ class _OfflineLyricsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          physics: const ClampingScrollPhysics(),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Center(
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 360),
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: AppTheme.bgSurface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: const Color(0xFFB45309).withValues(alpha: 0.4),
+    // Fix A: Material wrapper prevents yellow-underline text artifacts.
+    return Material(
+      type: MaterialType.transparency,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Center(
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 360),
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: AppTheme.bgSurface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFFB45309).withValues(alpha: 0.4),
+                    ),
                   ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 56,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFB45309).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(
-                        Icons.wifi_off_rounded,
-                        size: 28,
-                        color: Color(0xFFF59E0B),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Modo Offline Estricto activo',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                            color: AppTheme.textPrimary,
-                            fontFamily: 'Inter',
-                          ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Desactívalo en Ajustes para buscar\nletras en red.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 13,
-                        color: AppTheme.textSecondary,
-                        height: 1.6,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    FilledButton.icon(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const SettingsView(),
-                          ),
-                        );
-                      },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFF59E0B),
-                        foregroundColor: Colors.black,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFB45309).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
+                        child: const Icon(
+                          Icons.wifi_off_rounded,
+                          size: 28,
+                          color: Color(0xFFF59E0B),
                         ),
                       ),
-                      icon: const Icon(Icons.settings_rounded, size: 16),
-                      label: const Text(
-                        'Abrir Ajustes',
+                      const SizedBox(height: 16),
+                      Text(
+                        'Modo Offline Estricto activo',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                              color: AppTheme.textPrimary,
+                              fontFamily: 'Inter',
+                            ),
+                      ),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Desactívalo en Ajustes para buscar\nletras en red.',
+                        textAlign: TextAlign.center,
                         style: TextStyle(
                           fontFamily: 'Inter',
-                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: AppTheme.textSecondary,
+                          height: 1.6,
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 24),
+                      FilledButton.icon(
+                        onPressed: () {
+                          AppNavigationCoordinator.instance.navigateToSettings(context);
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFF59E0B),
+                          foregroundColor: Colors.black,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                        ),
+                        icon: const Icon(Icons.settings_rounded, size: 16),
+                        label: const Text(
+                          'Abrir Ajustes',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
@@ -959,68 +973,72 @@ class _LyricsErrorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          physics: const ClampingScrollPhysics(),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Center(
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 360),
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: AppTheme.bgSurface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppTheme.divider),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.wifi_off_rounded,
-                      size: 40,
-                      color: AppTheme.textHint,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Connection error',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium!
-                          .copyWith(color: AppTheme.textPrimary),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Could not reach LRCLIB.\nCheck your internet connection.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 12,
-                        color: AppTheme.textSecondary,
-                        height: 1.5,
+    // Fix A: Material wrapper prevents yellow-underline text artifacts.
+    return Material(
+      type: MaterialType.transparency,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Center(
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 360),
+                  padding: const EdgeInsets.all(32),
+                  decoration: BoxDecoration(
+                    color: AppTheme.bgSurface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppTheme.divider),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.wifi_off_rounded,
+                        size: 40,
+                        color: AppTheme.textHint,
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    OutlinedButton.icon(
-                      onPressed: onRetry,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.accent,
-                        side: const BorderSide(color: AppTheme.accentDim),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Connection error',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium!
+                            .copyWith(color: AppTheme.textPrimary),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Could not reach LRCLIB.\nCheck your internet connection.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 12,
+                          color: AppTheme.textSecondary,
+                          height: 1.5,
                         ),
                       ),
-                      icon: const Icon(Icons.refresh, size: 16),
-                      label: const Text('Retry'),
-                    ),
-                  ],
+                      const SizedBox(height: 24),
+                      OutlinedButton.icon(
+                        onPressed: onRetry,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.accent,
+                          side: const BorderSide(color: AppTheme.accentDim),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        icon: const Icon(Icons.refresh, size: 16),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

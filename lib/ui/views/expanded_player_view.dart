@@ -487,135 +487,147 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                           )
                         : Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Column(
+                            // Fix B: LayoutBuilder provides a finite height to
+                            // LyricsView during AnimatedSize transitions, preventing
+                            // the RenderFlex overflow (yellow/black stripes) that
+                            // occurred when Expanded was inside an unconstrained Column.
+                            child: LayoutBuilder(
                               key: const ValueKey('mobile_lyrics_container'),
-                            children: [
-                              // Peek header: compact artwork & title in peek phase
-                              AnimatedSize(
-                                duration: const Duration(milliseconds: 650),
-                                curve: Curves.easeInOutCubic,
-                                child: isLyricsPeek
-                                    ? AnimatedOpacity(
-                                        duration: const Duration(milliseconds: 500),
-                                        curve: Curves.easeInOutCubic,
-                                        opacity: isLyricsPeek ? 1.0 : 0.0,
-                                        child: Padding(
-                                          padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-                                          child: Row(
-                                            children: [
-                                              ClipRRect(
-                                                borderRadius: BorderRadius.circular(8),
-                                                child: SizedBox(
-                                                  width: 56,
-                                                  height: 56,
-                                                  child: hasArt
-                                                      ? Image.file(
-                                                          File(coverPath),
-                                                          fit: BoxFit.cover,
-                                                          cacheWidth: 112,
-                                                        )
-                                                      : const ColoredBox(
-                                                          color: Color(0xFF282828),
-                                                          child: Icon(
-                                                              Icons.music_note_rounded,
-                                                              size: 24,
-                                                              color: Colors.white24),
-                                                        ),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  mainAxisSize: MainAxisSize.min,
+                              builder: (context, lyricsConstraints) {
+                                const double peekHeaderH   = 80.0;
+                                const double peekControlsH = 124.0;
+                                final double totalH = lyricsConstraints.maxHeight;
+                                final double lyricsH = isLyricsPeek
+                                    ? (totalH - peekHeaderH - peekControlsH)
+                                        .clamp(80.0, double.infinity)
+                                    : totalH;
+
+                                return Column(
+                                  children: [
+                                    AnimatedSize(
+                                      duration: const Duration(milliseconds: 650),
+                                      curve: Curves.easeInOutCubic,
+                                      child: isLyricsPeek
+                                          ? AnimatedOpacity(
+                                              duration: const Duration(milliseconds: 500),
+                                              curve: Curves.easeInOutCubic,
+                                              opacity: 1.0,
+                                              child: Padding(
+                                                padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                                                child: Row(
                                                   children: [
-                                                    Text(
-                                                      track.displayTitle,
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                      style: const TextStyle(
-                                                        fontFamily: 'Inter',
-                                                        fontSize: 15,
-                                                        fontWeight: FontWeight.bold,
-                                                        color: Colors.white,
+                                                    ClipRRect(
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      child: SizedBox(
+                                                        width: 56,
+                                                        height: 56,
+                                                        child: hasArt
+                                                            ? Image.file(
+                                                                File(coverPath),
+                                                                fit: BoxFit.cover,
+                                                                cacheWidth: 112,
+                                                              )
+                                                            : const ColoredBox(
+                                                                color: Color(0xFF282828),
+                                                                child: Icon(
+                                                                    Icons.music_note_rounded,
+                                                                    size: 24,
+                                                                    color: Colors.white24),
+                                                              ),
                                                       ),
                                                     ),
-                                                    const SizedBox(height: 2),
-                                                    Text(
-                                                      track.displayArtist,
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                      style: TextStyle(
-                                                        fontFamily: 'Inter',
-                                                        fontSize: 12,
-                                                        fontWeight: FontWeight.w400,
-                                                        color: Colors.white
-                                                            .withValues(alpha: 0.6),
+                                                    const SizedBox(width: 12),
+                                                    Expanded(
+                                                      child: Column(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment.start,
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Text(
+                                                            track.displayTitle,
+                                                            maxLines: 1,
+                                                            overflow: TextOverflow.ellipsis,
+                                                            style: const TextStyle(
+                                                              fontFamily: 'Inter',
+                                                              fontSize: 15,
+                                                              fontWeight: FontWeight.bold,
+                                                              color: Colors.white,
+                                                            ),
+                                                          ),
+                                                          const SizedBox(height: 2),
+                                                          Text(
+                                                            track.displayArtist,
+                                                            maxLines: 1,
+                                                            overflow: TextOverflow.ellipsis,
+                                                            style: TextStyle(
+                                                              fontFamily: 'Inter',
+                                                              fontSize: 12,
+                                                              fontWeight: FontWeight.w400,
+                                                              color: Colors.white
+                                                                  .withValues(alpha: 0.6),
+                                                            ),
+                                                          ),
+                                                        ],
                                                       ),
                                                     ),
+                                                    _FavoriteHeartButton(track: track, size: 22),
                                                   ],
                                                 ),
                                               ),
-                                              _FavoriteHeartButton(track: track, size: 22),
-                                            ],
+                                            )
+                                          : const SizedBox.shrink(),
+                                    ),
+                                    SizedBox(
+                                      height: lyricsH,
+                                      child: AnimatedContainer(
+                                        duration: const Duration(milliseconds: 650),
+                                        curve: Curves.easeInOutCubic,
+                                        key: const ValueKey('mobile_lyrics_pane'),
+                                        margin: EdgeInsets.only(
+                                          top: isLyricsExpanded ? 4 : 0,
+                                          bottom: 4,
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(16),
+                                          child: LyricsView(
+                                            track: track,
+                                            transparentBackground: true,
+                                            showThumbnail: isLyricsExpanded,
+                                            onUserScrollStart: () {
+                                              if (_lyricsPhase == _LyricsPhase.peek) {
+                                                setState(() =>
+                                                    _lyricsPhase = _LyricsPhase.expanded);
+                                              }
+                                            },
                                           ),
                                         ),
-                                      )
-                                    : const SizedBox.shrink(),
-                              ),
-
-                              // Lyrics body
-                              Expanded(
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 650),
-                                  curve: Curves.easeInOutCubic,
-                                  key: const ValueKey('mobile_lyrics_pane'),
-                                  margin: EdgeInsets.only(
-                                    top: isLyricsExpanded ? 4 : 0,
-                                    bottom: 4,
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(16),
-                                    child: LyricsView(
-                                      track: track,
-                                      transparentBackground: true,
-                                      showThumbnail: isLyricsExpanded,
-                                      onUserScrollStart: () {
-                                        if (_lyricsPhase == _LyricsPhase.peek) {
-                                          setState(() =>
-                                              _lyricsPhase = _LyricsPhase.expanded);
-                                        }
-                                      },
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              ),
-
-                              // Peek controls: progress & playback controls in peek phase
-                              AnimatedSize(
-                                duration: const Duration(milliseconds: 650),
-                                curve: Curves.easeInOutCubic,
-                                child: isLyricsPeek
-                                    ? AnimatedOpacity(
-                                        duration: const Duration(milliseconds: 500),
-                                        curve: Curves.easeInOutCubic,
-                                        opacity: isLyricsPeek ? 1.0 : 0.0,
-                                        child: const Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            _ExpandedProgressBar(),
-                                            SizedBox(height: 4),
-                                            _ExpandedPlaybackControls(),
-                                            SizedBox(height: 4),
-                                          ],
-                                        ),
-                                      )
-                                    : const SizedBox.shrink(),
-                              ),
-                            ],
+                                    AnimatedSize(
+                                      duration: const Duration(milliseconds: 650),
+                                      curve: Curves.easeInOutCubic,
+                                      child: isLyricsPeek
+                                          ? AnimatedOpacity(
+                                              duration: const Duration(milliseconds: 500),
+                                              curve: Curves.easeInOutCubic,
+                                              opacity: 1.0,
+                                              child: const Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  _ExpandedProgressBar(),
+                                                  SizedBox(height: 4),
+                                                  _ExpandedPlaybackControls(),
+                                                  SizedBox(height: 4),
+                                                ],
+                                              ),
+                                            )
+                                          : const SizedBox.shrink(),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
                           ),
-                        ),
               ),
             ),
 

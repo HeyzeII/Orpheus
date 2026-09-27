@@ -341,124 +341,118 @@ class _SettingsViewState extends State<SettingsView> {
   @override
   Widget build(BuildContext context) {
     final isMobile = MediaQuery.sizeOf(context).width < 600;
+    final canPop = Navigator.of(context).canPop();
 
-    return ValueListenableBuilder<bool>(
-      valueListenable: AudioScannerService.isScanningNotifier,
-      builder: (context, isScanning, _) {
-        return PopScope(
-          canPop: !isScanning,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) {
-              AppToast.showText(
-                context,
-                'Escaneo en curso. Por favor espera a que finalice.',
-                icon: Icons.sync_rounded,
-              );
-            }
-          },
-          child: StreamBuilder<Track?>(
-            stream: OrpheusAudioHandler.instance.currentTrackStream,
-            initialData: OrpheusAudioHandler.instance.currentTrack,
-            builder: (context, snap) {
-              final hasTrack = snap.data != null && snap.data!.trackId.isNotEmpty;
-              final sysPad = MediaQuery.of(context).padding.bottom;
-              // Panel = nav bar (60) + gap (12). If mini-player visible, add 64px.
-              final bottomPad = isMobile
-                  ? (hasTrack ? 60.0 + 64.0 + 12.0 : 60.0 + 12.0) + sysPad + 16.0
-                  : 32.0;
-              final hPad = isMobile ? 16.0 : 32.0;
-              final tPad = isMobile ? (MediaQuery.of(context).padding.top + 16.0) : 36.0;
+    return Material(
+      type: MaterialType.transparency,
+      child: ValueListenableBuilder<bool>(
+        valueListenable: AudioScannerService.isScanningNotifier,
+        builder: (context, isScanning, _) {
+          return PopScope(
+            canPop: !isScanning,
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) {
+                AppToast.showText(
+                  context,
+                  'Escaneo en curso. Por favor espera a que finalice.',
+                  icon: Icons.sync_rounded,
+                );
+              }
+            },
+            child: StreamBuilder<Track?>(
+              stream: OrpheusAudioHandler.instance.currentTrackStream,
+              initialData: OrpheusAudioHandler.instance.currentTrack,
+              builder: (context, snap) {
+                final hasTrack = snap.data != null && snap.data!.trackId.isNotEmpty;
+                final sysPad = MediaQuery.of(context).padding.bottom;
+                // Panel = nav bar (60) + gap (12). If mini-player visible, add 64px.
+                final bottomPad = isMobile
+                    ? (hasTrack ? 60.0 + 64.0 + 12.0 : 60.0 + 12.0) + sysPad + 16.0
+                    : 32.0;
+                final hPad = isMobile ? 16.0 : 32.0;
+                final tPad = isMobile ? (MediaQuery.of(context).padding.top + 16.0) : 36.0;
 
-              return Stack(
-                children: [
-                  SingleChildScrollView(
-                    padding: EdgeInsets.fromLTRB(hPad, tPad, hPad, bottomPad),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // ── Title ──────────────────────────────────────────────────────────
-                        Text(
-                          'Ajustes',
-                          style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                                fontWeight: FontWeight.w700,
+                return Stack(
+                  children: [
+                    SingleChildScrollView(
+                      padding: EdgeInsets.fromLTRB(hPad, tPad, hPad, bottomPad),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // ── Title & Optional Back Button ──────────────────
+                          Row(
+                            children: [
+                              if (canPop) ...[
+                                IconButton(
+                                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                                  onPressed: () => Navigator.of(context).pop(),
+                                  tooltip: 'Atrás',
+                                ),
+                                const SizedBox(width: 8),
+                              ],
+                              Expanded(
+                                child: Text(
+                                  'Ajustes',
+                                  style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                ),
                               ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Administra tus carpetas de música y el motor de escaneo.',
-                          style: Theme.of(context).textTheme.titleSmall,
-                        ),
-                        const SizedBox(height: 40),
-
-                        // ── Section: Folders ───────────────────────────────────────────────
-                        const Text(
-                          'CARPETAS DE MÚSICA',
-                          style: TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 2.0,
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildFolderList(),
-                        const SizedBox(height: 16),
-                        _buildAddFolderButton(),
-
-                        const SizedBox(height: 40),
-
-                        // ── Storage Permission Warning Banner ──────────────────────────────
-                        _buildStoragePermissionBanner(),
-
-                        // ── Section: Network & Offline Mode ────────────────────────────────
-                        const Text(
-                          'RED Y MODO OFFLINE',
-                          style: TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 2.0,
+                          const SizedBox(height: 4),
+                          Text(
+                            'Administra tus carpetas de música y el motor de escaneo.',
+                            style: Theme.of(context).textTheme.titleSmall,
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildNetworkSettings(),
+                          const SizedBox(height: 40),
 
-                        const SizedBox(height: 40),
+                          // ── Section: Folders ───────────────────────────────────────────────
+                          const _SettingsSectionHeader('CARPETAS DE MÚSICA'),
+                          const SizedBox(height: 12),
+                          _buildFolderList(),
+                          const SizedBox(height: 16),
+                          _buildAddFolderButton(),
 
-                        // ── Section: Scanner ───────────────────────────────────────────────
-                        const Text(
-                          'ESCÁNER DE BIBLIOTECA',
-                          style: TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 2.0,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        _buildScannerPanel(),
+                          const SizedBox(height: 40),
 
-                        // ── Section: Merge Conflicts ───────────────────────────────────────
-                        _buildMergeConflicts(),
+                          // ── Storage Permission Warning Banner ──────────────────────────────
+                          _buildStoragePermissionBanner(),
 
-                        // ── Section: Maintenance Tools ─────────────────────────────────────
-                        _buildMaintenanceTools(),
-                      ],
-                    ),
-                  ),
-                  if (isScanning)
-                    const Positioned.fill(
-                      child: ModalBarrier(
-                        dismissible: false,
-                        color: Colors.transparent,
+                          // ── Section: Network & Offline Mode ────────────────────────────────
+                          const _SettingsSectionHeader('RED Y MODO OFFLINE'),
+                          const SizedBox(height: 12),
+                          _buildNetworkSettings(),
+
+                          const SizedBox(height: 40),
+
+                          // ── Section: Scanner ───────────────────────────────────────────────
+                          const _SettingsSectionHeader('ESCÁNER DE BIBLIOTECA'),
+                          const SizedBox(height: 12),
+                          _buildScannerPanel(),
+
+                          // ── Section: Merge Conflicts ───────────────────────────────────────
+                          _buildMergeConflicts(),
+
+                          // ── Section: Maintenance Tools ─────────────────────────────────────
+                          _buildMaintenanceTools(),
+                        ],
                       ),
                     ),
-                ],
-              );
-            },
-          ),
-        );
-      },
+                    if (isScanning)
+                      const Positioned.fill(
+                        child: ModalBarrier(
+                          dismissible: false,
+                          color: Colors.transparent,
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -1034,15 +1028,7 @@ class _SettingsViewState extends State<SettingsView> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 40),
-        const Text(
-          'CONFLICTOS DE NOMBRES DE ARTISTAS',
-          style: TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 2.0,
-          ),
-        ),
+        const _SettingsSectionHeader('CONFLICTOS DE NOMBRES DE ARTISTAS'),
         const SizedBox(height: 4),
         const Text(
           'El escáner detectó artistas con nombres similares. Puedes unificarlos para mantener tu biblioteca limpia.',
@@ -1380,15 +1366,7 @@ class _SettingsViewState extends State<SettingsView> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 40),
-        const Text(
-          'MANTENIMIENTO Y HERRAMIENTAS',
-          style: TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 2.0,
-          ),
-        ),
+        const _SettingsSectionHeader('MANTENIMIENTO Y HERRAMIENTAS'),
         const SizedBox(height: 12),
         Container(
           width: double.infinity,
@@ -1569,3 +1547,32 @@ class _SettingsViewState extends State<SettingsView> {
     );
   }
 }
+
+/// Reusable section header widget for Settings with guaranteed typography and Material context.
+class _SettingsSectionHeader extends StatelessWidget {
+  const _SettingsSectionHeader(this.title);
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: AppTheme.textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 2.0,
+            fontFamily: 'Inter',
+          ) ??
+          const TextStyle(
+            fontFamily: 'Inter',
+            color: AppTheme.textSecondary,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 2.0,
+          ),
+    );
+  }
+}
+
