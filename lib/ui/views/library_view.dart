@@ -17,8 +17,9 @@ import '../dialogs/edit_metadata_dialog.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_equalizer.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/video_badge.dart';
 
-enum LibraryTab { tracks, albums, artists, playlists }
+enum LibraryTab { tracks, albums, artists, playlists, videos }
 enum _DuplicateResolution { onlyNew, all, cancel }
 
 /// Main Library View — Browsing and playback controller for the local music database.
@@ -695,17 +696,6 @@ class _LibraryViewState extends State<LibraryView> {
       );
     }
 
-    // ── Route detail view if any selected ────────────────────────────────────
-    if (_selectedAlbum != null) {
-      return _buildAlbumDetails(_selectedAlbum!);
-    }
-    if (_selectedArtist != null) {
-      return _buildArtistDetails(_selectedArtist!);
-    }
-    if (_selectedPlaylist != null) {
-      return _buildPlaylistDetails(_selectedPlaylist!);
-    }
-
     final isMobile = MediaQuery.sizeOf(context).width < 600;
     final sysPad = MediaQuery.of(context).padding.bottom;
 
@@ -718,6 +708,17 @@ class _LibraryViewState extends State<LibraryView> {
         final bottomPad = isMobile
             ? (hasTrack ? 60.0 + 64.0 + 12.0 : 60.0 + 12.0) + sysPad + 8.0
             : 0.0;
+
+        // ── Route detail view if any selected ────────────────────────────────────
+        if (_selectedAlbum != null) {
+          return _buildAlbumDetails(_selectedAlbum!, bottomPad: bottomPad);
+        }
+        if (_selectedArtist != null) {
+          return _buildArtistDetails(_selectedArtist!, bottomPad: bottomPad);
+        }
+        if (_selectedPlaylist != null) {
+          return _buildPlaylistDetails(_selectedPlaylist!, bottomPad: bottomPad);
+        }
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -741,13 +742,18 @@ class _LibraryViewState extends State<LibraryView> {
                         ),
                   ),
                   const SizedBox(height: 18),
-                  Row(
-                    children: [
-                      _buildTabButton(LibraryTab.tracks, 'Canciones'),
-                      _buildTabButton(LibraryTab.albums, 'Álbumes'),
-                      _buildTabButton(LibraryTab.artists, 'Artistas'),
-                      _buildTabButton(LibraryTab.playlists, 'Playlists'),
-                    ],
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      children: [
+                        _buildTabButton(LibraryTab.tracks, 'Canciones'),
+                        _buildTabButton(LibraryTab.albums, 'Álbumes'),
+                        _buildTabButton(LibraryTab.artists, 'Artistas'),
+                        _buildTabButton(LibraryTab.playlists, 'Playlists'),
+                        _buildTabButton(LibraryTab.videos, 'Vídeos'),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -762,7 +768,8 @@ class _LibraryViewState extends State<LibraryView> {
                   LibraryTab.tracks   => _buildTracksTab(bottomPad: bottomPad),
                   LibraryTab.albums   => _buildAlbumsTab(bottomPad: bottomPad),
                   LibraryTab.artists  => _buildArtistsTab(bottomPad: bottomPad),
-                  LibraryTab.playlists => _buildPlaylistsTab(),
+                  LibraryTab.playlists => _buildPlaylistsTab(bottomPad: bottomPad),
+                  LibraryTab.videos   => _buildVideosTab(bottomPad: bottomPad),
                 },
               ),
             ),
@@ -829,6 +836,41 @@ class _LibraryViewState extends State<LibraryView> {
                 : isMobile
                     ? _buildMobileSongsList(filtered, bottomPad: bottomPad)
                     : _buildTrackTable(filtered, contextName: 'Biblioteca'),
+          ),
+        ],
+      );
+    });
+  }
+
+  // ── Videos Tab ─────────────────────────────────────────────────────────────
+  Widget _buildVideosTab({double bottomPad = 0}) {
+    final videoTracks = _allTracks.where((t) {
+      final isVid = t.isVideo ||
+          t.displayAlbum.toLowerCase() == 'vídeos' ||
+          t.displayAlbum.toLowerCase() == 'videos';
+      if (!isVid) return false;
+      final query = _searchQuery.toLowerCase();
+      if (query.isEmpty) return true;
+      return t.displayTitle.toLowerCase().contains(query) ||
+          t.displayArtist.toLowerCase().contains(query) ||
+          t.individualArtists.any((a) => a.toLowerCase().contains(query));
+    }).toList();
+
+    return LayoutBuilder(builder: (context, constraints) {
+      final isMobile = constraints.maxWidth < 600;
+      return Column(
+        children: [
+          _buildSearchBar(),
+          Expanded(
+            child: videoTracks.isEmpty
+                ? _buildEmptyState(
+                    _searchQuery.isNotEmpty
+                        ? 'No se encontraron vídeos que coincidan con la búsqueda.'
+                        : 'No tienes vídeos en tu biblioteca.\nLos archivos de vídeo (.mp4, .mkv, .webm) agregados a tus carpetas de música aparecerán aquí.',
+                  )
+                : isMobile
+                    ? _buildMobileSongsList(videoTracks, bottomPad: bottomPad)
+                    : _buildTrackTable(videoTracks, contextName: 'Vídeos'),
           ),
         ],
       );
@@ -917,7 +959,9 @@ class _LibraryViewState extends State<LibraryView> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            firstTrack.displayArtist,
+                            (albumName.trim().toLowerCase() == 'vídeos' || albumName.trim().toLowerCase() == 'videos')
+                                ? 'Varios artistas'
+                                : firstTrack.displayArtist,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -1008,7 +1052,7 @@ class _LibraryViewState extends State<LibraryView> {
   }
 
   // ── Playlists Tab ──────────────────────────────────────────────────────────
-  Widget _buildPlaylistsTab() {
+  Widget _buildPlaylistsTab({double bottomPad = 0}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1053,6 +1097,7 @@ class _LibraryViewState extends State<LibraryView> {
                                     ? 3
                                     : 2;
                     return GridView.builder(
+                      padding: EdgeInsets.only(bottom: bottomPad > 0 ? bottomPad : 16),
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: cols,
                         crossAxisSpacing: 16,
@@ -1134,9 +1179,9 @@ class _LibraryViewState extends State<LibraryView> {
   // ══════════════════════════════════════════════════════════════════════════
 
   // ── Album Details View ─────────────────────────────────────────────────────
-  Widget _buildAlbumDetails(String albumName) {
+  Widget _buildAlbumDetails(String albumName, {double bottomPad = 0}) {
     final isMobile = MediaQuery.sizeOf(context).width < 600;
-    if (isMobile) return _buildMobileAlbumDetails(albumName);
+    if (isMobile) return _buildMobileAlbumDetails(albumName, bottomPad: bottomPad);
 
     final albumTracks = _allTracks.where((t) => t.displayAlbum == albumName).toList();
     final coverPath = albumTracks.isNotEmpty ? albumTracks.first.customMetadata.customCoverPath : null;
@@ -1198,7 +1243,9 @@ class _LibraryViewState extends State<LibraryView> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        albumTracks.isNotEmpty ? albumTracks.first.displayArtist : 'Artista Desconocido',
+                        (albumName.trim().toLowerCase() == 'vídeos' || albumName.trim().toLowerCase() == 'videos')
+                            ? 'Varios artistas'
+                            : (albumTracks.isNotEmpty ? albumTracks.first.displayArtist : 'Artista Desconocido'),
                         style: const TextStyle(fontSize: 16, color: AppTheme.textSecondary),
                       ),
                       const SizedBox(height: 12),
@@ -1282,9 +1329,9 @@ class _LibraryViewState extends State<LibraryView> {
   }
 
   // ── Artist Details View ────────────────────────────────────────────────────
-  Widget _buildArtistDetails(String artistName) {
+  Widget _buildArtistDetails(String artistName, {double bottomPad = 0}) {
     final isMobile = MediaQuery.sizeOf(context).width < 600;
-    if (isMobile) return _buildMobileArtistDetails(artistName);
+    if (isMobile) return _buildMobileArtistDetails(artistName, bottomPad: bottomPad);
 
     final artistTracks = _allTracks
         .where((t) => t.individualArtists
@@ -1418,10 +1465,13 @@ class _LibraryViewState extends State<LibraryView> {
   }
 
   // ── Mobile Album Details View ──────────────────────────────────────────────
-  Widget _buildMobileAlbumDetails(String albumName) {
+  Widget _buildMobileAlbumDetails(String albumName, {double bottomPad = 0}) {
     final albumTracks = _allTracks.where((t) => t.displayAlbum == albumName).toList();
     final coverPath = albumTracks.isNotEmpty ? albumTracks.first.customMetadata.customCoverPath : null;
-    final artistName = albumTracks.isNotEmpty ? albumTracks.first.displayArtist : 'Artista Desconocido';
+    final isVideosAlbum = albumName.trim().toLowerCase() == 'vídeos' || albumName.trim().toLowerCase() == 'videos';
+    final artistName = isVideosAlbum
+        ? 'Varios artistas'
+        : (albumTracks.isNotEmpty ? albumTracks.first.displayArtist : 'Artista Desconocido');
     final contextName = 'Álbum: $albumName';
 
     return PopScope(
@@ -1581,7 +1631,7 @@ class _LibraryViewState extends State<LibraryView> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.only(bottom: 120),
+                padding: EdgeInsets.only(bottom: bottomPad > 0 ? bottomPad : 24),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, idx) {
@@ -1663,15 +1713,25 @@ class _LibraryViewState extends State<LibraryView> {
                                     ),
                                   ),
                                 ),
-                                title: Text(
-                                  track.displayTitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: isCurrent ? AppTheme.accent : AppTheme.textPrimary,
-                                    fontSize: 13,
-                                    fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
-                                  ),
+                                title: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        track.displayTitle,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: isCurrent ? AppTheme.accent : AppTheme.textPrimary,
+                                          fontSize: 13,
+                                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    if (track.isVideo) ...[
+                                      const SizedBox(width: 6),
+                                      const VideoBadge(compact: true),
+                                    ],
+                                  ],
                                 ),
                                 // In album detail, artist is redundant; show duration as subtitle instead.
                                 subtitle: Text(
@@ -1703,7 +1763,7 @@ class _LibraryViewState extends State<LibraryView> {
   }
 
   // ── Mobile Artist Details View ─────────────────────────────────────────────
-  Widget _buildMobileArtistDetails(String artistName) {
+  Widget _buildMobileArtistDetails(String artistName, {double bottomPad = 0}) {
     final artistTracks = _allTracks
         .where((t) => t.individualArtists
             .any((a) => a.toLowerCase() == artistName.toLowerCase()))
@@ -1852,7 +1912,7 @@ class _LibraryViewState extends State<LibraryView> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.only(bottom: 120),
+                padding: EdgeInsets.only(bottom: bottomPad > 0 ? bottomPad : 24),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, idx) {
@@ -1934,15 +1994,25 @@ class _LibraryViewState extends State<LibraryView> {
                                     ),
                                   ),
                                 ),
-                                title: Text(
-                                  track.displayTitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: isCurrent ? AppTheme.accent : AppTheme.textPrimary,
-                                    fontSize: 13,
-                                    fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
-                                  ),
+                                title: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        track.displayTitle,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: isCurrent ? AppTheme.accent : AppTheme.textPrimary,
+                                          fontSize: 13,
+                                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    if (track.isVideo) ...[
+                                      const SizedBox(width: 6),
+                                      const VideoBadge(compact: true),
+                                    ],
+                                  ],
                                 ),
                                 // In artist detail, show Album • Duration as subtitle.
                                 subtitle: Text(
@@ -1976,7 +2046,7 @@ class _LibraryViewState extends State<LibraryView> {
   }
 
   // ── Playlist Details View ──────────────────────────────────────────────────
-  Widget _buildPlaylistDetails(Playlist initialPlaylist) {
+  Widget _buildPlaylistDetails(Playlist initialPlaylist, {double bottomPad = 0}) {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -2016,6 +2086,7 @@ class _LibraryViewState extends State<LibraryView> {
               playlistTracks,
               isLiked,
               bgImagePath,
+              bottomPad: bottomPad,
             );
           }
 
@@ -2120,8 +2191,9 @@ class _LibraryViewState extends State<LibraryView> {
     Playlist playlist,
     List<Track> playlistTracks,
     bool isLiked,
-    String? bgImagePath,
-  ) {
+    String? bgImagePath, {
+    double bottomPad = 0,
+  }) {
     return Stack(
       children: [
         Positioned.fill(
@@ -2282,7 +2354,7 @@ class _LibraryViewState extends State<LibraryView> {
                 )
               else
                 SliverPadding(
-                  padding: const EdgeInsets.only(bottom: 120),
+                  padding: EdgeInsets.only(bottom: bottomPad > 0 ? bottomPad : 24),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, idx) {
@@ -2378,15 +2450,25 @@ class _LibraryViewState extends State<LibraryView> {
                                     ),
                                   ),
                                 ),
-                                title: Text(
-                                  track.displayTitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: isCurrent ? AppTheme.accent : AppTheme.textPrimary,
-                                    fontSize: 13,
-                                    fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
-                                  ),
+                                title: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        track.displayTitle,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: isCurrent ? AppTheme.accent : AppTheme.textPrimary,
+                                          fontSize: 13,
+                                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    if (track.isVideo) ...[
+                                      const SizedBox(width: 6),
+                                      const VideoBadge(compact: true),
+                                    ],
+                                  ],
                                 ),
                                 subtitle: Text(
                                   track.displayArtist,
@@ -3049,15 +3131,25 @@ class _LibraryViewState extends State<LibraryView> {
                     ),
                   ),
                 ),
-                title: Text(
-                  track.displayTitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: isCurrent ? AppTheme.accent : AppTheme.textPrimary,
-                    fontSize: 13,
-                    fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
-                  ),
+                title: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        track.displayTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isCurrent ? AppTheme.accent : AppTheme.textPrimary,
+                          fontSize: 13,
+                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    if (track.isVideo) ...[
+                      const SizedBox(width: 6),
+                      const VideoBadge(compact: true),
+                    ],
+                  ],
                 ),
                 subtitle: Text(
                   track.displayArtist,
@@ -3394,8 +3486,12 @@ class _TrackRowState extends State<_TrackRow> {
                             ),
                           ),
                         ),
+                        if (widget.track.isVideo) ...[
+                          const SizedBox(width: 8),
+                          const VideoBadge(),
+                        ],
                     if (widget.track.downloadSource != null) ...[
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 6),
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 60),
                         child: Container(
@@ -3416,6 +3512,7 @@ class _TrackRowState extends State<_TrackRow> {
                   ],
                 ),
               ),
+              const SizedBox(width: 12),
               // Artist — hidden in artist-detail view (redundant)
               if (!widget.isArtistDetail)
                 Expanded(

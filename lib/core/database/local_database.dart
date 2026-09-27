@@ -252,6 +252,15 @@ class LocalDatabase {
     return _isar.tracks.where().findAll();
   }
 
+  /// Returns all video tracks in the library (where [fileType] is [FileType.mp4]).
+  Future<List<Track>> getVideoTracks() async {
+    if (_isTestUninitialized) return [];
+    return _isar.tracks
+        .filter()
+        .fileTypeEqualTo(FileType.mp4)
+        .findAll();
+  }
+
   /// Returns a stream that emits whenever the tracks collection changes.
   Stream<void> watchTracks() {
     if (_isTestUninitialized) return const Stream.empty();

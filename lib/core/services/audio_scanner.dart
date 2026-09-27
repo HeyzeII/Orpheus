@@ -32,6 +32,7 @@ const _kSupportedExtensions = {
   'm4b',
   'webm',
   'mka',
+  'mkv',
 };
 
 /// Batch size: how many tracks are committed in a single Isar transaction.
@@ -309,6 +310,12 @@ class AudioScannerService {
                 ? editedArtist
                 : StringSanitizer.sanitize(rawArtist);
             cleanAlbum = editedAlbum ?? meta?.album?.trim();
+            if (fileType == FileType.mp4 &&
+                (cleanAlbum == null ||
+                    cleanAlbum.isEmpty ||
+                    cleanAlbum == 'Unknown Album')) {
+              cleanAlbum = 'Vídeos';
+            }
             individualArtists = editedArtists ??
                 (cleanArtist.isNotEmpty && cleanArtist != 'Artista Desconocido'
                     ? StringSanitizer.splitArtists(cleanArtist)
@@ -332,6 +339,12 @@ class AudioScannerService {
             cleanTitle = StringSanitizer.sanitize(rawTitle);
             cleanArtist = StringSanitizer.sanitize(rawArtist);
             cleanAlbum = meta?.album?.trim();
+            if (fileType == FileType.mp4 &&
+                (cleanAlbum == null ||
+                    cleanAlbum.isEmpty ||
+                    cleanAlbum == 'Unknown Album')) {
+              cleanAlbum = 'Vídeos';
+            }
             individualArtists = cleanArtist.isNotEmpty && cleanArtist != 'Artista Desconocido'
                 ? StringSanitizer.splitArtists(cleanArtist)
                 : <String>[];
@@ -705,10 +718,10 @@ class AudioScannerService {
 
   /// Maps a file extension to the [FileType] enum used by [Track].
   static FileType _fileTypeFromExtension(String ext) {
-    return switch (ext) {
+    return switch (ext.toLowerCase()) {
       'mp3' => FileType.mp3,
       'flac' => FileType.flac,
-      'mp4' || 'm4v' => FileType.mp4, // m4v is functionally identical to mp4
+      'mp4' || 'm4v' || 'webm' || 'mkv' => FileType.mp4, // video containers
       'm4a' => FileType.m4a,
       'wav' => FileType.wav,
       _ => FileType.unknown,

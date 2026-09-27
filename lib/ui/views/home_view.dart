@@ -7,6 +7,7 @@ import '../../core/models/models.dart';
 import '../../core/services/audio_handler.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_equalizer.dart';
+import '../widgets/video_badge.dart';
 
 /// Dynamic Home View — Displays user greeting, quick picks, recently played tracks,
 /// and a library teaser query from [LocalDatabase].
@@ -168,19 +169,25 @@ class _HomeViewState extends State<HomeView> {
   // ── Mobile layout (Tidal-style 2-col top grid + horizontal carousels) ────
 
   Widget _buildMobileLayout() {
-    // Extra bottom padding: mini-player (66) + bottom-nav (56) + gap (16)
-    const double bottomPad = kBottomNavigationBarHeight + 66 + 24;
+    final sysPad = MediaQuery.of(context).padding.bottom;
 
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        MediaQuery.of(context).padding.top + 16,
-        16,
-        bottomPad,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return StreamBuilder<Track?>(
+      stream: OrpheusAudioHandler.instance.currentTrackStream,
+      initialData: OrpheusAudioHandler.instance.currentTrack,
+      builder: (context, snap) {
+        final hasTrack = snap.data != null && snap.data!.trackId.isNotEmpty;
+        final bottomPad = (hasTrack ? 60.0 + 64.0 + 12.0 : 60.0 + 12.0) + sysPad + 16.0;
+
+        return SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            MediaQuery.of(context).padding.top + 16,
+            16,
+            bottomPad,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           // ── Greeting ────────────────────────────────────────────────────
           Text(
             _greeting(),
@@ -242,7 +249,9 @@ class _HomeViewState extends State<HomeView> {
         ],
       ),
     );
-  }
+  },
+);
+}
 
   String _greeting() {
     final hour = DateTime.now().hour;
@@ -413,15 +422,25 @@ class _MobileTopGrid extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: Text(
-                      track.displayTitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            track.displayTitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (track.isVideo) ...[
+                          const SizedBox(width: 4),
+                          const VideoBadge(compact: true),
+                        ],
+                      ],
                     ),
                   ),
                 ),
@@ -619,11 +638,23 @@ class _TrackCardState extends State<_TrackCard> {
                   child: Container(
                     width: double.infinity,
                     color: AppTheme.bgHover,
-                    child: coverPath != null
-                        ? Image.file(File(coverPath), fit: BoxFit.cover)
-                        : const Center(
-                            child: Icon(Icons.album_rounded,
-                                color: AppTheme.textHint, size: 40)),
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: coverPath != null
+                              ? Image.file(File(coverPath), fit: BoxFit.cover)
+                              : const Center(
+                                  child: Icon(Icons.album_rounded,
+                                      color: AppTheme.textHint, size: 40)),
+                        ),
+                        if (widget.track.isVideo)
+                          const Positioned(
+                            top: 6,
+                            right: 6,
+                            child: VideoBadge(compact: true),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),

@@ -120,12 +120,15 @@ class Track {
     return StringSanitizer.splitArtists(displayArtist);
   }
 
-  /// Returns the display album: custom override → raw tag → "Unknown Album".
+  /// Returns the display album: custom override → raw tag → "Vídeos" (if video) → "Unknown Album".
   String get displayAlbum {
-    if (hasCustomMetadata && customMetadata.album != null) {
+    if (hasCustomMetadata && customMetadata.album != null && customMetadata.album!.isNotEmpty) {
       return customMetadata.album!;
     }
-    return album ?? 'Unknown Album';
+    if (album != null && album!.isNotEmpty) {
+      return album!;
+    }
+    return isVideo ? 'Vídeos' : 'Unknown Album';
   }
 
   /// Returns `true` if this track is a video file (MP4 / m4v container).

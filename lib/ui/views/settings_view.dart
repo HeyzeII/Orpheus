@@ -944,22 +944,48 @@ class _SettingsViewState extends State<SettingsView> {
               ),
               const SizedBox(height: 12),
             ],
-            // 2×2 KPI grid — clean, spacious, readable on both desktop and mobile.
-            GridView(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-                childAspectRatio: 2.4,
-              ),
-              children: [
-                _buildKpiCard('Procesados', _scannedCount, Icons.folder_open_rounded),
-                _buildKpiCard('Agregados', _addedCount, Icons.add_circle_outline_rounded),
-                _buildKpiCard('Actualizados', _updatedCount, Icons.sync_rounded),
-                _buildKpiCard('Ignorados / Error', _skippedCount, Icons.block_rounded, isError: true),
-              ],
+            // Responsive KPI metrics: 1 row of 4 on desktop, 2x2 grid on mobile
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isDesktop = constraints.maxWidth >= 550;
+                if (isDesktop) {
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: _buildKpiCard('Procesados', _scannedCount, Icons.folder_open_rounded),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildKpiCard('Agregados', _addedCount, Icons.add_circle_outline_rounded),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildKpiCard('Actualizados', _updatedCount, Icons.sync_rounded),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildKpiCard('Ignorados / Error', _skippedCount, Icons.block_rounded, isError: true),
+                      ),
+                    ],
+                  );
+                }
+                return GridView(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                    childAspectRatio: 2.4,
+                  ),
+                  children: [
+                    _buildKpiCard('Procesados', _scannedCount, Icons.folder_open_rounded),
+                    _buildKpiCard('Agregados', _addedCount, Icons.add_circle_outline_rounded),
+                    _buildKpiCard('Actualizados', _updatedCount, Icons.sync_rounded),
+                    _buildKpiCard('Ignorados / Error', _skippedCount, Icons.block_rounded, isError: true),
+                  ],
+                );
+              },
             ),
             if (_currentScanningFile.isNotEmpty) ...[
               const SizedBox(height: 16),
