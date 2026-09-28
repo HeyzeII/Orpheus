@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -113,8 +114,15 @@ class _VideoCanvasState extends State<VideoCanvas> with WidgetsBindingObserver {
   /// P0: Delays Video widget remounting by 250 ms on [AppLifecycleState.resumed]
   /// so the native VideoController has time to reinitialize its SurfaceTexture
   /// before Flutter's rasterizer attempts to composite frames from it.
+  /// (Only applied on mobile platforms — Android / iOS).
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    final isMobile = defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+    if (!isMobile) {
+      return;
+    }
+
     if (state == AppLifecycleState.resumed) {
       _resumeTimer?.cancel();
       _resumeTimer = Timer(const Duration(milliseconds: 250), () {
@@ -161,21 +169,28 @@ class _VideoCanvasState extends State<VideoCanvas> with WidgetsBindingObserver {
         // P1: Only mount the native Video widget when the VideoController's
         // rect is confirmed valid, preventing double-binding race conditions
         // and rasterizer stalls on a not-yet-ready SurfaceTexture.
-        child: isResumed
-            ? ValueListenableBuilder<Rect?>(
-                valueListenable: widget.controller.rect,
-                builder: (context, rect, _) {
-                  final isRectValid = rect != null && rect != Rect.zero;
-                  return isRectValid
-                      ? Video(
-                          controller: widget.controller,
-                          fit: BoxFit.contain,
-                          controls: NoVideoControls,
-                        )
-                      : _buildFallback(coverPath);
-                },
-              )
-            : _buildFallback(coverPath),
+        child: ValueListenableBuilder<Rect?>(
+          valueListenable: widget.controller.rect,
+          builder: (context, rect, _) {
+            final isRectValid = isResumed && rect != null && rect != Rect.zero;
+            return AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              child: isRectValid
+                  ? Video(
+                      key: const ValueKey('active_video_surface'),
+                      controller: widget.controller,
+                      fit: BoxFit.contain,
+                      controls: NoVideoControls,
+                    )
+                  : KeyedSubtree(
+                      key: const ValueKey('artwork_fallback_surface'),
+                      child: _buildFallback(coverPath),
+                    ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -233,9 +248,15 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage>
   }
 
   /// P0: Same 250 ms delay as [_VideoCanvasState] applied to the fullscreen
-  /// page to prevent double-binding the VideoController to two surfaces.
+  /// page on mobile to prevent double-binding the VideoController to two surfaces.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    final isMobile = defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+    if (!isMobile) {
+      return;
+    }
+
     if (state == AppLifecycleState.resumed) {
       _resumeTimer?.cancel();
       _resumeTimer = Timer(const Duration(milliseconds: 250), () {

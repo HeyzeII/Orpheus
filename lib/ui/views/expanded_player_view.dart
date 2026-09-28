@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -188,193 +189,199 @@ class _DesktopVideoLayoutState extends State<_DesktopVideoLayout> {
       },
       child: Focus(
         autofocus: _showQueueOverlay,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // Layer 0: 100% Cinema Canvas & Controls
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1200),
-                  child: Column(
-                    children: [
-                      // Immersive 16:9 Video Canvas taking available height
-                      Expanded(
-                        child: Center(
-                          child: AspectRatio(
-                            aspectRatio: 16 / 9,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF000000),
-                                borderRadius: BorderRadius.circular(16.0),
-                              ),
-                              clipBehavior: Clip.antiAlias,
-                              child: AudioPlayerService.instance.videoController != null
-                                  ? VideoCanvas(
-                                      controller:
-                                          AudioPlayerService.instance.videoController!,
-                                      borderRadius: 16.0,
-                                      track: widget.track,
-                                    )
-                                  : const Center(
-                                      child: CircularProgressIndicator(
-                                          color: AppTheme.accent),
-                                    ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final overlayWidth = math.min(380.0, constraints.maxWidth * 0.38);
 
-                      // Track Info & Options
-                      Row(
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                // Layer 0: 100% Cinema Canvas & Controls
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1200),
+                      child: Column(
                         children: [
+                          // Immersive 16:9 Video Canvas taking available height
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                MarqueeText(
-                                  text: widget.track.displayTitle,
-                                  style: const TextStyle(
-                                    fontFamily: 'Inter',
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                            child: Center(
+                              child: AspectRatio(
+                                aspectRatio: 16 / 9,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF000000),
+                                    borderRadius: BorderRadius.circular(16.0),
                                   ),
-                                ),
-                                const SizedBox(height: 4),
-                                MarqueeText(
-                                  text: widget.track.displayArtist,
-                                  style: TextStyle(
-                                    fontFamily: 'Inter',
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.white.withValues(alpha: 0.70),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          _FavoriteHeartButton(track: widget.track, size: 26),
-                          const SizedBox(width: 8),
-                          _TrackMoreMenu(track: widget.track, iconSize: 24),
-                          const SizedBox(width: 8),
-                          // Queue Toggle Button
-                          IconButton(
-                            icon: Icon(
-                              Icons.queue_music_rounded,
-                              color: _showQueueOverlay ? AppTheme.accent : Colors.white70,
-                              size: 24,
-                            ),
-                            tooltip: 'Cola de reproducción',
-                            onPressed: () => setState(() => _showQueueOverlay = !_showQueueOverlay),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Progress Bar
-                      const _ExpandedProgressBar(),
-                      const SizedBox(height: 12),
-
-                      // Playback Controls
-                      const _ExpandedPlaybackControls(),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // Layer 1: Floating Glassmorphism Queue Overlay
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              top: 24,
-              right: _showQueueOverlay ? 24 : -420,
-              bottom: 110,
-              width: 400,
-              child: AnimatedOpacity(
-                duration: const Duration(milliseconds: 180),
-                opacity: _showQueueOverlay ? 1.0 : 0.0,
-                child: IgnorePointer(
-                  ignoring: !_showQueueOverlay,
-                  child: RepaintBoundary(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: BackdropFilter(
-                        filter: ui.ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF141414).withValues(alpha: 0.82),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.12),
-                              width: 1.0,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.50),
-                                blurRadius: 32,
-                                offset: const Offset(0, 12),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            children: [
-                              // Overlay Header
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(20, 14, 10, 10),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.queue_music_rounded,
-                                      color: AppTheme.accent,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 10),
-                                    const Expanded(
-                                      child: Text(
-                                        'Cola de reproducción',
-                                        style: TextStyle(
-                                          fontFamily: 'Inter',
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
+                                  clipBehavior: Clip.antiAlias,
+                                  child: AudioPlayerService.instance.videoController != null
+                                      ? VideoCanvas(
+                                          controller:
+                                              AudioPlayerService.instance.videoController!,
+                                          borderRadius: 16.0,
+                                          track: widget.track,
+                                        )
+                                      : const Center(
+                                          child: CircularProgressIndicator(
+                                              color: AppTheme.accent),
                                         ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+
+                          // Track Info & Options
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    MarqueeText(
+                                      text: widget.track.displayTitle,
+                                      style: const TextStyle(
+                                        fontFamily: 'Inter',
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
                                       ),
                                     ),
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.close_rounded,
-                                        color: Colors.white70,
-                                        size: 20,
+                                    const SizedBox(height: 4),
+                                    MarqueeText(
+                                      text: widget.track.displayArtist,
+                                      style: TextStyle(
+                                        fontFamily: 'Inter',
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.white.withValues(alpha: 0.70),
                                       ),
-                                      tooltip: 'Cerrar cola',
-                                      onPressed: _closeQueueOverlay,
                                     ),
                                   ],
                                 ),
                               ),
-                              const Divider(
-                                height: 1,
-                                color: Color(0x1FFFFFFF),
-                              ),
-                              // Queue Content
-                              const Expanded(
-                                child: _QueueTab(),
+                              const SizedBox(width: 16),
+                              _FavoriteHeartButton(track: widget.track, size: 26),
+                              const SizedBox(width: 8),
+                              _TrackMoreMenu(track: widget.track, iconSize: 24),
+                              const SizedBox(width: 8),
+                              // Queue Toggle Button
+                              IconButton(
+                                icon: Icon(
+                                  Icons.queue_music_rounded,
+                                  color: _showQueueOverlay ? AppTheme.accent : Colors.white70,
+                                  size: 24,
+                                ),
+                                tooltip: 'Cola de reproducción',
+                                onPressed: () => setState(() => _showQueueOverlay = !_showQueueOverlay),
                               ),
                             ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Progress Bar
+                          const _ExpandedProgressBar(),
+                          const SizedBox(height: 12),
+
+                          // Playback Controls
+                          const _ExpandedPlaybackControls(),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Layer 1: Floating Glassmorphism Queue Overlay
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  top: 88.0,
+                  right: _showQueueOverlay ? 24.0 : -(overlayWidth + 40.0),
+                  bottom: 120.0,
+                  width: overlayWidth,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 180),
+                    opacity: _showQueueOverlay ? 1.0 : 0.0,
+                    child: IgnorePointer(
+                      ignoring: !_showQueueOverlay,
+                      child: RepaintBoundary(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: BackdropFilter(
+                            filter: ui.ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF141414).withValues(alpha: 0.82),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.12),
+                                  width: 1.0,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.50),
+                                    blurRadius: 32,
+                                    offset: const Offset(0, 12),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                children: [
+                                  // Overlay Header
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(20, 14, 10, 10),
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.queue_music_rounded,
+                                          color: AppTheme.accent,
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        const Expanded(
+                                          child: Text(
+                                            'Cola de reproducción',
+                                            style: TextStyle(
+                                              fontFamily: 'Inter',
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.close_rounded,
+                                            color: Colors.white70,
+                                            size: 20,
+                                          ),
+                                          tooltip: 'Cerrar cola',
+                                          onPressed: _closeQueueOverlay,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const Divider(
+                                    height: 1,
+                                    color: Color(0x1FFFFFFF),
+                                  ),
+                                  // Queue Content
+                                  const Expanded(
+                                    child: _QueueTab(),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
