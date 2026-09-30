@@ -237,6 +237,7 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage>
   /// P0: Pending timer that delays remounting of the [Video] widget after
   /// resume in fullscreen mode.
   Timer? _resumeTimer;
+  StreamSubscription<Track?>? _trackSub;
 
   late final AnimationController _fadeCtrl;
   late final Animation<double> _fadeAnim;
@@ -254,11 +255,19 @@ class _FullscreenVideoPageState extends State<_FullscreenVideoPage>
     );
     _fadeAnim = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeInOut);
     _scheduleHide();
+
+    // Auto-exit fullscreen when track finishes or changes to an audio-only track
+    _trackSub = AudioPlayerService.instance.currentTrackStream.listen((track) {
+      if (mounted && (track == null || !track.isVideo)) {
+        Navigator.of(context).pop();
+      }
+    });
   }
 
   @override
   void dispose() {
     _resumeTimer?.cancel();
+    _trackSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
     _fadeCtrl.dispose();

@@ -658,159 +658,156 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                 },
                 child: isArtwork
                     ? Column(
-                        key: const ValueKey('mobile_artwork_view'),
+                        key: ValueKey('mobile_${track.isVideo ? "video" : "artwork"}_view'),
                         children: [
                           const Spacer(flex: 1),
-                          // ── Tidal-style artwork / video carousel ───────────
-                          StreamBuilder<List<Track>>(
-                            stream: AudioPlayerService.instance.queueStream,
-                            initialData: AudioPlayerService.instance.queue,
-                            builder: (context, queueSnap) {
-                              final queueTracks = queueSnap.data ??
-                                  AudioPlayerService.instance.queue;
-                              final currentIdx =
-                                  AudioPlayerService.instance.currentIndex;
-                              final pageCount = queueTracks.isEmpty
-                                  ? 1
-                                  : queueTracks.length;
+                          if (track.isVideo)
+                            // ── Dedicated Native Semi-Screen Video View ──────
+                            Container(
+                              key: ValueKey('mobile_video_${track.trackId}'),
+                              width: double.infinity,
+                              color: const Color(0xFF000000),
+                              child: AspectRatio(
+                                aspectRatio: 16 / 9,
+                                child: AudioPlayerService
+                                            .instance.videoController !=
+                                        null
+                                    ? VideoCanvas(
+                                        key: ValueKey('video_canvas_${track.trackId}'),
+                                        controller: AudioPlayerService
+                                            .instance.videoController!,
+                                        borderRadius: 0.0,
+                                        track: track,
+                                      )
+                                    : const Center(
+                                        child: CircularProgressIndicator(
+                                            color: AppTheme.accent),
+                                      ),
+                              ),
+                            )
+                          else
+                            // ── Tidal-style artwork carousel (Audio only) ────
+                            StreamBuilder<List<Track>>(
+                              stream: AudioPlayerService.instance.queueStream,
+                              initialData: AudioPlayerService.instance.queue,
+                              builder: (context, queueSnap) {
+                                final queueTracks = queueSnap.data ??
+                                    AudioPlayerService.instance.queue;
+                                final currentIdx =
+                                    AudioPlayerService.instance.currentIndex;
+                                final pageCount = queueTracks.isEmpty
+                                    ? 1
+                                    : queueTracks.length;
 
-                              return SizedBox(
-                                height: 300,
-                                child: AnimatedBuilder(
-                                  animation: _pageCtrl,
-                                  builder: (context, _) {
-                                    return PageView.builder(
-                                      controller: _pageCtrl,
-                                      itemCount: pageCount,
-                                      onPageChanged: (page) {
-                                        if (_isProgrammaticScroll) return;
-                                        setState(() => _isTouchDriving = true);
-                                        final currentIdx =
-                                            AudioPlayerService.instance.currentIndex;
-                                        final effectiveCurrent = currentIdx >= 0
-                                            ? currentIdx
-                                            : 0;
-                                        if (page > effectiveCurrent) {
-                                          OrpheusAudioHandler.instance
-                                              .skipToNext();
-                                        } else if (page < effectiveCurrent) {
-                                          OrpheusAudioHandler.instance
+                                return SizedBox(
+                                  height: 300,
+                                  child: AnimatedBuilder(
+                                    animation: _pageCtrl,
+                                    builder: (context, _) {
+                                      return PageView.builder(
+                                        controller: _pageCtrl,
+                                        itemCount: pageCount,
+                                        onPageChanged: (page) {
+                                          if (_isProgrammaticScroll) return;
+                                          setState(() => _isTouchDriving = true);
+                                          final currentIdx =
+                                              AudioPlayerService.instance.currentIndex;
+                                          final effectiveCurrent = currentIdx >= 0
+                                              ? currentIdx
+                                              : 0;
+                                          if (page > effectiveCurrent) {
+                                            OrpheusAudioHandler.instance
+                                                .skipToNext();
+                                          } else if (page < effectiveCurrent) {
+                                            OrpheusAudioHandler.instance
                                               .skipToPrevious();
-                                        }
-                                      },
-                                      itemBuilder: (context, index) {
-                                        final pageTrack = queueTracks.isNotEmpty
-                                            ? queueTracks[index]
-                                            : widget.track;
-                                        final pageCover = pageTrack
-                                            .customMetadata.customCoverPath;
-                                        final hasPageArt = pageCover != null &&
-                                            pageCover.isNotEmpty &&
-                                            File(pageCover).existsSync();
-                                        final isActivePage = index == currentIdx;
+                                          }
+                                        },
+                                        itemBuilder: (context, index) {
+                                          final pageTrack = queueTracks.isNotEmpty
+                                              ? queueTracks[index]
+                                              : widget.track;
+                                          final pageCover = pageTrack
+                                              .customMetadata.customCoverPath;
+                                          final hasPageArt = pageCover != null &&
+                                              pageCover.isNotEmpty &&
+                                              File(pageCover).existsSync();
+                                          final isActivePage = index == currentIdx;
 
-                                        // Perspective scale + opacity
-                                        double scale = 0.88;
-                                        double opacity = 0.55;
-                                        if (_pageCtrl.hasClients &&
-                                            _pageCtrl.page != null) {
-                                          final dist =
-                                              (_pageCtrl.page! - index).abs();
-                                          scale = (1.0 - dist * 0.12)
-                                              .clamp(0.84, 1.0);
-                                          opacity = (1.0 - dist * 0.5)
-                                              .clamp(0.45, 1.0);
-                                        } else if (isActivePage) {
-                                          scale = 1.0;
-                                          opacity = 1.0;
-                                        }
+                                          // Perspective scale + opacity
+                                          double scale = 0.88;
+                                          double opacity = 0.55;
+                                          if (_pageCtrl.hasClients &&
+                                              _pageCtrl.page != null) {
+                                            final dist =
+                                                (_pageCtrl.page! - index).abs();
+                                            scale = (1.0 - dist * 0.12)
+                                                .clamp(0.84, 1.0);
+                                            opacity = (1.0 - dist * 0.5)
+                                                .clamp(0.45, 1.0);
+                                          } else if (isActivePage) {
+                                            scale = 1.0;
+                                            opacity = 1.0;
+                                          }
 
-                                        return KeyedSubtree(
-                                          key: ValueKey('carousel_${pageTrack.trackId}'),
-                                          child: Transform.scale(
-                                            scale: scale,
-                                            child: Opacity(
-                                              opacity: opacity,
-                                              child: Container(
-                                                margin:
-                                                    const EdgeInsets.symmetric(
-                                                        vertical: 8,
-                                                        horizontal: 8),
-                                                decoration: BoxDecoration(
-                                                  borderRadius:
-                                                      BorderRadius.circular(18),
-                                                  color: const Color(0xFF141414),
-                                                  boxShadow: [
-                                                    BoxShadow(
-                                                      color: Colors.black
-                                                          .withValues(
-                                                              alpha: 0.60),
-                                                      blurRadius: 36,
-                                                      offset:
-                                                          const Offset(0, 12),
-                                                    ),
-                                                  ],
-                                                ),
-                                                child: ClipRRect(
-                                                  borderRadius:
-                                                      BorderRadius.circular(18),
-                                                  child: (pageTrack.isVideo &&
-                                                          isActivePage)
-                                                      ? (AudioPlayerService
-                                                                  .instance
-                                                                  .videoController !=
-                                                              null
-                                                          ? VideoCanvas(
-                                                              controller:
-                                                                  AudioPlayerService
-                                                                      .instance
-                                                                      .videoController!,
-                                                              borderRadius: 18.0,
-                                                              track: pageTrack,
-                                                            )
-                                                          : (hasPageArt
-                                                              ? Image.file(
-                                                                  File(pageCover),
-                                                                  key: ValueKey(
-                                                                      'cover_${pageTrack.trackId}_$pageCover'),
-                                                                  fit: BoxFit.cover,
-                                                                  width: double.infinity,
-                                                                  height: double.infinity,
-                                                                )
-                                                              : const Center(
-                                                                  child:
-                                                                      CircularProgressIndicator(
-                                                                          color: AppTheme.accent),
-                                                                )))
-                                                      : (hasPageArt
-                                                          ? Image.file(
-                                                              File(pageCover),
-                                                              key: ValueKey(
-                                                                  'cover_${pageTrack.trackId}_$pageCover'),
-                                                              fit: BoxFit.cover,
-                                                              width: double.infinity,
-                                                              height: double.infinity,
-                                                            )
-                                                          : const Center(
-                                                              child: Icon(
-                                                                Icons
-                                                                    .music_note_rounded,
-                                                                size: 72,
-                                                                color: Colors.white24,
-                                                              ),
-                                                            )),
+                                          return KeyedSubtree(
+                                            key: ValueKey('carousel_${pageTrack.trackId}'),
+                                            child: Transform.scale(
+                                              scale: scale,
+                                              child: Opacity(
+                                                opacity: opacity,
+                                                child: Container(
+                                                  margin:
+                                                      const EdgeInsets.symmetric(
+                                                          vertical: 8,
+                                                          horizontal: 8),
+                                                  decoration: BoxDecoration(
+                                                    borderRadius:
+                                                        BorderRadius.circular(18),
+                                                    color: const Color(0xFF141414),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: Colors.black
+                                                            .withValues(
+                                                                alpha: 0.60),
+                                                        blurRadius: 36,
+                                                        offset:
+                                                            const Offset(0, 12),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  child: ClipRRect(
+                                                    borderRadius:
+                                                        BorderRadius.circular(18),
+                                                    child: hasPageArt
+                                                        ? Image.file(
+                                                            File(pageCover),
+                                                            key: ValueKey(
+                                                                'cover_${pageTrack.trackId}_$pageCover'),
+                                                            fit: BoxFit.cover,
+                                                            width: double.infinity,
+                                                            height: double.infinity,
+                                                          )
+                                                        : const Center(
+                                                            child: Icon(
+                                                              Icons
+                                                                  .music_note_rounded,
+                                                              size: 72,
+                                                              color: Colors.white24,
+                                                            ),
+                                                          ),
+                                                  ),
                                                 ),
                                               ),
                                             ),
-                                          ),
-                                        );
-                                      },
-                                    );
-                                  },
-                                ),
-                              );
-                            },
-                          ),
+                                          );
+                                        },
+                                      );
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
                           const Spacer(flex: 1),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
