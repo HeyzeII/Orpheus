@@ -296,9 +296,9 @@ class _DesktopVideoLayoutState extends State<_DesktopVideoLayout> {
                 AnimatedPositioned(
                   duration: const Duration(milliseconds: 220),
                   curve: Curves.easeOutCubic,
-                  top: 88.0,
+                  top: 80.0,
                   right: _showQueueOverlay ? 24.0 : -(overlayWidth + 40.0),
-                  bottom: 120.0,
+                  bottom: 140.0,
                   width: overlayWidth,
                   child: AnimatedOpacity(
                     duration: const Duration(milliseconds: 180),
@@ -306,9 +306,13 @@ class _DesktopVideoLayoutState extends State<_DesktopVideoLayout> {
                     child: IgnorePointer(
                       ignoring: !_showQueueOverlay,
                       child: RepaintBoundary(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: BackdropFilter(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: math.max(200.0, constraints.maxHeight - 220.0),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: BackdropFilter(
                             filter: ui.ImageFilter.blur(sigmaX: 25.0, sigmaY: 25.0),
                             child: Container(
                               decoration: BoxDecoration(
@@ -375,6 +379,7 @@ class _DesktopVideoLayoutState extends State<_DesktopVideoLayout> {
                             ),
                           ),
                         ),
+                        ),
                       ),
                     ),
                   ),
@@ -414,6 +419,64 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
   _LyricsPhase _lyricsPhase = _LyricsPhase.hidden;
   Timer? _peekTimer;
 
+  // ── Tidal-style artwork carousel ──────────────────────────────────────────
+  late PageController _pageCtrl;
+  bool _isTouchDriving = false;
+  bool _isProgrammaticScroll = false;
+  StreamSubscription<Track?>? _trackSub;
+
+  @override
+  void initState() {
+    super.initState();
+    final svc = AudioPlayerService.instance;
+    final initialPage = svc.currentIndex >= 0 ? svc.currentIndex : 0;
+    _pageCtrl = PageController(
+      initialPage: initialPage,
+      viewportFraction: 0.80,
+    );
+    _trackSub = svc.currentTrackStream.listen(_onTrackChanged);
+  }
+
+  void _onTrackChanged(Track? track) {
+    if (!mounted) return;
+    final svc = AudioPlayerService.instance;
+    final newPage = svc.currentIndex >= 0 ? svc.currentIndex : 0;
+
+    if (!_pageCtrl.hasClients) {
+      _pageCtrl.dispose();
+      _pageCtrl = PageController(
+        initialPage: newPage,
+        viewportFraction: 0.80,
+      );
+      return;
+    }
+
+    if (_isTouchDriving) {
+      if (_pageCtrl.page?.round() != newPage) {
+        _pageCtrl.jumpToPage(newPage);
+      }
+      setState(() => _isTouchDriving = false);
+      return;
+    }
+
+    if (_pageCtrl.page?.round() == newPage) return;
+
+    if (!_isProgrammaticScroll) {
+      setState(() => _isProgrammaticScroll = true);
+      _pageCtrl
+          .animateToPage(
+            newPage,
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic,
+          )
+          .then((_) {
+            if (mounted) {
+              setState(() => _isProgrammaticScroll = false);
+            }
+          });
+    }
+  }
+
   @override
   void didUpdateWidget(_MobileVerticalLayout old) {
     super.didUpdateWidget(old);
@@ -436,6 +499,8 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
   @override
   void dispose() {
     _peekTimer?.cancel();
+    _trackSub?.cancel();
+    _pageCtrl.dispose();
     super.dispose();
   }
 
@@ -444,16 +509,6 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
       widget.onModeChanged(_MobileOverlayMode.artwork);
     } else {
       widget.onModeChanged(target);
-    }
-  }
-
-  void _handleSwipe(DragEndDetails details) {
-    if (details.primaryVelocity != null) {
-      if (details.primaryVelocity! < -200) {
-        OrpheusAudioHandler.instance.skipToNext();
-      } else if (details.primaryVelocity! > 200) {
-        OrpheusAudioHandler.instance.skipToPrevious();
-      }
     }
   }
 
@@ -606,64 +661,156 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                         key: const ValueKey('mobile_artwork_view'),
                         children: [
                           const Spacer(flex: 1),
-                          if (track.isVideo)
-                            Container(
-                              width: double.infinity,
-                              color: const Color(0xFF000000),
-                              child: AspectRatio(
-                                aspectRatio: 16 / 9,
-                                child: AudioPlayerService
-                                            .instance.videoController !=
-                                        null
-                                    ? VideoCanvas(
-                                        controller: AudioPlayerService
-                                            .instance.videoController!,
-                                        borderRadius: 0.0,
-                                        track: track,
-                                      )
-                                    : const Center(
-                                        child: CircularProgressIndicator(
-                                            color: AppTheme.accent),
-                                      ),
-                              ),
-                            )
-                          else
-                            GestureDetector(
-                              onHorizontalDragEnd: _handleSwipe,
-                              child: Container(
-                                width: 280,
-                                height: 280,
-                                margin: const EdgeInsets.symmetric(
-                                    vertical: 16),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black
-                                          .withValues(alpha: 0.55),
-                                      blurRadius: 36,
-                                      offset: const Offset(0, 10),
-                                    ),
-                                  ],
-                                  image: hasArt
-                                      ? DecorationImage(
-                                          image: FileImage(File(coverPath)),
-                                          fit: BoxFit.cover,
-                                        )
-                                      : null,
-                                  color: hasArt
-                                      ? null
-                                      : const Color(0xFF282828),
+                          // ── Tidal-style artwork / video carousel ───────────
+                          StreamBuilder<List<Track>>(
+                            stream: AudioPlayerService.instance.queueStream,
+                            initialData: AudioPlayerService.instance.queue,
+                            builder: (context, queueSnap) {
+                              final queueTracks = queueSnap.data ??
+                                  AudioPlayerService.instance.queue;
+                              final currentIdx =
+                                  AudioPlayerService.instance.currentIndex;
+                              final pageCount = queueTracks.isEmpty
+                                  ? 1
+                                  : queueTracks.length;
+
+                              return SizedBox(
+                                height: 300,
+                                child: AnimatedBuilder(
+                                  animation: _pageCtrl,
+                                  builder: (context, _) {
+                                    return PageView.builder(
+                                      controller: _pageCtrl,
+                                      itemCount: pageCount,
+                                      onPageChanged: (page) {
+                                        if (_isProgrammaticScroll) return;
+                                        setState(() => _isTouchDriving = true);
+                                        final currentIdx =
+                                            AudioPlayerService.instance.currentIndex;
+                                        final effectiveCurrent = currentIdx >= 0
+                                            ? currentIdx
+                                            : 0;
+                                        if (page > effectiveCurrent) {
+                                          OrpheusAudioHandler.instance
+                                              .skipToNext();
+                                        } else if (page < effectiveCurrent) {
+                                          OrpheusAudioHandler.instance
+                                              .skipToPrevious();
+                                        }
+                                      },
+                                      itemBuilder: (context, index) {
+                                        final pageTrack = queueTracks.isNotEmpty
+                                            ? queueTracks[index]
+                                            : widget.track;
+                                        final pageCover = pageTrack
+                                            .customMetadata.customCoverPath;
+                                        final hasPageArt = pageCover != null &&
+                                            pageCover.isNotEmpty &&
+                                            File(pageCover).existsSync();
+                                        final isActivePage = index == currentIdx;
+
+                                        // Perspective scale + opacity
+                                        double scale = 0.88;
+                                        double opacity = 0.55;
+                                        if (_pageCtrl.hasClients &&
+                                            _pageCtrl.page != null) {
+                                          final dist =
+                                              (_pageCtrl.page! - index).abs();
+                                          scale = (1.0 - dist * 0.12)
+                                              .clamp(0.84, 1.0);
+                                          opacity = (1.0 - dist * 0.5)
+                                              .clamp(0.45, 1.0);
+                                        } else if (isActivePage) {
+                                          scale = 1.0;
+                                          opacity = 1.0;
+                                        }
+
+                                        return KeyedSubtree(
+                                          key: ValueKey('carousel_${pageTrack.trackId}'),
+                                          child: Transform.scale(
+                                            scale: scale,
+                                            child: Opacity(
+                                              opacity: opacity,
+                                              child: Container(
+                                                margin:
+                                                    const EdgeInsets.symmetric(
+                                                        vertical: 8,
+                                                        horizontal: 8),
+                                                decoration: BoxDecoration(
+                                                  borderRadius:
+                                                      BorderRadius.circular(18),
+                                                  color: const Color(0xFF141414),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: Colors.black
+                                                          .withValues(
+                                                              alpha: 0.60),
+                                                      blurRadius: 36,
+                                                      offset:
+                                                          const Offset(0, 12),
+                                                    ),
+                                                  ],
+                                                ),
+                                                child: ClipRRect(
+                                                  borderRadius:
+                                                      BorderRadius.circular(18),
+                                                  child: (pageTrack.isVideo &&
+                                                          isActivePage)
+                                                      ? (AudioPlayerService
+                                                                  .instance
+                                                                  .videoController !=
+                                                              null
+                                                          ? VideoCanvas(
+                                                              controller:
+                                                                  AudioPlayerService
+                                                                      .instance
+                                                                      .videoController!,
+                                                              borderRadius: 18.0,
+                                                              track: pageTrack,
+                                                            )
+                                                          : (hasPageArt
+                                                              ? Image.file(
+                                                                  File(pageCover),
+                                                                  key: ValueKey(
+                                                                      'cover_${pageTrack.trackId}_$pageCover'),
+                                                                  fit: BoxFit.cover,
+                                                                  width: double.infinity,
+                                                                  height: double.infinity,
+                                                                )
+                                                              : const Center(
+                                                                  child:
+                                                                      CircularProgressIndicator(
+                                                                          color: AppTheme.accent),
+                                                                )))
+                                                      : (hasPageArt
+                                                          ? Image.file(
+                                                              File(pageCover),
+                                                              key: ValueKey(
+                                                                  'cover_${pageTrack.trackId}_$pageCover'),
+                                                              fit: BoxFit.cover,
+                                                              width: double.infinity,
+                                                              height: double.infinity,
+                                                            )
+                                                          : const Center(
+                                                              child: Icon(
+                                                                Icons
+                                                                    .music_note_rounded,
+                                                                size: 72,
+                                                                color: Colors.white24,
+                                                              ),
+                                                            )),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  },
                                 ),
-                                child: hasArt
-                                    ? null
-                                    : const Center(
-                                        child: Icon(Icons.music_note_rounded,
-                                            size: 72,
-                                            color: Colors.white24),
-                                      ),
-                              ),
-                            ),
+                              );
+                            },
+                          ),
                           const Spacer(flex: 1),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),

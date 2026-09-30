@@ -158,36 +158,54 @@ class _VideoCanvasState extends State<VideoCanvas> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final isResumed = _lifecycleState == AppLifecycleState.resumed;
-    final currentTrack =
-        widget.track ?? AudioPlayerService.instance.currentTrack;
-    final coverPath = currentTrack?.customMetadata.customCoverPath;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(widget.borderRadius),
       child: AspectRatio(
         aspectRatio: widget.aspectRatio,
-        // P1: Only mount the native Video widget when the VideoController's
-        // rect is confirmed valid, preventing double-binding race conditions
-        // and rasterizer stalls on a not-yet-ready SurfaceTexture.
-        child: ValueListenableBuilder<Rect?>(
-          valueListenable: widget.controller.rect,
-          builder: (context, rect, _) {
-            final isRectValid = isResumed && rect != null && rect != Rect.zero;
-            return AnimatedSwitcher(
-              duration: const Duration(milliseconds: 250),
-              switchInCurve: Curves.easeOut,
-              switchOutCurve: Curves.easeIn,
-              child: isRectValid
-                  ? Video(
-                      key: const ValueKey('active_video_surface'),
-                      controller: widget.controller,
-                      fit: BoxFit.contain,
-                      controls: NoVideoControls,
-                    )
-                  : KeyedSubtree(
-                      key: const ValueKey('artwork_fallback_surface'),
-                      child: _buildFallback(coverPath),
-                    ),
+        // P1: StreamBuilder reacts to track changes so when we go
+        // audio→video or video→audio the widget rebuilds immediately.
+        // The extra `isVideo` guard prevents mounting a Video surface for
+        // audio tracks even when media_kit's rect is still non-zero in memory.
+        child: StreamBuilder<Track?>(
+          stream: AudioPlayerService.instance.currentTrackStream,
+          initialData: widget.track ?? AudioPlayerService.instance.currentTrack,
+          builder: (context, snap) {
+            final currentTrack = snap.data ??
+                widget.track ??
+                AudioPlayerService.instance.currentTrack;
+            final coverPath = currentTrack?.customMetadata.customCoverPath;
+            final isVideoTrack = currentTrack?.isVideo == true;
+
+            return ValueListenableBuilder<Rect?>(
+              valueListenable: widget.controller.rect,
+              builder: (context, rect, _) {
+                // Require (a) lifecycle resumed, (b) rect initialized, AND
+                // (c) currently playing a video track — prevents the persisted
+                // rect from tricking the canvas into rendering an empty surface
+                // for audio tracks after a video→audio transition.
+                final isRectValid = isResumed &&
+                    isVideoTrack &&
+                    rect != null &&
+                    rect != Rect.zero;
+
+                return AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  child: isRectValid
+                      ? Video(
+                          key: const ValueKey('active_video_surface'),
+                          controller: widget.controller,
+                          fit: BoxFit.contain,
+                          controls: NoVideoControls,
+                        )
+                      : KeyedSubtree(
+                          key: const ValueKey('artwork_fallback_surface'),
+                          child: _buildFallback(coverPath),
+                        ),
+                );
+              },
             );
           },
         ),
