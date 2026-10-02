@@ -709,19 +709,18 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                                         itemCount: pageCount,
                                         onPageChanged: (page) {
                                           if (_isProgrammaticScroll) return;
-                                          setState(() => _isTouchDriving = true);
-                                          final currentIdx =
-                                              AudioPlayerService.instance.currentIndex;
-                                          final effectiveCurrent = currentIdx >= 0
-                                              ? currentIdx
-                                              : 0;
-                                          if (page > effectiveCurrent) {
-                                            OrpheusAudioHandler.instance
-                                                .skipToNext();
-                                          } else if (page < effectiveCurrent) {
-                                            OrpheusAudioHandler.instance
-                                              .skipToPrevious();
+                                          if (page < 0 || page >= queueTracks.length) return;
+
+                                          final targetTrack = queueTracks[page];
+                                          final currentTrack = AudioPlayerService.instance.currentTrack;
+
+                                          // Guard de identidad estricta: si es la misma canción, abortar sin tocar el audio
+                                          if (currentTrack != null && targetTrack.trackId == currentTrack.trackId) {
+                                            return;
                                           }
+
+                                          setState(() => _isTouchDriving = true);
+                                          AudioPlayerService.instance.skipToIndex(page);
                                         },
                                         itemBuilder: (context, index) {
                                           final pageTrack = queueTracks.isNotEmpty
@@ -1142,9 +1141,11 @@ class _ExpandedArtisticCore extends StatelessWidget {
                     : GestureDetector(
                         onHorizontalDragEnd: (details) {
                           if (details.primaryVelocity != null) {
-                            if (details.primaryVelocity! < -200) {
+                            if (details.primaryVelocity! < -200 &&
+                                AudioPlayerService.instance.canSkipNext) {
                               OrpheusAudioHandler.instance.skipToNext();
-                            } else if (details.primaryVelocity! > 200) {
+                            } else if (details.primaryVelocity! > 200 &&
+                                AudioPlayerService.instance.canSkipPrevious) {
                               OrpheusAudioHandler.instance.skipToPrevious();
                             }
                           }

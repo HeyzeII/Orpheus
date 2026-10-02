@@ -667,8 +667,11 @@ class AudioPlayerService {
 
     final hasCurrent = _currentTrack != null;
     final currentIdx = hasCurrent ? histLen : -1;
-    if (index == currentIdx) {
-      await seek(Duration.zero);
+    if (index == currentIdx ||
+        (_currentTrack != null &&
+            index >= 0 &&
+            index < queue.length &&
+            queue[index].trackId == _currentTrack!.trackId)) {
       return;
     }
 
