@@ -429,7 +429,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
   void initState() {
     super.initState();
     final svc = AudioPlayerService.instance;
-    final initialPage = svc.currentIndex >= 0 ? svc.currentIndex : 0;
+    final initialPage = svc.currentContextIndex >= 0 ? svc.currentContextIndex : 0;
     _pageCtrl = PageController(
       initialPage: initialPage,
       viewportFraction: 0.80,
@@ -440,7 +440,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
   void _onTrackChanged(Track? track) {
     if (!mounted) return;
     final svc = AudioPlayerService.instance;
-    final newPage = svc.currentIndex >= 0 ? svc.currentIndex : 0;
+    final newPage = svc.currentContextIndex >= 0 ? svc.currentContextIndex : 0;
 
     if (!_pageCtrl.hasClients) {
       _pageCtrl.dispose();
@@ -688,16 +688,22 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                           else
                             // ── Tidal-style artwork carousel (Audio only) ────
                             StreamBuilder<List<Track>>(
-                              stream: AudioPlayerService.instance.queueStream,
-                              initialData: AudioPlayerService.instance.queue,
-                              builder: (context, queueSnap) {
-                                final queueTracks = queueSnap.data ??
-                                    AudioPlayerService.instance.queue;
+                              stream: AudioPlayerService.instance.activeContextStream,
+                              initialData: AudioPlayerService.instance.activeContextTracks,
+                              builder: (context, contextSnap) {
+                                final contextTracks = (contextSnap.data != null &&
+                                        contextSnap.data!.isNotEmpty)
+                                    ? contextSnap.data!
+                                    : (AudioPlayerService
+                                            .instance.activeContextTracks.isNotEmpty
+                                        ? AudioPlayerService
+                                            .instance.activeContextTracks
+                                        : [widget.track]);
                                 final currentIdx =
-                                    AudioPlayerService.instance.currentIndex;
-                                final pageCount = queueTracks.isEmpty
-                                    ? 1
-                                    : queueTracks.length;
+                                    AudioPlayerService.instance.currentContextIndex >= 0
+                                        ? AudioPlayerService.instance.currentContextIndex
+                                        : 0;
+                                final pageCount = contextTracks.length;
 
                                 return SizedBox(
                                   height: 300,
@@ -709,9 +715,9 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                                         itemCount: pageCount,
                                         onPageChanged: (page) {
                                           if (_isProgrammaticScroll) return;
-                                          if (page < 0 || page >= queueTracks.length) return;
+                                          if (page < 0 || page >= contextTracks.length) return;
 
-                                          final targetTrack = queueTracks[page];
+                                          final targetTrack = contextTracks[page];
                                           final currentTrack = AudioPlayerService.instance.currentTrack;
 
                                           // Guard de identidad estricta: si es la misma canción, abortar sin tocar el audio
@@ -720,11 +726,18 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                                           }
 
                                           setState(() => _isTouchDriving = true);
-                                          AudioPlayerService.instance.skipToIndex(page);
+                                          final currentCtxIdx = AudioPlayerService.instance.currentContextIndex;
+                                          if (currentCtxIdx >= 0 && page < currentCtxIdx) {
+                                            AudioPlayerService.instance.playContextPastItem(page);
+                                          } else if (currentCtxIdx >= 0 && page > currentCtxIdx) {
+                                            AudioPlayerService.instance.playContextQueueItem(page - currentCtxIdx - 1);
+                                          } else {
+                                            AudioPlayerService.instance.skipToIndex(page);
+                                          }
                                         },
                                         itemBuilder: (context, index) {
-                                          final pageTrack = queueTracks.isNotEmpty
-                                              ? queueTracks[index]
+                                          final pageTrack = contextTracks.isNotEmpty
+                                              ? contextTracks[index]
                                               : widget.track;
                                           final pageCover = pageTrack
                                               .customMetadata.customCoverPath;

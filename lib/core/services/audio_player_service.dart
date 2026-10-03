@@ -96,6 +96,7 @@ class AudioPlayerService {
   final _historyController = StreamController<List<Track>>.broadcast();
   final _contextNameController = StreamController<String>.broadcast();
   final _pastContextController = StreamController<List<Track>>.broadcast();
+  final _activeContextController = StreamController<List<Track>>.broadcast();
 
   AudioSession? _audioSession;
   final List<StreamSubscription> _subscriptions = [];
@@ -292,6 +293,9 @@ class AudioPlayerService {
     return List.unmodifiable(_activeContext.sublist(0, _contextIndex));
   }
 
+  /// Full active context tracks in current playback order (sequential or shuffled).
+  List<Track> get activeContextTracks => List.unmodifiable(_activeContext);
+
   /// Chronological history stack of tracks played prior to the current track.
   List<Track> get history => List.unmodifiable(_history);
 
@@ -360,6 +364,7 @@ class AudioPlayerService {
   Stream<List<Track>> get historyStream => _historyController.stream;
   Stream<String> get contextNameStream => _contextNameController.stream;
   Stream<List<Track>> get pastContextStream => _pastContextController.stream;
+  Stream<List<Track>> get activeContextStream => _activeContextController.stream;
 
   // ── Control API ────────────────────────────────────────────────────────────
 
@@ -1081,6 +1086,7 @@ class AudioPlayerService {
     _userQueueController.add(userQueue);
     _contextQueueController.add(contextQueue);
     _pastContextController.add(pastContext);
+    _activeContextController.add(activeContextTracks);
     _contextNameController.add(_contextName);
     _canSkipNextController.add(canSkipNext);
   }
@@ -1108,6 +1114,7 @@ class AudioPlayerService {
     await _canSkipNextController.close();
     await _userQueueController.close();
     await _contextQueueController.close();
+    await _activeContextController.close();
     await _historyController.close();
     await _pastContextController.close();
     await _contextNameController.close();
