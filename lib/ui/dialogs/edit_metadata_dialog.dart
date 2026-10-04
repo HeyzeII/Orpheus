@@ -66,9 +66,10 @@ class _EditMetadataDialogState extends State<EditMetadataDialog> {
       allowedExtensions: ['jpg', 'jpeg', 'png'],
     );
 
-    if (result != null && result.files.single.path != null) {
+    final path = result?.files.firstOrNull?.path;
+    if (path != null && path.isNotEmpty) {
       setState(() {
-        _selectedNewCoverPath = result.files.single.path;
+        _selectedNewCoverPath = path;
       });
     }
   }

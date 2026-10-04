@@ -534,6 +534,10 @@ class _SyncedLyricsBodyState extends State<_SyncedLyricsBody> {
                     File(widget.coverPath!),
                     fit: BoxFit.cover,
                     cacheWidth: 216,
+                    errorBuilder: (context, error, stackTrace) => const ColoredBox(
+                      color: Color(0xFF282828),
+                      child: Icon(Icons.music_note_rounded, size: 24, color: Colors.white24),
+                    ),
                   ),
                 ),
               ),

@@ -110,7 +110,12 @@ class _BlurredImageBackground extends StatelessWidget {
         if (coverPath != null && File(coverPath).existsSync())
           Transform.scale(
             scale: 1.15,
-            child: Image.file(File(coverPath), fit: BoxFit.cover),
+            child: Image.file(
+              File(coverPath),
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) =>
+                  const ColoredBox(color: Color(0xFF141414)),
+            ),
           )
         else
           const ColoredBox(color: Color(0xFF141414)),
@@ -424,11 +429,13 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
   bool _isTouchDriving = false;
   bool _isProgrammaticScroll = false;
   StreamSubscription<Track?>? _trackSub;
+  String? _lastTrackId;
 
   @override
   void initState() {
     super.initState();
     final svc = AudioPlayerService.instance;
+    _lastTrackId = svc.currentTrack?.trackId ?? widget.track.trackId;
     final initialPage = svc.currentContextIndex >= 0 ? svc.currentContextIndex : 0;
     _pageCtrl = PageController(
       initialPage: initialPage,
@@ -441,13 +448,18 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
     if (!mounted) return;
     final svc = AudioPlayerService.instance;
     final newPage = svc.currentContextIndex >= 0 ? svc.currentContextIndex : 0;
+    final currentTrackId = track?.trackId ?? svc.currentTrack?.trackId;
+    final trackChanged = currentTrackId != null && currentTrackId != _lastTrackId;
+    _lastTrackId = currentTrackId;
 
     if (!_pageCtrl.hasClients) {
-      _pageCtrl.dispose();
-      _pageCtrl = PageController(
-        initialPage: newPage,
-        viewportFraction: 0.80,
-      );
+      setState(() {
+        _pageCtrl.dispose();
+        _pageCtrl = PageController(
+          initialPage: newPage,
+          viewportFraction: 0.80,
+        );
+      });
       return;
     }
 
@@ -459,27 +471,54 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
       return;
     }
 
-    if (_pageCtrl.page?.round() == newPage) return;
+    final currentPage = _pageCtrl.page?.round() ?? _pageCtrl.initialPage;
+    if (currentPage == newPage && !trackChanged) return;
+
+    final delta = (newPage - currentPage).abs();
 
     if (!_isProgrammaticScroll) {
-      setState(() => _isProgrammaticScroll = true);
-      _pageCtrl
-          .animateToPage(
-            newPage,
-            duration: const Duration(milliseconds: 350),
-            curve: Curves.easeOutCubic,
-          )
-          .then((_) {
-            if (mounted) {
-              setState(() => _isProgrammaticScroll = false);
-            }
-          });
+      if (delta > 1 || trackChanged) {
+        _pageCtrl.jumpToPage(newPage);
+      } else if (delta == 1) {
+        setState(() => _isProgrammaticScroll = true);
+        _pageCtrl
+            .animateToPage(
+              newPage,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOutCubic,
+            )
+            .then((_) {
+              if (mounted) {
+                setState(() => _isProgrammaticScroll = false);
+              }
+            });
+      }
     }
   }
 
   @override
   void didUpdateWidget(_MobileVerticalLayout old) {
     super.didUpdateWidget(old);
+    if (widget.track.trackId != old.track.trackId) {
+      _lastTrackId = widget.track.trackId;
+    }
+    if (widget.mode == _MobileOverlayMode.artwork &&
+        old.mode != _MobileOverlayMode.artwork) {
+      final currentIdx = AudioPlayerService.instance.currentContextIndex >= 0
+          ? AudioPlayerService.instance.currentContextIndex
+          : 0;
+      if (_pageCtrl.hasClients) {
+        if (_pageCtrl.page?.round() != currentIdx) {
+          _pageCtrl.jumpToPage(currentIdx);
+        }
+      } else {
+        _pageCtrl.dispose();
+        _pageCtrl = PageController(
+          initialPage: currentIdx,
+          viewportFraction: 0.80,
+        );
+      }
+    }
     if (widget.mode == _MobileOverlayMode.lyrics &&
         old.mode != _MobileOverlayMode.lyrics) {
       // Just entered lyrics mode: start in peek, auto-expand smoothly after 1.1s
@@ -628,36 +667,15 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
 
             // ── Main Body Content with Tidal-style organic transitions ────────
             Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 400),
-                switchInCurve: Curves.easeInOutCubic,
-                switchOutCurve: Curves.easeInOutCubic,
-                transitionBuilder: (child, animation) {
-                  // AbsorbPointer on the outgoing view (animation going 1→0)
-                  // prevents it from stealing touch events during the crossfade.
-                  return AnimatedBuilder(
-                    animation: animation,
-                    builder: (context, _) {
-                      final isIncoming = animation.status == AnimationStatus.completed ||
-                          animation.status == AnimationStatus.forward;
-                      return AbsorbPointer(
-                        absorbing: !isIncoming,
-                        child: FadeTransition(
-                          opacity: animation,
-                          child: SlideTransition(
-                            position: Tween<Offset>(
-                              begin: const Offset(0, 0.02),
-                              end: Offset.zero,
-                            ).animate(animation),
-                            child: child,
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
-                child: isArtwork
-                    ? Column(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // 1. Permanent Artwork Layer (State Preserved via Offstage & TickerMode)
+                  Offstage(
+                    offstage: !isArtwork,
+                    child: TickerMode(
+                      enabled: isArtwork,
+                      child: Column(
                         key: ValueKey('mobile_${track.isVideo ? "video" : "artwork"}_view'),
                         children: [
                           const Spacer(flex: 1),
@@ -763,7 +781,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                                           }
 
                                           return KeyedSubtree(
-                                            key: ValueKey('carousel_${pageTrack.trackId}'),
+                                            key: ValueKey('carousel_${pageTrack.trackId}_$index'),
                                             child: Transform.scale(
                                               scale: scale,
                                               child: Opacity(
@@ -795,7 +813,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                                                         ? Image.file(
                                                             File(pageCover),
                                                             key: ValueKey(
-                                                                'cover_${pageTrack.trackId}_$pageCover'),
+                                                                'cover_${pageTrack.trackId}_${index}_$pageCover'),
                                                             fit: BoxFit.cover,
                                                             width: double.infinity,
                                                             height: double.infinity,
@@ -866,160 +884,189 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                           const _ExpandedPlaybackControls(),
                           const SizedBox(height: 8),
                         ],
-                      )
-                    : isQueue
-                        ? Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Container(
-                              key: const ValueKey('mobile_queue_fullscreen_pane'),
-                              margin: const EdgeInsets.only(top: 4, bottom: 4),
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                              child: const _QueueTab(),
-                            ),
-                          )
-                        : Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            // Fix B: LayoutBuilder provides a finite height to
-                            // LyricsView during AnimatedSize transitions, preventing
-                            // the RenderFlex overflow (yellow/black stripes) that
-                            // occurred when Expanded was inside an unconstrained Column.
-                            child: LayoutBuilder(
-                              key: const ValueKey('mobile_lyrics_container'),
-                              builder: (context, lyricsConstraints) {
-                                const double peekHeaderH   = 80.0;
-                                const double peekControlsH = 124.0;
-                                final double totalH = lyricsConstraints.maxHeight;
-                                final double lyricsH = isLyricsPeek
-                                    ? (totalH - peekHeaderH - peekControlsH)
-                                        .clamp(80.0, double.infinity)
-                                    : totalH;
+                      ),
+                    ),
+                  ),
 
-                                return Column(
-                                  children: [
-                                    AnimatedSize(
-                                      duration: const Duration(milliseconds: 650),
-                                      curve: Curves.easeInOutCubic,
-                                      child: isLyricsPeek
-                                          ? AnimatedOpacity(
-                                              duration: const Duration(milliseconds: 500),
-                                              curve: Curves.easeInOutCubic,
-                                              opacity: 1.0,
-                                              child: Padding(
-                                                padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-                                                child: Row(
-                                                  children: [
-                                                    ClipRRect(
-                                                      borderRadius: BorderRadius.circular(8),
-                                                      child: SizedBox(
-                                                        width: 56,
-                                                        height: 56,
-                                                        child: hasArt
-                                                            ? Image.file(
-                                                                File(coverPath),
-                                                                fit: BoxFit.cover,
-                                                                cacheWidth: 112,
-                                                              )
-                                                            : const ColoredBox(
-                                                                color: Color(0xFF282828),
-                                                                child: Icon(
-                                                                    Icons.music_note_rounded,
-                                                                    size: 24,
-                                                                    color: Colors.white24),
-                                                              ),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 12),
-                                                    Expanded(
-                                                      child: Column(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment.start,
-                                                        mainAxisSize: MainAxisSize.min,
-                                                        children: [
-                                                          Text(
-                                                            track.displayTitle,
-                                                            maxLines: 1,
-                                                            overflow: TextOverflow.ellipsis,
-                                                            style: const TextStyle(
-                                                              fontFamily: 'Inter',
-                                                              fontSize: 15,
-                                                              fontWeight: FontWeight.bold,
-                                                              color: Colors.white,
-                                                            ),
-                                                          ),
-                                                          const SizedBox(height: 2),
-                                                          Text(
-                                                            track.displayArtist,
-                                                            maxLines: 1,
-                                                            overflow: TextOverflow.ellipsis,
-                                                            style: TextStyle(
-                                                              fontFamily: 'Inter',
-                                                              fontSize: 12,
-                                                              fontWeight: FontWeight.w400,
-                                                              color: Colors.white
-                                                                  .withValues(alpha: 0.6),
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                    _FavoriteHeartButton(track: track, size: 22),
-                                                  ],
-                                                ),
-                                              ),
-                                            )
-                                          : const SizedBox.shrink(),
-                                    ),
-                                    SizedBox(
-                                      height: lyricsH,
-                                      child: AnimatedContainer(
+                  // 2. Fullscreen Overlays (Lyrics / Queue)
+                  if (isOverlay)
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      switchInCurve: Curves.easeInOutCubic,
+                      switchOutCurve: Curves.easeInOutCubic,
+                      transitionBuilder: (child, animation) {
+                        return AnimatedBuilder(
+                          animation: animation,
+                          builder: (context, _) {
+                            final isIncoming = animation.status == AnimationStatus.completed ||
+                                animation.status == AnimationStatus.forward;
+                            return AbsorbPointer(
+                              absorbing: !isIncoming,
+                              child: FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: Tween<Offset>(
+                                    begin: const Offset(0, 0.02),
+                                    end: Offset.zero,
+                                  ).animate(animation),
+                                  child: child,
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                      child: isQueue
+                          ? Padding(
+                              key: const ValueKey('mobile_queue_fullscreen_pane'),
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: Container(
+                                margin: const EdgeInsets.only(top: 4, bottom: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                                child: const _QueueTab(),
+                              ),
+                            )
+                          : Padding(
+                              key: const ValueKey('mobile_lyrics_container'),
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: LayoutBuilder(
+                                builder: (context, lyricsConstraints) {
+                                  const double peekHeaderH   = 80.0;
+                                  const double peekControlsH = 124.0;
+                                  final double totalH = lyricsConstraints.maxHeight;
+                                  final double lyricsH = isLyricsPeek
+                                      ? (totalH - peekHeaderH - peekControlsH)
+                                          .clamp(80.0, double.infinity)
+                                      : totalH;
+
+                                  return Column(
+                                    children: [
+                                      AnimatedSize(
                                         duration: const Duration(milliseconds: 650),
                                         curve: Curves.easeInOutCubic,
-                                        key: const ValueKey('mobile_lyrics_pane'),
-                                        margin: EdgeInsets.only(
-                                          top: isLyricsExpanded ? 4 : 0,
-                                          bottom: 4,
-                                        ),
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(16),
-                                          child: LyricsView(
-                                            track: track,
-                                            transparentBackground: true,
-                                            showThumbnail: isLyricsExpanded,
-                                            onUserScrollStart: () {
-                                              if (_lyricsPhase == _LyricsPhase.peek) {
-                                                setState(() =>
-                                                    _lyricsPhase = _LyricsPhase.expanded);
-                                              }
-                                            },
+                                        child: isLyricsPeek
+                                            ? AnimatedOpacity(
+                                                duration: const Duration(milliseconds: 500),
+                                                curve: Curves.easeInOutCubic,
+                                                opacity: 1.0,
+                                                child: Padding(
+                                                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                                                  child: Row(
+                                                    children: [
+                                                      ClipRRect(
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        child: SizedBox(
+                                                          width: 56,
+                                                          height: 56,
+                                                          child: hasArt
+                                                              ? Image.file(
+                                                                  File(coverPath),
+                                                                  fit: BoxFit.cover,
+                                                                  cacheWidth: 112,
+                                                                )
+                                                              : const ColoredBox(
+                                                                  color: Color(0xFF282828),
+                                                                  child: Icon(
+                                                                      Icons.music_note_rounded,
+                                                                      size: 24,
+                                                                      color: Colors.white24),
+                                                                ),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 12),
+                                                      Expanded(
+                                                        child: Column(
+                                                          crossAxisAlignment:
+                                                              CrossAxisAlignment.start,
+                                                          mainAxisSize: MainAxisSize.min,
+                                                          children: [
+                                                            Text(
+                                                              track.displayTitle,
+                                                              maxLines: 1,
+                                                              overflow: TextOverflow.ellipsis,
+                                                              style: const TextStyle(
+                                                                fontFamily: 'Inter',
+                                                                fontSize: 15,
+                                                                fontWeight: FontWeight.bold,
+                                                                color: Colors.white,
+                                                              ),
+                                                            ),
+                                                            const SizedBox(height: 2),
+                                                            Text(
+                                                              track.displayArtist,
+                                                              maxLines: 1,
+                                                              overflow: TextOverflow.ellipsis,
+                                                              style: TextStyle(
+                                                                fontFamily: 'Inter',
+                                                                fontSize: 12,
+                                                                fontWeight: FontWeight.w400,
+                                                                color: Colors.white
+                                                                    .withValues(alpha: 0.6),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                      _FavoriteHeartButton(track: track, size: 22),
+                                                    ],
+                                                  ),
+                                                ),
+                                              )
+                                            : const SizedBox.shrink(),
+                                      ),
+                                      SizedBox(
+                                        height: lyricsH,
+                                        child: AnimatedContainer(
+                                          duration: const Duration(milliseconds: 650),
+                                          curve: Curves.easeInOutCubic,
+                                          key: const ValueKey('mobile_lyrics_pane'),
+                                          margin: EdgeInsets.only(
+                                            top: isLyricsExpanded ? 4 : 0,
+                                            bottom: 4,
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(16),
+                                            child: LyricsView(
+                                              track: track,
+                                              transparentBackground: true,
+                                              showThumbnail: isLyricsExpanded,
+                                              onUserScrollStart: () {
+                                                if (_lyricsPhase == _LyricsPhase.peek) {
+                                                  setState(() =>
+                                                      _lyricsPhase = _LyricsPhase.expanded);
+                                                }
+                                              },
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                    AnimatedSize(
-                                      duration: const Duration(milliseconds: 650),
-                                      curve: Curves.easeInOutCubic,
-                                      child: isLyricsPeek
-                                          ? AnimatedOpacity(
-                                              duration: const Duration(milliseconds: 500),
-                                              curve: Curves.easeInOutCubic,
-                                              opacity: 1.0,
-                                              child: const Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  _ExpandedProgressBar(),
-                                                  SizedBox(height: 4),
-                                                  _ExpandedPlaybackControls(),
-                                                  SizedBox(height: 4),
-                                                ],
-                                              ),
-                                            )
-                                          : const SizedBox.shrink(),
-                                    ),
-                                  ],
-                                );
-                              },
+                                      AnimatedSize(
+                                        duration: const Duration(milliseconds: 650),
+                                        curve: Curves.easeInOutCubic,
+                                        child: isLyricsPeek
+                                            ? AnimatedOpacity(
+                                                duration: const Duration(milliseconds: 500),
+                                                curve: Curves.easeInOutCubic,
+                                                opacity: 1.0,
+                                                child: const Column(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    _ExpandedProgressBar(),
+                                                    SizedBox(height: 4),
+                                                    _ExpandedPlaybackControls(),
+                                                    SizedBox(height: 4),
+                                                  ],
+                                                ),
+                                              )
+                                            : const SizedBox.shrink(),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
                             ),
-                          ),
+                    ),
+                ],
               ),
             ),
 
