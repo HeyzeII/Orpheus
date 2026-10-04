@@ -429,6 +429,10 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
   bool _isTouchDriving = false;
   bool _isProgrammaticScroll = false;
   StreamSubscription<Track?>? _trackSub;
+  /// Fix C: subscription to shuffleStream so we can defer carousel re-sync
+  /// to the next frame (after the activeContextStream StreamBuilder has
+  /// rebuilt contextTracks with the new shuffled/un-shuffled order).
+  StreamSubscription<bool>? _shuffleSub;
   String? _lastTrackId;
 
   @override
@@ -442,6 +446,24 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
       viewportFraction: 0.80,
     );
     _trackSub = svc.currentTrackStream.listen(_onTrackChanged);
+
+    // Fix C: listen to shuffle state changes and re-sync the carousel one
+    // frame later, after the activeContextStream StreamBuilder has received
+    // and rebuilt contextTracks with the new (un)shuffled order.
+    _shuffleSub = svc.shuffleStream.listen((_) {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final targetPage = AudioPlayerService.instance.currentContextIndex >= 0
+            ? AudioPlayerService.instance.currentContextIndex
+            : 0;
+        if (_pageCtrl.hasClients && _pageCtrl.page?.round() != targetPage) {
+          _isProgrammaticScroll = true;
+          _pageCtrl.jumpToPage(targetPage);
+          if (mounted) setState(() => _isProgrammaticScroll = false);
+        }
+      });
+    });
   }
 
   void _onTrackChanged(Track? track) {
@@ -451,6 +473,14 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
     final currentTrackId = track?.trackId ?? svc.currentTrack?.trackId;
     final trackChanged = currentTrackId != null && currentTrackId != _lastTrackId;
     _lastTrackId = currentTrackId;
+
+    // Fix A: If the playing track identity has NOT changed, this event was
+    // triggered by a context reorder (e.g. toggleShuffle) and NOT by an
+    // actual track transition.  In that case, let _shuffleSub handle the
+    // carousel re-sync via addPostFrameCallback (Fix C) so that
+    // contextTracks is already updated before we call jumpToPage.
+    // Jumping here would land on the old, stale contextTracks[0] (SPINE).
+    if (!trackChanged) return;
 
     if (!_pageCtrl.hasClients) {
       setState(() {
@@ -472,12 +502,12 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
     }
 
     final currentPage = _pageCtrl.page?.round() ?? _pageCtrl.initialPage;
-    if (currentPage == newPage && !trackChanged) return;
+    if (currentPage == newPage) return;
 
     final delta = (newPage - currentPage).abs();
 
     if (!_isProgrammaticScroll) {
-      if (delta > 1 || trackChanged) {
+      if (delta > 1) {
         _pageCtrl.jumpToPage(newPage);
       } else if (delta == 1) {
         setState(() => _isProgrammaticScroll = true);
@@ -539,6 +569,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
   void dispose() {
     _peekTimer?.cancel();
     _trackSub?.cancel();
+    _shuffleSub?.cancel(); // Fix C: cancel shuffle listener
     _pageCtrl.dispose();
     super.dispose();
   }
