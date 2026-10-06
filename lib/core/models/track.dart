@@ -38,7 +38,7 @@ class Track {
 
   /// Media container/codec type (mp3, flac, mp4, …).
   @enumerated
-  late FileType fileType;
+  FileType fileType = FileType.mp3;
 
   /// Track duration in whole seconds (extracted from file metadata).
   int duration = 0;
@@ -84,6 +84,35 @@ class Track {
 
   /// Whether the user has applied custom metadata overrides via [customMetadata].
   bool hasCustomMetadata = false;
+
+  /// Whether the user has marked this track as a favorite.
+  @Index()
+  bool isLiked = false;
+
+  /// Total lifetime plays across all sessions.
+  @Index()
+  int playCount = 0;
+
+  /// Total times this track was skipped prematurely (<15s).
+  @Index()
+  int skipCount = 0;
+
+  /// Timestamp of the most recent completed playback session.
+  @Index()
+  DateTime? lastPlayedAt;
+
+  /// Acoustic energy descriptor (Root Mean Square). Range [0.0, 1.0], -1.0 if unscanned.
+  double rmsEnergy = -1.0;
+
+  /// Transient & rhythmic density descriptor. Range [0.0, 1.0], -1.0 if unscanned.
+  double peakDensity = -1.0;
+
+  /// Spectral brightness & tonal balance descriptor. Range [0.0, 1.0], -1.0 if unscanned.
+  double spectralBalance = -1.0;
+
+  /// Whether acoustic extraction features have been computed for this track.
+  @Index()
+  bool isScanned = false;
 
   // ── Embedded objects ───────────────────────────────────────────────────────
 

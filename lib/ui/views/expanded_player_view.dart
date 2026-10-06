@@ -1723,7 +1723,8 @@ class _QueueTabState extends State<_QueueTab> {
               letterSpacing: 1.2,
             ),
           ),
-          ?action,
+          // ignore: use_null_aware_elements
+          if (action != null) action,
         ],
       ),
     );

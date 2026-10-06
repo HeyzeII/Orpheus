@@ -219,6 +219,54 @@ class LocalDatabase {
           .map((t) => t!.trackId)
           .toSet();
     }
+
+    // Run non-destructive analytics and like backfill for legacy libraries
+    await _migrateAnalyticsFields();
+  }
+
+  /// Idempotently backfills analytics and isLiked fields for existing tracks.
+  Future<void> _migrateAnalyticsFields() async {
+    try {
+      final likedPlaylist = await _isar.playlists
+          .where()
+          .playlistIdEqualTo('__liked__')
+          .findFirst();
+      final likedIntIds = likedPlaylist?.trackIds.toSet() ?? <int>{};
+
+      final allTracks = await _isar.tracks.where().findAll();
+      final List<Track> tracksToUpdate = [];
+
+      for (final track in allTracks) {
+        bool needsUpdate = false;
+
+        // 1. Synchronize isLiked
+        final shouldBeLiked = likedIntIds.contains(track.id) ||
+            likedTrackIdsNotifier.value.contains(track.trackId);
+        if (track.isLiked != shouldBeLiked) {
+          track.isLiked = shouldBeLiked;
+          needsUpdate = true;
+        }
+
+        // 2. Synchronize playCount with embedded totalPlays if unpopulated
+        if (track.playCount == 0 && track.stats.totalPlays > 0) {
+          track.playCount = track.stats.totalPlays;
+          needsUpdate = true;
+        }
+
+        if (needsUpdate) {
+          tracksToUpdate.add(track);
+        }
+      }
+
+      if (tracksToUpdate.isNotEmpty) {
+        await _isar.writeTxn(() async {
+          await _isar.tracks.putAll(tracksToUpdate);
+        });
+        debugPrint('LocalDatabase: Backfill completado en ${tracksToUpdate.length} pistas.');
+      }
+    } catch (e) {
+      debugPrint('LocalDatabase: Advertencia en _migrateAnalyticsFields: $e');
+    }
   }
 
   // ── Convenience accessor (throws if not initialized) ───────────────────────
@@ -393,6 +441,8 @@ class LocalDatabase {
     final monthKey =
         '${now.year}-${now.month.toString().padLeft(2, '0')}';
     track.stats.recordPlay(monthKey);
+    track.playCount += 1;
+    track.lastPlayedAt = now;
     await saveTrack(track);
   }
 
@@ -711,11 +761,17 @@ class LocalDatabase {
     try {
       await prev;
       final likedPlaylist = await getPlaylistById('__liked__');
+      final track = await getTrackByTrackId(trackId);
+      final isNowLiked = likedTrackIdsNotifier.value.contains(trackId);
+
+      if (track != null && track.isLiked != isNowLiked) {
+        track.isLiked = isNowLiked;
+        await saveTrack(track);
+      }
+
       if (likedPlaylist != null) {
-        final track = await getTrackByTrackId(trackId);
         final intId = track?.id ?? trackId.hashCode;
         // Verify latest desired state in case of fast successive toggles
-        final isNowLiked = likedTrackIdsNotifier.value.contains(trackId);
         final updated = List<int>.from(likedPlaylist.trackIds);
         if (isNowLiked) {
           if (!updated.contains(intId)) {

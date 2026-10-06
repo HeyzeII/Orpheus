@@ -95,30 +95,70 @@ const TrackSchema = CollectionSchema(
       name: r'hasCustomMetadata',
       type: IsarType.bool,
     ),
-    r'lyricsStatus': PropertySchema(
+    r'isLiked': PropertySchema(
       id: 15,
+      name: r'isLiked',
+      type: IsarType.bool,
+    ),
+    r'isScanned': PropertySchema(
+      id: 16,
+      name: r'isScanned',
+      type: IsarType.bool,
+    ),
+    r'lastPlayedAt': PropertySchema(
+      id: 17,
+      name: r'lastPlayedAt',
+      type: IsarType.dateTime,
+    ),
+    r'lyricsStatus': PropertySchema(
+      id: 18,
       name: r'lyricsStatus',
       type: IsarType.byte,
       enumMap: _TracklyricsStatusEnumValueMap,
     ),
+    r'peakDensity': PropertySchema(
+      id: 19,
+      name: r'peakDensity',
+      type: IsarType.double,
+    ),
+    r'playCount': PropertySchema(
+      id: 20,
+      name: r'playCount',
+      type: IsarType.long,
+    ),
+    r'rmsEnergy': PropertySchema(
+      id: 21,
+      name: r'rmsEnergy',
+      type: IsarType.double,
+    ),
+    r'skipCount': PropertySchema(
+      id: 22,
+      name: r'skipCount',
+      type: IsarType.long,
+    ),
+    r'spectralBalance': PropertySchema(
+      id: 23,
+      name: r'spectralBalance',
+      type: IsarType.double,
+    ),
     r'stats': PropertySchema(
-      id: 16,
+      id: 24,
       name: r'stats',
       type: IsarType.object,
       target: r'TrackStats',
     ),
     r'syncedLyrics': PropertySchema(
-      id: 17,
+      id: 25,
       name: r'syncedLyrics',
       type: IsarType.string,
     ),
     r'title': PropertySchema(
-      id: 18,
+      id: 26,
       name: r'title',
       type: IsarType.string,
     ),
     r'trackId': PropertySchema(
-      id: 19,
+      id: 27,
       name: r'trackId',
       type: IsarType.string,
     )
@@ -152,6 +192,71 @@ const TrackSchema = CollectionSchema(
           name: r'filePath',
           type: IndexType.hash,
           caseSensitive: true,
+        )
+      ],
+    ),
+    r'isLiked': IndexSchema(
+      id: 3004230224352144283,
+      name: r'isLiked',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'isLiked',
+          type: IndexType.value,
+          caseSensitive: false,
+        )
+      ],
+    ),
+    r'playCount': IndexSchema(
+      id: -4991726430503965029,
+      name: r'playCount',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'playCount',
+          type: IndexType.value,
+          caseSensitive: false,
+        )
+      ],
+    ),
+    r'skipCount': IndexSchema(
+      id: 7417595170318334754,
+      name: r'skipCount',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'skipCount',
+          type: IndexType.value,
+          caseSensitive: false,
+        )
+      ],
+    ),
+    r'lastPlayedAt': IndexSchema(
+      id: 1709968845012040220,
+      name: r'lastPlayedAt',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'lastPlayedAt',
+          type: IndexType.value,
+          caseSensitive: false,
+        )
+      ],
+    ),
+    r'isScanned': IndexSchema(
+      id: -6946569835313170489,
+      name: r'isScanned',
+      unique: false,
+      replace: false,
+      properties: [
+        IndexPropertySchema(
+          name: r'isScanned',
+          type: IndexType.value,
+          caseSensitive: false,
         )
       ],
     )
@@ -257,16 +362,24 @@ void _trackSerialize(
   writer.writeByte(offsets[12], object.fileType.index);
   writer.writeString(offsets[13], object.genre);
   writer.writeBool(offsets[14], object.hasCustomMetadata);
-  writer.writeByte(offsets[15], object.lyricsStatus.index);
+  writer.writeBool(offsets[15], object.isLiked);
+  writer.writeBool(offsets[16], object.isScanned);
+  writer.writeDateTime(offsets[17], object.lastPlayedAt);
+  writer.writeByte(offsets[18], object.lyricsStatus.index);
+  writer.writeDouble(offsets[19], object.peakDensity);
+  writer.writeLong(offsets[20], object.playCount);
+  writer.writeDouble(offsets[21], object.rmsEnergy);
+  writer.writeLong(offsets[22], object.skipCount);
+  writer.writeDouble(offsets[23], object.spectralBalance);
   writer.writeObject<TrackStats>(
-    offsets[16],
+    offsets[24],
     allOffsets,
     TrackStatsSchema.serialize,
     object.stats,
   );
-  writer.writeString(offsets[17], object.syncedLyrics);
-  writer.writeString(offsets[18], object.title);
-  writer.writeString(offsets[19], object.trackId);
+  writer.writeString(offsets[25], object.syncedLyrics);
+  writer.writeString(offsets[26], object.title);
+  writer.writeString(offsets[27], object.trackId);
 }
 
 Track _trackDeserialize(
@@ -298,18 +411,26 @@ Track _trackDeserialize(
   object.genre = reader.readStringOrNull(offsets[13]);
   object.hasCustomMetadata = reader.readBool(offsets[14]);
   object.id = id;
+  object.isLiked = reader.readBool(offsets[15]);
+  object.isScanned = reader.readBool(offsets[16]);
+  object.lastPlayedAt = reader.readDateTimeOrNull(offsets[17]);
   object.lyricsStatus =
-      _TracklyricsStatusValueEnumMap[reader.readByteOrNull(offsets[15])] ??
+      _TracklyricsStatusValueEnumMap[reader.readByteOrNull(offsets[18])] ??
           FetchStatus.none;
+  object.peakDensity = reader.readDouble(offsets[19]);
+  object.playCount = reader.readLong(offsets[20]);
+  object.rmsEnergy = reader.readDouble(offsets[21]);
+  object.skipCount = reader.readLong(offsets[22]);
+  object.spectralBalance = reader.readDouble(offsets[23]);
   object.stats = reader.readObjectOrNull<TrackStats>(
-        offsets[16],
+        offsets[24],
         TrackStatsSchema.deserialize,
         allOffsets,
       ) ??
       TrackStats();
-  object.syncedLyrics = reader.readStringOrNull(offsets[17]);
-  object.title = reader.readStringOrNull(offsets[18]);
-  object.trackId = reader.readString(offsets[19]);
+  object.syncedLyrics = reader.readStringOrNull(offsets[25]);
+  object.title = reader.readStringOrNull(offsets[26]);
+  object.trackId = reader.readString(offsets[27]);
   return object;
 }
 
@@ -358,20 +479,36 @@ P _trackDeserializeProp<P>(
     case 14:
       return (reader.readBool(offset)) as P;
     case 15:
+      return (reader.readBool(offset)) as P;
+    case 16:
+      return (reader.readBool(offset)) as P;
+    case 17:
+      return (reader.readDateTimeOrNull(offset)) as P;
+    case 18:
       return (_TracklyricsStatusValueEnumMap[reader.readByteOrNull(offset)] ??
           FetchStatus.none) as P;
-    case 16:
+    case 19:
+      return (reader.readDouble(offset)) as P;
+    case 20:
+      return (reader.readLong(offset)) as P;
+    case 21:
+      return (reader.readDouble(offset)) as P;
+    case 22:
+      return (reader.readLong(offset)) as P;
+    case 23:
+      return (reader.readDouble(offset)) as P;
+    case 24:
       return (reader.readObjectOrNull<TrackStats>(
             offset,
             TrackStatsSchema.deserialize,
             allOffsets,
           ) ??
           TrackStats()) as P;
-    case 17:
+    case 25:
       return (reader.readStringOrNull(offset)) as P;
-    case 18:
+    case 26:
       return (reader.readStringOrNull(offset)) as P;
-    case 19:
+    case 27:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -543,6 +680,46 @@ extension TrackQueryWhereSort on QueryBuilder<Track, Track, QWhere> {
       return query.addWhereClause(const IdWhereClause.any());
     });
   }
+
+  QueryBuilder<Track, Track, QAfterWhere> anyIsLiked() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        const IndexWhereClause.any(indexName: r'isLiked'),
+      );
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhere> anyPlayCount() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        const IndexWhereClause.any(indexName: r'playCount'),
+      );
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhere> anySkipCount() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        const IndexWhereClause.any(indexName: r'skipCount'),
+      );
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhere> anyLastPlayedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        const IndexWhereClause.any(indexName: r'lastPlayedAt'),
+      );
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhere> anyIsScanned() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(
+        const IndexWhereClause.any(indexName: r'isScanned'),
+      );
+    });
+  }
 }
 
 extension TrackQueryWhere on QueryBuilder<Track, Track, QWhereClause> {
@@ -694,6 +871,385 @@ extension TrackQueryWhere on QueryBuilder<Track, Track, QWhereClause> {
               indexName: r'filePath',
               lower: [],
               upper: [filePath],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> isLikedEqualTo(bool isLiked) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'isLiked',
+        value: [isLiked],
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> isLikedNotEqualTo(
+      bool isLiked) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'isLiked',
+              lower: [],
+              upper: [isLiked],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'isLiked',
+              lower: [isLiked],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'isLiked',
+              lower: [isLiked],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'isLiked',
+              lower: [],
+              upper: [isLiked],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> playCountEqualTo(
+      int playCount) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'playCount',
+        value: [playCount],
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> playCountNotEqualTo(
+      int playCount) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'playCount',
+              lower: [],
+              upper: [playCount],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'playCount',
+              lower: [playCount],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'playCount',
+              lower: [playCount],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'playCount',
+              lower: [],
+              upper: [playCount],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> playCountGreaterThan(
+    int playCount, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'playCount',
+        lower: [playCount],
+        includeLower: include,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> playCountLessThan(
+    int playCount, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'playCount',
+        lower: [],
+        upper: [playCount],
+        includeUpper: include,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> playCountBetween(
+    int lowerPlayCount,
+    int upperPlayCount, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'playCount',
+        lower: [lowerPlayCount],
+        includeLower: includeLower,
+        upper: [upperPlayCount],
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> skipCountEqualTo(
+      int skipCount) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'skipCount',
+        value: [skipCount],
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> skipCountNotEqualTo(
+      int skipCount) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'skipCount',
+              lower: [],
+              upper: [skipCount],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'skipCount',
+              lower: [skipCount],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'skipCount',
+              lower: [skipCount],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'skipCount',
+              lower: [],
+              upper: [skipCount],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> skipCountGreaterThan(
+    int skipCount, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'skipCount',
+        lower: [skipCount],
+        includeLower: include,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> skipCountLessThan(
+    int skipCount, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'skipCount',
+        lower: [],
+        upper: [skipCount],
+        includeUpper: include,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> skipCountBetween(
+    int lowerSkipCount,
+    int upperSkipCount, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'skipCount',
+        lower: [lowerSkipCount],
+        includeLower: includeLower,
+        upper: [upperSkipCount],
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> lastPlayedAtIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'lastPlayedAt',
+        value: [null],
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> lastPlayedAtIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'lastPlayedAt',
+        lower: [null],
+        includeLower: false,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> lastPlayedAtEqualTo(
+      DateTime? lastPlayedAt) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'lastPlayedAt',
+        value: [lastPlayedAt],
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> lastPlayedAtNotEqualTo(
+      DateTime? lastPlayedAt) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'lastPlayedAt',
+              lower: [],
+              upper: [lastPlayedAt],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'lastPlayedAt',
+              lower: [lastPlayedAt],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'lastPlayedAt',
+              lower: [lastPlayedAt],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'lastPlayedAt',
+              lower: [],
+              upper: [lastPlayedAt],
+              includeUpper: false,
+            ));
+      }
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> lastPlayedAtGreaterThan(
+    DateTime? lastPlayedAt, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'lastPlayedAt',
+        lower: [lastPlayedAt],
+        includeLower: include,
+        upper: [],
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> lastPlayedAtLessThan(
+    DateTime? lastPlayedAt, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'lastPlayedAt',
+        lower: [],
+        upper: [lastPlayedAt],
+        includeUpper: include,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> lastPlayedAtBetween(
+    DateTime? lowerLastPlayedAt,
+    DateTime? upperLastPlayedAt, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.between(
+        indexName: r'lastPlayedAt',
+        lower: [lowerLastPlayedAt],
+        includeLower: includeLower,
+        upper: [upperLastPlayedAt],
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> isScannedEqualTo(
+      bool isScanned) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addWhereClause(IndexWhereClause.equalTo(
+        indexName: r'isScanned',
+        value: [isScanned],
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterWhereClause> isScannedNotEqualTo(
+      bool isScanned) {
+    return QueryBuilder.apply(this, (query) {
+      if (query.whereSort == Sort.asc) {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'isScanned',
+              lower: [],
+              upper: [isScanned],
+              includeUpper: false,
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'isScanned',
+              lower: [isScanned],
+              includeLower: false,
+              upper: [],
+            ));
+      } else {
+        return query
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'isScanned',
+              lower: [isScanned],
+              includeLower: false,
+              upper: [],
+            ))
+            .addWhereClause(IndexWhereClause.between(
+              indexName: r'isScanned',
+              lower: [],
+              upper: [isScanned],
               includeUpper: false,
             ));
       }
@@ -2365,6 +2921,94 @@ extension TrackQueryFilter on QueryBuilder<Track, Track, QFilterCondition> {
     });
   }
 
+  QueryBuilder<Track, Track, QAfterFilterCondition> isLikedEqualTo(bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isLiked',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> isScannedEqualTo(
+      bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isScanned',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> lastPlayedAtIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'lastPlayedAt',
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> lastPlayedAtIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'lastPlayedAt',
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> lastPlayedAtEqualTo(
+      DateTime? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'lastPlayedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> lastPlayedAtGreaterThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'lastPlayedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> lastPlayedAtLessThan(
+    DateTime? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'lastPlayedAt',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> lastPlayedAtBetween(
+    DateTime? lower,
+    DateTime? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'lastPlayedAt',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
   QueryBuilder<Track, Track, QAfterFilterCondition> lyricsStatusEqualTo(
       FetchStatus value) {
     return QueryBuilder.apply(this, (query) {
@@ -2414,6 +3058,298 @@ extension TrackQueryFilter on QueryBuilder<Track, Track, QFilterCondition> {
         includeLower: includeLower,
         upper: upper,
         includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> peakDensityEqualTo(
+    double value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'peakDensity',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> peakDensityGreaterThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'peakDensity',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> peakDensityLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'peakDensity',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> peakDensityBetween(
+    double lower,
+    double upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'peakDensity',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> playCountEqualTo(
+      int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'playCount',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> playCountGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'playCount',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> playCountLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'playCount',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> playCountBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'playCount',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> rmsEnergyEqualTo(
+    double value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'rmsEnergy',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> rmsEnergyGreaterThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'rmsEnergy',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> rmsEnergyLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'rmsEnergy',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> rmsEnergyBetween(
+    double lower,
+    double upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'rmsEnergy',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> skipCountEqualTo(
+      int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'skipCount',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> skipCountGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'skipCount',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> skipCountLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'skipCount',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> skipCountBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'skipCount',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> spectralBalanceEqualTo(
+    double value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'spectralBalance',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> spectralBalanceGreaterThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'spectralBalance',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> spectralBalanceLessThan(
+    double value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'spectralBalance',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterFilterCondition> spectralBalanceBetween(
+    double lower,
+    double upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'spectralBalance',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
       ));
     });
   }
@@ -3014,6 +3950,42 @@ extension TrackQuerySortBy on QueryBuilder<Track, Track, QSortBy> {
     });
   }
 
+  QueryBuilder<Track, Track, QAfterSortBy> sortByIsLiked() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isLiked', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortByIsLikedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isLiked', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortByIsScanned() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isScanned', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortByIsScannedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isScanned', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortByLastPlayedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastPlayedAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortByLastPlayedAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastPlayedAt', Sort.desc);
+    });
+  }
+
   QueryBuilder<Track, Track, QAfterSortBy> sortByLyricsStatus() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lyricsStatus', Sort.asc);
@@ -3023,6 +3995,66 @@ extension TrackQuerySortBy on QueryBuilder<Track, Track, QSortBy> {
   QueryBuilder<Track, Track, QAfterSortBy> sortByLyricsStatusDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lyricsStatus', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortByPeakDensity() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'peakDensity', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortByPeakDensityDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'peakDensity', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortByPlayCount() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'playCount', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortByPlayCountDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'playCount', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortByRmsEnergy() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'rmsEnergy', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortByRmsEnergyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'rmsEnergy', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortBySkipCount() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'skipCount', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortBySkipCountDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'skipCount', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortBySpectralBalance() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'spectralBalance', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> sortBySpectralBalanceDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'spectralBalance', Sort.desc);
     });
   }
 
@@ -3232,6 +4264,42 @@ extension TrackQuerySortThenBy on QueryBuilder<Track, Track, QSortThenBy> {
     });
   }
 
+  QueryBuilder<Track, Track, QAfterSortBy> thenByIsLiked() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isLiked', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenByIsLikedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isLiked', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenByIsScanned() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isScanned', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenByIsScannedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isScanned', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenByLastPlayedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastPlayedAt', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenByLastPlayedAtDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'lastPlayedAt', Sort.desc);
+    });
+  }
+
   QueryBuilder<Track, Track, QAfterSortBy> thenByLyricsStatus() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lyricsStatus', Sort.asc);
@@ -3241,6 +4309,66 @@ extension TrackQuerySortThenBy on QueryBuilder<Track, Track, QSortThenBy> {
   QueryBuilder<Track, Track, QAfterSortBy> thenByLyricsStatusDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'lyricsStatus', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenByPeakDensity() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'peakDensity', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenByPeakDensityDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'peakDensity', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenByPlayCount() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'playCount', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenByPlayCountDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'playCount', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenByRmsEnergy() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'rmsEnergy', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenByRmsEnergyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'rmsEnergy', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenBySkipCount() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'skipCount', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenBySkipCountDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'skipCount', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenBySpectralBalance() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'spectralBalance', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Track, Track, QAfterSortBy> thenBySpectralBalanceDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'spectralBalance', Sort.desc);
     });
   }
 
@@ -3377,9 +4505,57 @@ extension TrackQueryWhereDistinct on QueryBuilder<Track, Track, QDistinct> {
     });
   }
 
+  QueryBuilder<Track, Track, QDistinct> distinctByIsLiked() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isLiked');
+    });
+  }
+
+  QueryBuilder<Track, Track, QDistinct> distinctByIsScanned() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isScanned');
+    });
+  }
+
+  QueryBuilder<Track, Track, QDistinct> distinctByLastPlayedAt() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'lastPlayedAt');
+    });
+  }
+
   QueryBuilder<Track, Track, QDistinct> distinctByLyricsStatus() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'lyricsStatus');
+    });
+  }
+
+  QueryBuilder<Track, Track, QDistinct> distinctByPeakDensity() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'peakDensity');
+    });
+  }
+
+  QueryBuilder<Track, Track, QDistinct> distinctByPlayCount() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'playCount');
+    });
+  }
+
+  QueryBuilder<Track, Track, QDistinct> distinctByRmsEnergy() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'rmsEnergy');
+    });
+  }
+
+  QueryBuilder<Track, Track, QDistinct> distinctBySkipCount() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'skipCount');
+    });
+  }
+
+  QueryBuilder<Track, Track, QDistinct> distinctBySpectralBalance() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'spectralBalance');
     });
   }
 
@@ -3503,9 +4679,57 @@ extension TrackQueryProperty on QueryBuilder<Track, Track, QQueryProperty> {
     });
   }
 
+  QueryBuilder<Track, bool, QQueryOperations> isLikedProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isLiked');
+    });
+  }
+
+  QueryBuilder<Track, bool, QQueryOperations> isScannedProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isScanned');
+    });
+  }
+
+  QueryBuilder<Track, DateTime?, QQueryOperations> lastPlayedAtProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'lastPlayedAt');
+    });
+  }
+
   QueryBuilder<Track, FetchStatus, QQueryOperations> lyricsStatusProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'lyricsStatus');
+    });
+  }
+
+  QueryBuilder<Track, double, QQueryOperations> peakDensityProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'peakDensity');
+    });
+  }
+
+  QueryBuilder<Track, int, QQueryOperations> playCountProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'playCount');
+    });
+  }
+
+  QueryBuilder<Track, double, QQueryOperations> rmsEnergyProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'rmsEnergy');
+    });
+  }
+
+  QueryBuilder<Track, int, QQueryOperations> skipCountProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'skipCount');
+    });
+  }
+
+  QueryBuilder<Track, double, QQueryOperations> spectralBalanceProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'spectralBalance');
     });
   }
 

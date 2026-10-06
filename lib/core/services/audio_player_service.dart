@@ -10,6 +10,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../database/local_database.dart';
 import '../models/playback_state.dart' as local;
 import '../models/track.dart';
+import 'audio_analytics_service.dart';
 
 enum PlayerRepeatMode {
   off,
@@ -66,6 +67,17 @@ class AudioPlayerService {
 
   /// Currently active track.
   Track? _currentTrack;
+
+  /// Whether current track playback session has reached the 80% completion threshold.
+  bool _is80PercentTracked = false;
+
+  void _checkAndRecordPrematureSkip(Track? track, Duration pos, Duration dur) {
+    if (track == null || _is80PercentTracked) return;
+    final totalSec = dur > Duration.zero ? dur.inSeconds : track.duration;
+    if (totalSec > 20 && pos.inSeconds < 15) {
+      AudioAnalyticsService.instance.recordSkip(track.trackId);
+    }
+  }
 
   bool _shuffle = false;
   List<int>? _shuffledOriginalIndices;
@@ -141,6 +153,15 @@ class AudioPlayerService {
     _subscriptions.add(_player.stream.position.listen((pos) {
       if (_disposed) return;
       _positionController.add(pos);
+
+      // Behavioral Analytics: Track 80% completion threshold
+      if (!_is80PercentTracked && _currentTrack != null) {
+        final dur = duration;
+        if (dur > Duration.zero && (pos.inMilliseconds / dur.inMilliseconds) >= 0.80) {
+          _is80PercentTracked = true;
+          AudioAnalyticsService.instance.recordCompletion(_currentTrack!.trackId);
+        }
+      }
     }));
 
     _subscriptions.add(_player.stream.duration.listen((dur) {
@@ -158,12 +179,17 @@ class AudioPlayerService {
       if (completed) {
         final finishedTrack = currentTrack;
         if (finishedTrack != null) {
+          if (!_is80PercentTracked) {
+            _is80PercentTracked = true;
+            AudioAnalyticsService.instance.recordCompletion(finishedTrack.trackId);
+          }
           try {
             await _db.recordPlay(finishedTrack);
           } catch (_) {}
         }
 
         if (_repeatMode == PlayerRepeatMode.single) {
+          _is80PercentTracked = false;
           await _player.seek(Duration.zero);
           await _player.play();
         } else {
@@ -303,7 +329,8 @@ class AudioPlayerService {
   /// for OS MediaNotification, lockscreen controls, and system reactivity.
   List<Track> get queue => List.unmodifiable([
         ..._history,
-        ?_currentTrack,
+        // ignore: use_null_aware_elements
+        if (_currentTrack != null) _currentTrack!,
         ..._userQueue,
         ..._upcomingContext,
       ]);
@@ -460,6 +487,10 @@ class AudioPlayerService {
   }
 
   Future<void> stop() async {
+    if (_currentTrack != null) {
+      _checkAndRecordPrematureSkip(_currentTrack, position, duration);
+    }
+    _is80PercentTracked = false;
     if (Platform.environment.containsKey('FLUTTER_TEST')) return;
     try {
       await _player.stop();
@@ -925,6 +956,11 @@ class AudioPlayerService {
   // ── Engine Opener & Persistence ────────────────────────────────────────────
 
   Future<void> _openTrack(Track track) async {
+    if (_currentTrack != null && _currentTrack!.trackId != track.trackId) {
+      _checkAndRecordPrematureSkip(_currentTrack, position, duration);
+    }
+    _is80PercentTracked = false;
+
     await _saveCurrentPlaybackState(
       overrideTrackId: track.trackId,
       overridePositionMs: 0,

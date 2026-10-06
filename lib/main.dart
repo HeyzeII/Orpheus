@@ -9,6 +9,7 @@ import 'package:metadata_god/metadata_god.dart';
 
 import 'core/database/local_database.dart';
 import 'core/services/album_art_fetcher_service.dart';
+import 'core/services/audio_acoustic_scanner.dart';
 import 'core/services/audio_handler.dart';
 import 'core/services/audio_player_service.dart';
 import 'core/services/permission_service.dart';
@@ -146,6 +147,7 @@ Future<void> _startApp() async {
     Future.delayed(const Duration(seconds: 2), () {
       PermissionService.requestNotificationPermission();
       AlbumArtFetcherService.instance.processLibrary();
+      AudioAcousticScanner.instance.start();
     });
   } catch (error, stack) {
     DebugLogger.log('FALLO CRÍTICO EN ARRANQUE: $error\n$stack');
