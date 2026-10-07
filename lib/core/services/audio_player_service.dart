@@ -113,6 +113,16 @@ class AudioPlayerService {
   AudioSession? _audioSession;
   final List<StreamSubscription> _subscriptions = [];
 
+  // ── Radio Session State ────────────────────────────────────────────────────
+
+  /// Reactive flag indicating that the active playback context is an
+  /// algorithmic radio session (contextName starts with 'Radio:').
+  ///
+  /// Widgets listen to this notifier via [ValueListenableBuilder] without
+  /// requiring extra stream subscriptions.
+  static final ValueNotifier<bool> isRadioActiveNotifier =
+      ValueNotifier<bool>(false);
+
   // ── Initialization ─────────────────────────────────────────────────────────
 
   void _init() {
@@ -523,6 +533,7 @@ class AudioPlayerService {
     }
     _currentTrack = null;
     _currentTrackController.add(null);
+    isRadioActiveNotifier.value = false;
     _notifyState();
   }
 
@@ -1125,6 +1136,8 @@ class AudioPlayerService {
     _activeContextController.add(activeContextTracks);
     _contextNameController.add(_contextName);
     _canSkipNextController.add(canSkipNext);
+    // Auto-sync radio badge: active when contextName starts with 'Radio:'.
+    isRadioActiveNotifier.value = _contextName.startsWith('Radio:');
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────

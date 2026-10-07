@@ -15,6 +15,8 @@ import '../theme/app_theme.dart';
 import '../widgets/animated_equalizer.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/marquee_text.dart';
+import '../widgets/radio_launch_sheet.dart';
+import '../widgets/similar_tracks_panel.dart';
 import '../widgets/video_canvas.dart';
 import 'lyrics_view.dart';
 
@@ -1316,6 +1318,10 @@ class _ExpandedArtisticCore extends StatelessWidget {
 
           // Playback Controls
           const _ExpandedPlaybackControls(),
+          const SizedBox(height: 24),
+
+          // Similar Tracks
+          SimilarTracksPanel(currentTrack: track),
         ],
       ),
     );
@@ -2083,6 +2089,8 @@ class _TrackMoreMenuState extends State<_TrackMoreMenu> {
         } else if (value == 'add_to_queue') {
           OrpheusAudioHandler.instance.addToQueue(widget.track);
           AppToast.showText(context, 'Añadida a la cola');
+        } else if (value == 'start_radio') {
+          RadioLaunchSheet.show(context, widget.track);
         } else if (value is Playlist) {
           final playlist = value;
           final isDuplicate = playlist.trackIds.contains(widget.track.id);
@@ -2173,6 +2181,16 @@ class _TrackMoreMenuState extends State<_TrackMoreMenu> {
                 Icon(Icons.queue_music_rounded, size: 18, color: AppTheme.textSecondary),
                 SizedBox(width: 12),
                 Text('Añadir a la cola', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+              ],
+            ),
+          ),
+          const PopupMenuItem(
+            value: 'start_radio',
+            child: Row(
+              children: [
+                Icon(Icons.radio_rounded, size: 18, color: AppTheme.accent),
+                SizedBox(width: 12),
+                Text('Iniciar Radio', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
               ],
             ),
           ),

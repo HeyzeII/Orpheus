@@ -8,6 +8,7 @@ import '../../core/models/models.dart';
 import '../../core/services/audio_handler.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/radio_indicator_badge.dart';
 import '../views/expanded_player_view.dart';
 
 /// Fixed bottom player bar — 90px tall, three-section layout.
@@ -86,16 +87,23 @@ class _TrackInfo extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    track?.displayTitle ?? '—',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimary,
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          track?.displayTitle ?? '—',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                      ),
+                      const RadioIndicatorBadge(),
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(

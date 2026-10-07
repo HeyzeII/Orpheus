@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/models/track.dart';
 import '../../core/services/audio_handler.dart';
 import '../theme/app_theme.dart';
+import '../widgets/radio_indicator_badge.dart';
 import '../views/expanded_player_view.dart';
 
 /// Floating mini-player card for mobile (Android) that sits above
@@ -122,16 +123,23 @@ class MobileMiniPlayer extends StatelessWidget {
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                track.displayTitle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: AppTheme.textPrimary,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.1,
-                                ),
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      track.displayTitle,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: AppTheme.textPrimary,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.1,
+                                      ),
+                                    ),
+                                  ),
+                                  const RadioIndicatorBadge(),
+                                ],
                               ),
                               const SizedBox(height: 2),
                               Text(

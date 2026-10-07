@@ -17,6 +17,7 @@ import '../dialogs/edit_metadata_dialog.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_equalizer.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/radio_launch_sheet.dart';
 import '../widgets/video_badge.dart';
 
 enum LibraryTab { tracks, albums, artists, playlists, videos }
@@ -3262,6 +3263,7 @@ class _LibraryViewState extends State<LibraryView> {
             : null,
         onDelete: () => _deleteTrack(track),
         onEditMetadata: () => _editTrackMetadata(track),
+        onStartRadio: () => RadioLaunchSheet.show(context, track),
       );
     }
 
@@ -3350,6 +3352,7 @@ class _TrackRow extends StatefulWidget {
     this.onRemoveFromPlaylistAt,
     required this.onDelete,
     required this.onEditMetadata,
+    required this.onStartRadio,
   });
 
   final Track track;
@@ -3373,6 +3376,7 @@ class _TrackRow extends StatefulWidget {
   final VoidCallback? onRemoveFromPlaylistAt;
   final VoidCallback onDelete;
   final VoidCallback onEditMetadata;
+  final VoidCallback onStartRadio;
 
   @override
   State<_TrackRow> createState() => _TrackRowState();
@@ -3604,6 +3608,8 @@ class _TrackRowState extends State<_TrackRow> {
                           widget.onPlayNext();
                         } else if (value == 'add_to_queue') {
                           widget.onAddToQueue();
+                        } else if (value == 'start_radio') {
+                          widget.onStartRadio();
                         } else if (value == 'remove_from_current_playlist') {
                           if (widget.onRemoveFromPlaylistAt != null) {
                             widget.onRemoveFromPlaylistAt!();
@@ -3652,6 +3658,18 @@ class _TrackRowState extends State<_TrackRow> {
                                 Icon(Icons.queue_music_rounded, size: 14, color: AppTheme.textPrimary),
                                 SizedBox(width: 8),
                                 Text('Añadir a cola', style: TextStyle(color: AppTheme.textPrimary, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                        );
+                        items.add(
+                          const PopupMenuItem<dynamic>(
+                            value: 'start_radio',
+                            child: Row(
+                              children: [
+                                Icon(Icons.radio_rounded, size: 14, color: AppTheme.accent),
+                                SizedBox(width: 8),
+                                Text('Iniciar Radio', style: TextStyle(color: AppTheme.accent, fontSize: 12)),
                               ],
                             ),
                           ),
