@@ -66,8 +66,36 @@ void main() {
       expect(find.text('Ritmo'), findsOneWidget);
       expect(find.text('Brillo'), findsOneWidget);
 
+      // Check preset chips
+      expect(find.text('Workout'), findsOneWidget);
+      expect(find.text('Chill'), findsOneWidget);
+      expect(find.text('Focus'), findsOneWidget);
+      expect(find.text('Acústico'), findsOneWidget);
+
       // Check action button
       expect(find.text('Crear Sesión'), findsOneWidget);
+    });
+
+    testWidgets('Tapping preset chip applies mood preset percentages', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: MoodPickerWidget(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Tap Workout preset
+      await tester.tap(find.text('Workout'));
+      await tester.pumpAndSettle();
+
+      // Energy 90%
+      expect(find.text('90%'), findsOneWidget);
+      // Density 85%
+      expect(find.text('85%'), findsOneWidget);
     });
   });
 }

@@ -63,6 +63,15 @@ class _MoodPickerWidgetState extends State<MoodPickerWidget> {
     });
   }
 
+  void _applyPreset(String name, {required double energy, required double density, required double spectral}) {
+    setState(() {
+      _energy = energy;
+      _density = density;
+      _spectral = spectral;
+    });
+    _scheduleDebounce();
+  }
+
   // ── Actions ────────────────────────────────────────────────────────────────
 
   Future<void> _createSession() async {
@@ -143,6 +152,43 @@ class _MoodPickerWidgetState extends State<MoodPickerWidget> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 16),
+
+          // Quick Presets Row
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _PresetChip(
+                  label: 'Workout',
+                  emoji: '⚡',
+                  isSelected: (_energy - 0.90).abs() < 0.05 && (_density - 0.85).abs() < 0.05,
+                  onTap: () => _applyPreset('Workout', energy: 0.90, density: 0.85, spectral: 0.70),
+                ),
+                const SizedBox(width: 8),
+                _PresetChip(
+                  label: 'Chill',
+                  emoji: '🌙',
+                  isSelected: (_energy - 0.25).abs() < 0.05 && (_density - 0.30).abs() < 0.05,
+                  onTap: () => _applyPreset('Chill', energy: 0.25, density: 0.30, spectral: 0.35),
+                ),
+                const SizedBox(width: 8),
+                _PresetChip(
+                  label: 'Focus',
+                  emoji: '🎯',
+                  isSelected: (_energy - 0.40).abs() < 0.05 && (_density - 0.45).abs() < 0.05,
+                  onTap: () => _applyPreset('Focus', energy: 0.40, density: 0.45, spectral: 0.50),
+                ),
+                const SizedBox(width: 8),
+                _PresetChip(
+                  label: 'Acústico',
+                  emoji: '🎸',
+                  isSelected: (_energy - 0.50).abs() < 0.05 && (_density - 0.35).abs() < 0.05,
+                  onTap: () => _applyPreset('Acústico', energy: 0.50, density: 0.35, spectral: 0.40),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 20),
 
@@ -300,3 +346,64 @@ class _SliderRow extends StatelessWidget {
     );
   }
 }
+
+class _PresetChip extends StatelessWidget {
+  const _PresetChip({
+    required this.label,
+    required this.emoji,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String label;
+  final String emoji;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? AppTheme.accent.withValues(alpha: 0.20)
+                : Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected
+                  ? AppTheme.accent.withValues(alpha: 0.60)
+                  : Colors.white.withValues(alpha: 0.10),
+              width: 1.0,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                emoji,
+                style: const TextStyle(fontSize: 12),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                  color: isSelected ? AppTheme.accent : Colors.white70,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+

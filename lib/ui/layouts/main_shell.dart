@@ -13,6 +13,7 @@ import '../../core/services/audio_scanner.dart';
 import '../../core/services/permission_service.dart';
 import '../theme/app_theme.dart';
 import '../views/expanded_player_view.dart';
+import '../views/explore_view.dart';
 import '../views/home_view.dart';
 import '../views/library_view.dart';
 import '../views/lyrics_view.dart';
@@ -231,45 +232,10 @@ class _ContentArea extends StatelessWidget {
       index: destination.index,
       children: const [
         HomeView(),
-        _PlaceholderView(label: 'Explorar'),
+        ExploreView(),
         LibraryView(),
         SettingsView(),
       ],
-    );
-  }
-}
-
-/// Fallback view shown for destinations that are not yet implemented.
-class _PlaceholderView extends StatelessWidget {
-  const _PlaceholderView({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.construction_rounded,
-            color: AppTheme.textHint,
-            size: 48,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: AppTheme.textSecondary,
-                ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Esta sección estará disponible próximamente.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
-      ),
     );
   }
 }
@@ -501,7 +467,7 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
                   index: _currentIndex,
                   children: const [
                     HomeView(),
-                    _PlaceholderView(label: 'Explorar'),
+                    ExploreView(),
                     LibraryView(),
                     SettingsView(),
                   ],

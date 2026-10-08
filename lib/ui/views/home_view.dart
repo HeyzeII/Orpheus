@@ -7,7 +7,6 @@ import '../../core/models/models.dart';
 import '../../core/services/audio_handler.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_equalizer.dart';
-import '../widgets/mood_picker_widget.dart';
 import '../widgets/video_badge.dart';
 
 /// Dynamic Home View — Displays user greeting, quick picks, recently played tracks,
@@ -158,12 +157,6 @@ class _HomeViewState extends State<HomeView> {
             const SizedBox(height: 40),
           ],
 
-          // Mood session
-          _SectionLabel('SESIÓN POR ÁNIMO'),
-          const SizedBox(height: 16),
-          const MoodPickerWidget(),
-          const SizedBox(height: 40),
-
           // Library teaser
           _SectionLabel('TU BIBLIOTECA'),
           const SizedBox(height: 16),
@@ -239,12 +232,6 @@ class _HomeViewState extends State<HomeView> {
             _HorizontalCarousel(tracks: _mostPlayed, onTap: _playTrack),
             const SizedBox(height: 28),
           ],
-
-          // ── Mood session ─────────────────────────────────────────────────
-          _SectionLabel('SESIÓN POR ÁNIMO'),
-          const SizedBox(height: 12),
-          const MoodPickerWidget(),
-          const SizedBox(height: 28),
 
           // ── Genres row ───────────────────────────────────────────────────
           if (_genres.isNotEmpty) ...[
