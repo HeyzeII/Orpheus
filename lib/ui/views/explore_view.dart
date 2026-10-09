@@ -34,6 +34,7 @@ class _ExploreViewState extends State<ExploreView> {
   final RecommendationEngineService _recEngine = RecommendationEngineService.instance;
 
   List<Track> _allTracks = [];
+  List<Track> _marqueeTracks = [];
   Track? _heroSeedTrack;
   List<Track> _forYouTracks = [];
   List<Track> _vaultTracks = [];
@@ -46,6 +47,44 @@ class _ExploreViewState extends State<ExploreView> {
     _loadExploreData();
   }
 
+  /// Deduplicates tracks by unique album / cover art so the marquee displays
+  /// maximum 1 track per album, spaced apart to maximize visual diversity.
+  List<Track> _deduplicateMarqueeTracks(List<Track> allTracks) {
+    if (allTracks.isEmpty) return [];
+
+    final Map<String, List<Track>> albumBuckets = {};
+    for (final track in allTracks) {
+      final cover = track.customMetadata.customCoverPath;
+      final key = (cover != null && cover.isNotEmpty)
+          ? cover
+          : '${track.displayArtist.toLowerCase().trim()}__${track.displayAlbum.toLowerCase().trim()}';
+      albumBuckets.putIfAbsent(key, () => []).add(track);
+    }
+
+    final List<Track> uniqueAlbumTracks = [];
+    for (final tracks in albumBuckets.values) {
+      tracks.sort((a, b) {
+        if (a.isLiked != b.isLiked) return a.isLiked ? -1 : 1;
+        return b.stats.totalPlays.compareTo(a.stats.totalPlays);
+      });
+      uniqueAlbumTracks.add(tracks.first);
+    }
+
+    // Interleave albums across artist list so identical artists aren't adjacent
+    uniqueAlbumTracks.sort((a, b) => a.displayArtist.compareTo(b.displayArtist));
+    final interleaved = <Track>[];
+    final half = (uniqueAlbumTracks.length / 2).ceil();
+    final firstHalf = uniqueAlbumTracks.take(half).toList();
+    final secondHalf = uniqueAlbumTracks.skip(half).toList();
+
+    for (int i = 0; i < half; i++) {
+      if (i < firstHalf.length) interleaved.add(firstHalf[i]);
+      if (i < secondHalf.length) interleaved.add(secondHalf[i]);
+    }
+
+    return interleaved;
+  }
+
   Future<void> _loadExploreData() async {
     setState(() => _isLoading = true);
     try {
@@ -55,6 +94,7 @@ class _ExploreViewState extends State<ExploreView> {
       if (tracks.isEmpty) {
         setState(() {
           _allTracks = [];
+          _marqueeTracks = [];
           _isLoading = false;
         });
         return;
@@ -100,9 +140,12 @@ class _ExploreViewState extends State<ExploreView> {
           .take(6)
           .toList();
 
+      final marqueeTracks = _deduplicateMarqueeTracks(tracks);
+
       if (mounted) {
         setState(() {
           _allTracks = tracks;
+          _marqueeTracks = marqueeTracks;
           _heroSeedTrack = seed;
           _forYouTracks = forYou;
           _vaultTracks = vault.take(4).toList();
@@ -199,7 +242,7 @@ class _ExploreViewState extends State<ExploreView> {
 
             // ── Infinite Album Cover Marquee ───────────────────────────────
             _ExploreCoverMarquee(
-              tracks: _allTracks,
+              tracks: _marqueeTracks,
               onTapTrack: _openRadioSheet,
             ),
             const SizedBox(height: 36),

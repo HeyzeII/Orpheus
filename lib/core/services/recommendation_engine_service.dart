@@ -89,7 +89,8 @@ class RecommendationEngineService {
     return scored.take(count).map((s) => s.track).toList();
   }
 
-  /// Generates a curated playlist matching acoustic mood parameters.
+  /// Generates a curated playlist matching acoustic mood parameters with
+  /// dynamic Min-Max library normalization and artist/album fatigue penalties.
   ///
   /// [targetRms]: Desired energy level [0.0 (quiet/ambient) to 1.0 (loud/intense)].
   /// [targetEnergy]: Desired rhythmic density [0.0 (smooth/slow) to 1.0 (fast/percussive)].
@@ -104,12 +105,42 @@ class RecommendationEngineService {
     if (allTracks.isEmpty) return [];
 
     final spectral = targetSpectral ?? 0.5;
+
+    // 1. Dynamic Min-Max Calibration across scanned collection
+    final scannedTracks =
+        allTracks.where((t) => t.isScanned && t.rmsEnergy >= 0).toList();
+    double minRms = 0.0, maxRms = 1.0;
+    double minPeak = 0.0, maxPeak = 1.0;
+    double minSpec = 0.0, maxSpec = 1.0;
+
+    if (scannedTracks.isNotEmpty) {
+      minRms = scannedTracks.map((t) => t.rmsEnergy).reduce(math.min);
+      maxRms = scannedTracks.map((t) => t.rmsEnergy).reduce(math.max);
+      minPeak = scannedTracks.map((t) => t.peakDensity).reduce(math.min);
+      maxPeak = scannedTracks.map((t) => t.peakDensity).reduce(math.max);
+      minSpec = scannedTracks.map((t) => t.spectralBalance).reduce(math.min);
+      maxSpec = scannedTracks.map((t) => t.spectralBalance).reduce(math.max);
+    }
+
+    double norm(double val, double min, double max) {
+      if (max - min < 0.05) return val.clamp(0.0, 1.0);
+      return ((val - min) / (max - min + 1e-4)).clamp(0.0, 1.0);
+    }
+
     final List<_ScoredTrack> scored = [];
 
     for (final track in allTracks) {
-      final tRms = track.isScanned && track.rmsEnergy >= 0 ? track.rmsEnergy : 0.5;
-      final tPeak = track.isScanned && track.peakDensity >= 0 ? track.peakDensity : 0.5;
-      final tSpec = track.isScanned && track.spectralBalance >= 0 ? track.spectralBalance : 0.5;
+      final rawRms =
+          track.isScanned && track.rmsEnergy >= 0 ? track.rmsEnergy : 0.5;
+      final rawPeak =
+          track.isScanned && track.peakDensity >= 0 ? track.peakDensity : 0.5;
+      final rawSpec = track.isScanned && track.spectralBalance >= 0
+          ? track.spectralBalance
+          : 0.5;
+
+      final tRms = norm(rawRms, minRms, maxRms);
+      final tPeak = norm(rawPeak, minPeak, maxPeak);
+      final tSpec = norm(rawSpec, minSpec, maxSpec);
 
       final dist = math.sqrt(
         0.45 * math.pow(targetRms - tRms, 2) +
@@ -118,8 +149,8 @@ class RecommendationEngineService {
       );
 
       final similarity = (1.0 - dist).clamp(0.0, 1.0);
-      final behavioralBonus = (track.isLiked ? 0.20 : 0.0) +
-          (track.playCount > 0 ? 0.10 : 0.0);
+      final behavioralBonus =
+          (track.isLiked ? 0.20 : 0.0) + (track.playCount > 0 ? 0.10 : 0.0);
 
       final score = similarity * 0.75 + behavioralBonus * 0.25;
       scored.add(
@@ -134,7 +165,46 @@ class RecommendationEngineService {
     }
 
     scored.sort((a, b) => b.totalScore.compareTo(a.totalScore));
-    return scored.take(count).map((s) => s.track).toList();
+
+    // 2. Artist and Album Fatigue Diversity Filtering
+    final List<Track> result = [];
+    final Map<String, int> artistCount = {};
+    final Map<String, int> albumCount = {};
+
+    for (final s in scored) {
+      if (result.length >= count) break;
+      final t = s.track;
+      final artist = t.displayArtist.toLowerCase().trim();
+      final album = t.displayAlbum.toLowerCase().trim();
+
+      final aCount = artistCount[artist] ?? 0;
+      final alCount = albumCount[album] ?? 0;
+
+      // Diversity constraints: max 2 per artist, max 2 per album
+      if (aCount >= 2 || (album.isNotEmpty && alCount >= 2)) {
+        continue;
+      }
+
+      result.add(t);
+      artistCount[artist] = aCount + 1;
+      if (album.isNotEmpty) {
+        albumCount[album] = alCount + 1;
+      }
+    }
+
+    // Backfill from remaining candidates if strict caps left space
+    if (result.length < count) {
+      final resultSet = result.map((t) => t.trackId).toSet();
+      for (final s in scored) {
+        if (result.length >= count) break;
+        if (!resultSet.contains(s.track.trackId)) {
+          result.add(s.track);
+          resultSet.add(s.track.trackId);
+        }
+      }
+    }
+
+    return result;
   }
 
   // ── Candidate Pruning & Isar Filtering ─────────────────────────────────────

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 
 import '../database/local_database.dart';
 import '../models/track.dart';
+import 'media_cache_service.dart';
 
 /// Representation of pending behavioral mutations for a specific track.
 class _TrackAnalyticsDelta {
@@ -190,6 +191,7 @@ class AudioAnalyticsService {
 
       if (modifiedTracks.isNotEmpty) {
         await _db.saveTracks(modifiedTracks);
+        MediaCacheService.instance.scheduleDebouncedStatsExport(modifiedTracks);
       }
     } catch (e) {
       debugPrint('AudioAnalyticsService: Error persisting tracks batch: $e');

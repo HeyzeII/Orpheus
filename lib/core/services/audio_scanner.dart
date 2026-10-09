@@ -138,6 +138,10 @@ class AudioScannerService {
       }
     }
 
+    // Load portable library_stats.json if available in scan directory.
+    final libraryStatsData = await mediaCache.readLibraryStats(directoryPath);
+    final statsMap = (libraryStatsData['stats'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+
     // Collect all known artist names for fuzzy comparison.
     final knownArtists = await _collectKnownArtists();
 
@@ -518,6 +522,39 @@ class AudioScannerService {
           } catch (_) {}
         }
 
+        // Rehydrate stats & acoustic vectors from portable library_stats.json
+        final trackFp = StringSanitizer.generateTrackFingerprint(
+          artist: track.displayArtist,
+          title: track.displayTitle,
+          durationMs: track.duration * 1000,
+        );
+        final statsEntry = statsMap[trackFp] ?? statsMap[track.filePath];
+        if (statsEntry is Map) {
+          if (track.playCount == 0 && statsEntry['playCount'] is int) {
+            final pc = statsEntry['playCount'] as int;
+            track.playCount = pc;
+            track.stats.totalPlays = pc;
+          }
+          if (track.skipCount == 0 && statsEntry['skipCount'] is int) {
+            track.skipCount = statsEntry['skipCount'] as int;
+          }
+          if (track.lastPlayedAt == null && statsEntry['lastPlayedAt'] is int) {
+            track.lastPlayedAt = DateTime.fromMillisecondsSinceEpoch(statsEntry['lastPlayedAt'] as int);
+          }
+          if (!track.isLiked && statsEntry['isLiked'] == true) {
+            track.isLiked = true;
+          }
+          final acoustic = statsEntry['acoustic'];
+          if (acoustic is Map && !track.isScanned) {
+            if (acoustic['isScanned'] == true) {
+              track.isScanned = true;
+              track.rmsEnergy = (acoustic['rmsEnergy'] as num?)?.toDouble() ?? -1.0;
+              track.peakDensity = (acoustic['peakDensity'] as num?)?.toDouble() ?? -1.0;
+              track.spectralBalance = (acoustic['spectralBalance'] as num?)?.toDouble() ?? -1.0;
+            }
+          }
+        }
+
         batch.add(track);
 
         // Flush batch when it reaches the configured size.
@@ -623,6 +660,10 @@ class AudioScannerService {
         allTracks: allTracks,
         likedTrackIds: _db.likedTrackIdsNotifier.value,
         customPlaylists: allPlaylists,
+        musicDirectoryPath: directoryPath,
+      );
+      await mediaCache.exportLibraryStats(
+        allTracks: allTracks,
         musicDirectoryPath: directoryPath,
       );
     } catch (_) {}

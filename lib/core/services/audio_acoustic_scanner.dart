@@ -8,6 +8,7 @@ import '../database/local_database.dart';
 import '../models/track.dart';
 import 'acoustic_scanner_worker.dart';
 import 'audio_player_service.dart';
+import 'media_cache_service.dart';
 
 /// Service coordinating background acoustic vector extraction via a dedicated Isolate.
 ///
@@ -183,6 +184,7 @@ class AudioAcousticScanner {
       track.isScanned = true;
 
       await _db.saveTrack(track);
+      MediaCacheService.instance.scheduleDebouncedStatsExport([track]);
 
       // Throttle slightly between tracks for battery & temperature health
       await Future.delayed(_kThrottlingDelay);

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -772,4 +773,114 @@ class MediaCacheService {
 
     await saveLibraryState(state, musicDirectoryPath);
   }
+
+  // ── Portable Library Stats & Acoustic Descriptors Persistence ───────────────
+
+  Timer? _statsDebounceTimer;
+
+  /// Reads and returns the persistent library stats map from `<musicDir>/.orpheus_cache/library_stats.json`.
+  Future<Map<String, dynamic>> readLibraryStats([String? musicDirectoryPath]) async {
+    try {
+      final baseDir = await getBaseCacheDirectory(musicDirectoryPath);
+      final statsFile = File('${baseDir.path}/library_stats.json');
+      if (await statsFile.exists()) {
+        final content = await statsFile.readAsString();
+        if (content.trim().isNotEmpty) {
+          final decoded = jsonDecode(content);
+          if (decoded is Map<String, dynamic>) {
+            return decoded;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[MediaCacheService] Error reading library_stats.json: $e');
+    }
+    return <String, dynamic>{};
+  }
+
+  /// Writes [stats] map to `<musicDir>/.orpheus_cache/library_stats.json`.
+  Future<void> saveLibraryStats(
+    Map<String, dynamic> stats, [
+    String? musicDirectoryPath,
+  ]) async {
+    try {
+      final baseDir = await getBaseCacheDirectory(musicDirectoryPath);
+      final statsFile = File('${baseDir.path}/library_stats.json');
+      final updated = Map<String, dynamic>.from(stats);
+      updated['version'] = 1;
+      updated['updatedAt'] = DateTime.now().millisecondsSinceEpoch;
+
+      final jsonString = const JsonEncoder.withIndent('  ').convert(updated);
+      await statsFile.writeAsString(jsonString);
+    } catch (e) {
+      debugPrint('[MediaCacheService] Error saving library_stats.json: $e');
+    }
+  }
+
+  /// Exports current track statistics (plays, skips, lastPlayed, likes, and acoustic vectors)
+  /// to `library_stats.json`.
+  ///
+  /// Uses a Smart Merge strategy: preserves existing stats for tracks that might be temporarily
+  /// missing from disk while updating active tracks.
+  Future<void> exportLibraryStats({
+    required List<Track> allTracks,
+    String? musicDirectoryPath,
+  }) async {
+    final existingData = await readLibraryStats(musicDirectoryPath);
+    final existingStats = (existingData['stats'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+
+    final mergedStats = Map<String, dynamic>.from(existingStats);
+
+    for (final t in allTracks) {
+      final fp = StringSanitizer.generateTrackFingerprint(
+        artist: t.displayArtist,
+        title: t.displayTitle,
+        durationMs: t.duration * 1000,
+      );
+
+      final mediaHash = computeMediaHash(
+        t.displayArtist,
+        t.displayTitle,
+      );
+
+      mergedStats[fp] = {
+        'fingerprint': fp,
+        'relativePath': t.filePath,
+        'mediaHash': mediaHash,
+        'artist': t.displayArtist,
+        'title': t.displayTitle,
+        'durationSec': t.duration,
+        'playCount': t.playCount,
+        'skipCount': t.skipCount,
+        'lastPlayedAt': t.lastPlayedAt?.millisecondsSinceEpoch,
+        'isLiked': t.isLiked,
+        'acoustic': {
+          'isScanned': t.isScanned,
+          'rmsEnergy': t.rmsEnergy,
+          'peakDensity': t.peakDensity,
+          'spectralBalance': t.spectralBalance,
+        },
+      };
+    }
+
+    final payload = <String, dynamic>{
+      'version': 1,
+      'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      'stats': mergedStats,
+    };
+
+    await saveLibraryStats(payload, musicDirectoryPath);
+  }
+
+  /// Debounced trigger to flush library statistics to disk (5 seconds coalescing window).
+  void scheduleDebouncedStatsExport(List<Track> allTracks, [String? musicDirectoryPath]) {
+    _statsDebounceTimer?.cancel();
+    _statsDebounceTimer = Timer(const Duration(seconds: 5), () {
+      unawaited(exportLibraryStats(
+        allTracks: allTracks,
+        musicDirectoryPath: musicDirectoryPath,
+      ));
+    });
+  }
 }
+
