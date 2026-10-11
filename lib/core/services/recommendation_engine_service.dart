@@ -90,7 +90,7 @@ class RecommendationEngineService {
   }
 
   /// Generates a curated playlist matching acoustic mood parameters with
-  /// dynamic Min-Max library normalization and artist/album fatigue penalties.
+  /// pure acoustic Gaussian exponential decay and strict artist/album diversity.
   ///
   /// [targetRms]: Desired energy level [0.0 (quiet/ambient) to 1.0 (loud/intense)].
   /// [targetEnergy]: Desired rhythmic density [0.0 (smooth/slow) to 1.0 (fast/percussive)].
@@ -106,9 +106,12 @@ class RecommendationEngineService {
 
     final spectral = targetSpectral ?? 0.5;
 
-    // 1. Dynamic Min-Max Calibration across scanned collection
+    // 1. Candidate Filtering: Prioritize purely scanned tracks
     final scannedTracks =
         allTracks.where((t) => t.isScanned && t.rmsEnergy >= 0).toList();
+    final candidatePool = scannedTracks.isNotEmpty ? scannedTracks : allTracks;
+
+    // 2. Dynamic Min-Max Calibration across scanned collection
     double minRms = 0.0, maxRms = 1.0;
     double minPeak = 0.0, maxPeak = 1.0;
     double minSpec = 0.0, maxSpec = 1.0;
@@ -128,8 +131,9 @@ class RecommendationEngineService {
     }
 
     final List<_ScoredTrack> scored = [];
+    const double gamma = 8.0; // Gaussian curvature parameter
 
-    for (final track in allTracks) {
+    for (final track in candidatePool) {
       final rawRms =
           track.isScanned && track.rmsEnergy >= 0 ? track.rmsEnergy : 0.5;
       final rawPeak =
@@ -142,31 +146,33 @@ class RecommendationEngineService {
       final tPeak = norm(rawPeak, minPeak, maxPeak);
       final tSpec = norm(rawSpec, minSpec, maxSpec);
 
-      final dist = math.sqrt(
-        0.45 * math.pow(targetRms - tRms, 2) +
-            0.35 * math.pow(targetEnergy - tPeak, 2) +
-            0.20 * math.pow(spectral - tSpec, 2),
-      );
+      final weightedDistSq = 0.45 * math.pow(targetRms - tRms, 2) +
+          0.35 * math.pow(targetEnergy - tPeak, 2) +
+          0.20 * math.pow(spectral - tSpec, 2);
 
-      final similarity = (1.0 - dist).clamp(0.0, 1.0);
-      final behavioralBonus =
-          (track.isLiked ? 0.20 : 0.0) + (track.playCount > 0 ? 0.10 : 0.0);
+      // Gaussian Exponential Decay (100% Pure Acoustic Match)
+      final acousticSimilarity = math.exp(-gamma * weightedDistSq);
 
-      final score = similarity * 0.75 + behavioralBonus * 0.25;
+      // Micro tie-breaker (+0.005 max) for sorting identical acoustic points
+      final tieBreaker =
+          (track.isLiked ? 0.003 : 0.0) + (track.playCount > 0 ? 0.002 : 0.0);
+
+      final totalScore = acousticSimilarity + tieBreaker;
+
       scored.add(
         _ScoredTrack(
           track: track,
-          totalScore: score,
-          acousticSimilarity: similarity,
+          totalScore: totalScore,
+          acousticSimilarity: acousticSimilarity,
           metadataAffinity: 0.0,
-          behavioralScore: behavioralBonus,
+          behavioralScore: tieBreaker,
         ),
       );
     }
 
     scored.sort((a, b) => b.totalScore.compareTo(a.totalScore));
 
-    // 2. Artist and Album Fatigue Diversity Filtering
+    // 3. Artist and Album Fatigue Diversity Filtering (max 2 per artist, 1 per album)
     final List<Track> result = [];
     final Map<String, int> artistCount = {};
     final Map<String, int> albumCount = {};
@@ -180,8 +186,8 @@ class RecommendationEngineService {
       final aCount = artistCount[artist] ?? 0;
       final alCount = albumCount[album] ?? 0;
 
-      // Diversity constraints: max 2 per artist, max 2 per album
-      if (aCount >= 2 || (album.isNotEmpty && alCount >= 2)) {
+      // Diversity constraints: max 2 per artist, max 1 per album
+      if (aCount >= 2 || (album.isNotEmpty && alCount >= 1)) {
         continue;
       }
 
