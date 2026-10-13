@@ -442,7 +442,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
     super.initState();
     final svc = AudioPlayerService.instance;
     _lastTrackId = svc.currentTrack?.trackId ?? widget.track.trackId;
-    final initialPage = svc.currentContextIndex >= 0 ? svc.currentContextIndex : 0;
+    final initialPage = svc.currentDisplayIndex >= 0 ? svc.currentDisplayIndex : 0;
     _pageCtrl = PageController(
       initialPage: initialPage,
       viewportFraction: 0.80,
@@ -456,8 +456,8 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
       if (!mounted) return;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final targetPage = AudioPlayerService.instance.currentContextIndex >= 0
-            ? AudioPlayerService.instance.currentContextIndex
+        final targetPage = AudioPlayerService.instance.currentDisplayIndex >= 0
+            ? AudioPlayerService.instance.currentDisplayIndex
             : 0;
         if (_pageCtrl.hasClients && _pageCtrl.page?.round() != targetPage) {
           _isProgrammaticScroll = true;
@@ -471,7 +471,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
   void _onTrackChanged(Track? track) {
     if (!mounted) return;
     final svc = AudioPlayerService.instance;
-    final newPage = svc.currentContextIndex >= 0 ? svc.currentContextIndex : 0;
+    final newPage = svc.currentDisplayIndex >= 0 ? svc.currentDisplayIndex : 0;
     final currentTrackId = track?.trackId ?? svc.currentTrack?.trackId;
     final trackChanged = currentTrackId != null && currentTrackId != _lastTrackId;
     _lastTrackId = currentTrackId;
@@ -536,8 +536,8 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
     }
     if (widget.mode == _MobileOverlayMode.artwork &&
         old.mode != _MobileOverlayMode.artwork) {
-      final currentIdx = AudioPlayerService.instance.currentContextIndex >= 0
-          ? AudioPlayerService.instance.currentContextIndex
+      final currentIdx = AudioPlayerService.instance.currentDisplayIndex >= 0
+          ? AudioPlayerService.instance.currentDisplayIndex
           : 0;
       if (_pageCtrl.hasClients) {
         if (_pageCtrl.page?.round() != currentIdx) {
@@ -739,22 +739,22 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                           else
                             // ── Tidal-style artwork carousel (Audio only) ────
                             StreamBuilder<List<Track>>(
-                              stream: AudioPlayerService.instance.activeContextStream,
-                              initialData: AudioPlayerService.instance.activeContextTracks,
+                              stream: AudioPlayerService.instance.playbackDisplayStream,
+                              initialData: AudioPlayerService.instance.playbackDisplayTracks,
                               builder: (context, contextSnap) {
-                                final contextTracks = (contextSnap.data != null &&
+                                final displayTracks = (contextSnap.data != null &&
                                         contextSnap.data!.isNotEmpty)
                                     ? contextSnap.data!
                                     : (AudioPlayerService
-                                            .instance.activeContextTracks.isNotEmpty
+                                            .instance.playbackDisplayTracks.isNotEmpty
                                         ? AudioPlayerService
-                                            .instance.activeContextTracks
+                                            .instance.playbackDisplayTracks
                                         : [widget.track]);
                                 final currentIdx =
-                                    AudioPlayerService.instance.currentContextIndex >= 0
-                                        ? AudioPlayerService.instance.currentContextIndex
+                                    AudioPlayerService.instance.currentDisplayIndex >= 0
+                                        ? AudioPlayerService.instance.currentDisplayIndex
                                         : 0;
-                                final pageCount = contextTracks.length;
+                                final pageCount = displayTracks.length;
 
                                 return SizedBox(
                                   height: 300,
@@ -766,9 +766,9 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                                         itemCount: pageCount,
                                         onPageChanged: (page) {
                                           if (_isProgrammaticScroll) return;
-                                          if (page < 0 || page >= contextTracks.length) return;
+                                          if (page < 0 || page >= displayTracks.length) return;
 
-                                          final targetTrack = contextTracks[page];
+                                          final targetTrack = displayTracks[page];
                                           final currentTrack = AudioPlayerService.instance.currentTrack;
 
                                           // Guard de identidad estricta: si es la misma canción, abortar sin tocar el audio
@@ -777,18 +777,35 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                                           }
 
                                           setState(() => _isTouchDriving = true);
-                                          final currentCtxIdx = AudioPlayerService.instance.currentContextIndex;
-                                          if (currentCtxIdx >= 0 && page < currentCtxIdx) {
-                                            AudioPlayerService.instance.playContextPastItem(page);
-                                          } else if (currentCtxIdx >= 0 && page > currentCtxIdx) {
-                                            AudioPlayerService.instance.playContextQueueItem(page - currentCtxIdx - 1);
+                                          final svc = AudioPlayerService.instance;
+                                          if (!svc.isTransientPlayback) {
+                                            final currentCtxIdx = svc.currentContextIndex;
+                                            if (currentCtxIdx >= 0 && page < currentCtxIdx) {
+                                              svc.playContextPastItem(page);
+                                            } else if (currentCtxIdx >= 0 && page > currentCtxIdx) {
+                                              svc.playContextQueueItem(page - currentCtxIdx - 1);
+                                            } else {
+                                              svc.skipToIndex(page);
+                                            }
                                           } else {
-                                            AudioPlayerService.instance.skipToIndex(page);
+                                            final lockedCtxIdx = svc.currentContextIndex;
+                                            if (page <= lockedCtxIdx) {
+                                              svc.playContextPastItem(page);
+                                            } else if (page > lockedCtxIdx + 1) {
+                                              final userQueueLen = svc.userQueue.length;
+                                              final userQueueStart = lockedCtxIdx + 2;
+                                              if (page >= userQueueStart && page < userQueueStart + userQueueLen) {
+                                                svc.playUserQueueItem(page - userQueueStart);
+                                              } else {
+                                                final upcomingRelIndex = page - (userQueueStart + userQueueLen);
+                                                svc.playContextQueueItem(upcomingRelIndex);
+                                              }
+                                            }
                                           }
                                         },
                                         itemBuilder: (context, index) {
-                                          final pageTrack = contextTracks.isNotEmpty
-                                              ? contextTracks[index]
+                                          final pageTrack = displayTracks.isNotEmpty
+                                              ? displayTracks[index]
                                               : widget.track;
                                           final pageCover = pageTrack
                                               .customMetadata.customCoverPath;

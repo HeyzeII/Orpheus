@@ -335,14 +335,18 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   Stream<List<Track>> get historyStream => AudioPlayerService.instance.historyStream;
   Stream<List<Track>> get pastContextStream => AudioPlayerService.instance.pastContextStream;
   Stream<List<Track>> get activeContextStream => AudioPlayerService.instance.activeContextStream;
+  Stream<List<Track>> get playbackDisplayStream => AudioPlayerService.instance.playbackDisplayStream;
   Stream<String> get contextNameStream => AudioPlayerService.instance.contextNameStream;
   Stream<bool> get canSkipNextStream => AudioPlayerService.instance.canSkipNextStream;
 
   // ── Delegated Actions from OS / Bluetooth / UI controls ─────────────────
 
   List<Track> get activeContextTracks => AudioPlayerService.instance.activeContextTracks;
+  List<Track> get playbackDisplayTracks => AudioPlayerService.instance.playbackDisplayTracks;
   int get currentContextIndex => AudioPlayerService.instance.currentContextIndex;
+  int get currentDisplayIndex => AudioPlayerService.instance.currentDisplayIndex;
   int get currentOriginalIndex => AudioPlayerService.instance.currentOriginalIndex;
+  bool get isTransientPlayback => AudioPlayerService.instance.isTransientPlayback;
 
   Future<void> playFromExternalContext(
     Track track,

@@ -1499,7 +1499,7 @@ class _LibraryViewState extends State<LibraryView> {
     final contextName = 'Álbum: $albumName';
     final screenWidth = MediaQuery.sizeOf(context).width;
     final heroSize = (screenWidth * 0.58).clamp(180.0, 230.0);
-    final ValueNotifier<bool> isCollapsedNotifier = ValueNotifier<bool>(false);
+    final ValueNotifier<double> scrollProgressNotifier = ValueNotifier<double>(0.0);
 
     return PopScope(
       canPop: false,
@@ -1510,9 +1510,9 @@ class _LibraryViewState extends State<LibraryView> {
       child: SafeArea(
         child: NotificationListener<ScrollNotification>(
           onNotification: (notification) {
-            final isScrolled = notification.metrics.pixels > 140;
-            if (isCollapsedNotifier.value != isScrolled) {
-              isCollapsedNotifier.value = isScrolled;
+            final progress = (notification.metrics.pixels / 140.0).clamp(0.0, 1.0);
+            if (scrollProgressNotifier.value != progress) {
+              scrollProgressNotifier.value = progress;
             }
             return false;
           },
@@ -1523,24 +1523,45 @@ class _LibraryViewState extends State<LibraryView> {
                 floating: false,
                 elevation: 0,
                 scrolledUnderElevation: 0,
-                backgroundColor: AppTheme.bgDeep.withOpacity(0.85),
+                backgroundColor: Colors.transparent,
                 surfaceTintColor: Colors.transparent,
-                flexibleSpace: ClipRect(
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                    child: const SizedBox.expand(),
-                  ),
+                flexibleSpace: ValueListenableBuilder<double>(
+                  valueListenable: scrollProgressNotifier,
+                  builder: (context, t, _) {
+                    if (t <= 0.001) {
+                      return const SizedBox.expand();
+                    }
+                    final blurSigma = 16.0 * t;
+                    final tintAlpha = 0.80 * t;
+                    final borderAlpha = 0.08 * t;
+                    return ClipRect(
+                      child: BackdropFilter(
+                        filter: ui.ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: AppTheme.bgDeep.withOpacity(tintAlpha),
+                            border: Border(
+                              bottom: BorderSide(
+                                color: Colors.white.withOpacity(borderAlpha),
+                                width: 0.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
                   onPressed: () => setState(() => _selectedAlbum = null),
                 ),
-                title: ValueListenableBuilder<bool>(
-                  valueListenable: isCollapsedNotifier,
-                  builder: (context, isCollapsed, _) {
-                    return AnimatedOpacity(
-                      duration: const Duration(milliseconds: 200),
-                      opacity: isCollapsed ? 1.0 : 0.0,
+                title: ValueListenableBuilder<double>(
+                  valueListenable: scrollProgressNotifier,
+                  builder: (context, t, _) {
+                    final titleOpacity = Curves.easeOutCubic.transform(t);
+                    return Opacity(
+                      opacity: titleOpacity,
                       child: Text(
                         albumName,
                         maxLines: 1,
@@ -2275,7 +2296,7 @@ class _LibraryViewState extends State<LibraryView> {
   }) {
     final screenWidth = MediaQuery.sizeOf(context).width;
     final heroSize = (screenWidth * 0.58).clamp(180.0, 230.0);
-    final ValueNotifier<bool> isCollapsedNotifier = ValueNotifier<bool>(false);
+    final ValueNotifier<double> scrollProgressNotifier = ValueNotifier<double>(0.0);
 
     return Stack(
       children: [
@@ -2289,9 +2310,9 @@ class _LibraryViewState extends State<LibraryView> {
         SafeArea(
           child: NotificationListener<ScrollNotification>(
             onNotification: (notification) {
-              final isScrolled = notification.metrics.pixels > 140;
-              if (isCollapsedNotifier.value != isScrolled) {
-                isCollapsedNotifier.value = isScrolled;
+              final progress = (notification.metrics.pixels / 140.0).clamp(0.0, 1.0);
+              if (scrollProgressNotifier.value != progress) {
+                scrollProgressNotifier.value = progress;
               }
               return false;
             },
@@ -2302,24 +2323,45 @@ class _LibraryViewState extends State<LibraryView> {
                   floating: false,
                   elevation: 0,
                   scrolledUnderElevation: 0,
-                  backgroundColor: AppTheme.bgDeep.withOpacity(0.85),
+                  backgroundColor: Colors.transparent,
                   surfaceTintColor: Colors.transparent,
-                  flexibleSpace: ClipRect(
-                    child: BackdropFilter(
-                      filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                      child: const SizedBox.expand(),
-                    ),
+                  flexibleSpace: ValueListenableBuilder<double>(
+                    valueListenable: scrollProgressNotifier,
+                    builder: (context, t, _) {
+                      if (t <= 0.001) {
+                        return const SizedBox.expand();
+                      }
+                      final blurSigma = 16.0 * t;
+                      final tintAlpha = 0.80 * t;
+                      final borderAlpha = 0.08 * t;
+                      return ClipRect(
+                        child: BackdropFilter(
+                          filter: ui.ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: AppTheme.bgDeep.withOpacity(tintAlpha),
+                              border: Border(
+                                bottom: BorderSide(
+                                  color: Colors.white.withOpacity(borderAlpha),
+                                  width: 0.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   leading: IconButton(
                     icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
                     onPressed: () => setState(() => _selectedPlaylist = null),
                   ),
-                  title: ValueListenableBuilder<bool>(
-                    valueListenable: isCollapsedNotifier,
-                    builder: (context, isCollapsed, _) {
-                      return AnimatedOpacity(
-                        duration: const Duration(milliseconds: 200),
-                        opacity: isCollapsed ? 1.0 : 0.0,
+                  title: ValueListenableBuilder<double>(
+                    valueListenable: scrollProgressNotifier,
+                    builder: (context, t, _) {
+                      final titleOpacity = Curves.easeOutCubic.transform(t);
+                      return Opacity(
+                        opacity: titleOpacity,
                         child: Text(
                           playlist.name,
                           maxLines: 1,

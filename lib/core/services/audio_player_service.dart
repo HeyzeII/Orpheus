@@ -18,6 +18,18 @@ enum PlayerRepeatMode {
   single,
 }
 
+class _NavEntry {
+  final Track track;
+  final bool isTransient;
+  final int contextIndex;
+
+  const _NavEntry({
+    required this.track,
+    required this.isTransient,
+    required this.contextIndex,
+  });
+}
+
 /// Singleton service managing the native audio player engine, decoupled play
 /// queues (contextQueue, userQueue, historyStack), automated statistics,
 /// and persistent playback state (Tidal-style decoupled architecture).
@@ -60,7 +72,11 @@ class AudioPlayerService {
 
   /// Navigation stack for backward traversal (previous()).
   /// Independent of the immutable audit log (_history).
-  final List<Track> _navigationStack = [];
+  final List<_NavEntry> _navigationStack = [];
+
+  /// Flag indicating that the current track was launched from the user queue
+  /// ("Play next" / "Add to queue") and is playing with parent context locked.
+  bool _isTransientActive = false;
 
   /// Mock position for unit tests in headless environments.
   Duration? _mockPosition;
@@ -109,6 +125,7 @@ class AudioPlayerService {
   final _contextNameController = StreamController<String>.broadcast();
   final _pastContextController = StreamController<List<Track>>.broadcast();
   final _activeContextController = StreamController<List<Track>>.broadcast();
+  final _playbackDisplayController = StreamController<List<Track>>.broadcast();
 
   AudioSession? _audioSession;
   final List<StreamSubscription> _subscriptions = [];
@@ -281,8 +298,12 @@ class AudioPlayerService {
     }
   }
 
-  void _pushNavigation(Track track) {
-    _navigationStack.add(track);
+  void _pushNavigation(Track track, {required bool isTransient, required int contextIndex}) {
+    _navigationStack.add(_NavEntry(
+      track: track,
+      isTransient: isTransient,
+      contextIndex: contextIndex,
+    ));
     if (_navigationStack.length > 100) {
       _navigationStack.removeAt(0);
     }
@@ -347,6 +368,54 @@ class AudioPlayerService {
 
   String get contextName => _contextName;
 
+  /// Whether the currently playing track is a transient track from user queue
+  /// ("Play next" / "Add to queue") playing with parent context locked.
+  bool get isTransientPlayback => _isTransientActive;
+
+  /// Unified display list for playback views (e.g. carousel in expanded player).
+  /// When playing from normal context: returns [activeContextTracks].
+  /// When playing a transient track (from userQueue): projects the transient track
+  /// and any remaining userQueue items directly between the locked parent context
+  /// and upcoming context tracks, without mutating the underlying context order.
+  List<Track> get playbackDisplayTracks {
+    if (!_isTransientActive || _activeContext.isEmpty) {
+      if (_isTransientActive && _activeContext.isEmpty) {
+        return List.unmodifiable([
+          // ignore: use_null_aware_elements
+          if (_currentTrack != null) _currentTrack!,
+          ..._userQueue,
+        ]);
+      }
+      return List.unmodifiable(_activeContext);
+    }
+
+    // Locked parent context: tracks up to _contextIndex
+    final pastAndCurrentContext = _contextIndex >= 0 && _contextIndex < _activeContext.length
+        ? _activeContext.sublist(0, _contextIndex + 1)
+        : <Track>[];
+    final remainingContext = _contextIndex >= 0 && _contextIndex < _activeContext.length - 1
+        ? _activeContext.sublist(_contextIndex + 1)
+        : <Track>[];
+
+    return List.unmodifiable([
+      ...pastAndCurrentContext,
+      // ignore: use_null_aware_elements
+      if (_currentTrack != null) _currentTrack!,
+      ..._userQueue,
+      ...remainingContext,
+    ]);
+  }
+
+  /// Index of the currently playing track within [playbackDisplayTracks].
+  int get currentDisplayIndex {
+    if (_currentTrack == null) return -1;
+    if (!_isTransientActive) {
+      return _contextIndex >= 0 ? _contextIndex : 0;
+    }
+    if (_activeContext.isEmpty) return 0;
+    return _contextIndex >= 0 ? _contextIndex + 1 : 0;
+  }
+
   /// Stable index pointer into the active context list ([_activeContext]).
   int get currentContextIndex => _contextIndex;
 
@@ -402,6 +471,7 @@ class AudioPlayerService {
   Stream<String> get contextNameStream => _contextNameController.stream;
   Stream<List<Track>> get pastContextStream => _pastContextController.stream;
   Stream<List<Track>> get activeContextStream => _activeContextController.stream;
+  Stream<List<Track>> get playbackDisplayStream => _playbackDisplayController.stream;
 
   // ── Control API ────────────────────────────────────────────────────────────
 
@@ -421,6 +491,7 @@ class AudioPlayerService {
     if (contextName != null) _contextName = contextName;
     _consecutiveErrors = 0;
     _navigationStack.clear();
+    _isTransientActive = false;
 
     if (_currentTrack != null) {
       _pushHistory(_currentTrack!);
@@ -509,6 +580,7 @@ class AudioPlayerService {
     }
     await _safeSetActive(false);
     _currentTrack = null;
+    _isTransientActive = false;
     _notifyState();
   }
 
@@ -525,6 +597,7 @@ class AudioPlayerService {
     _contextIndex = -1;
     _userQueue.clear();
     _navigationStack.clear();
+    _isTransientActive = false;
     _mockPosition = null;
     _shuffle = false;
     _repeatMode = PlayerRepeatMode.off;
@@ -613,16 +686,32 @@ class AudioPlayerService {
     // 1. Priority: consume next FIFO item from userQueue
     if (_userQueue.isNotEmpty) {
       if (_currentTrack != null) {
-        _pushNavigation(_currentTrack!);
+        _pushNavigation(
+          _currentTrack!,
+          isTransient: _isTransientActive,
+          contextIndex: _contextIndex,
+        );
       }
+      _isTransientActive = true;
       _currentTrack = _userQueue.removeAt(0);
       await _openTrack(_currentTrack!);
       _notifyState();
       return;
     }
 
-    // Resuming/advancing in context: clear navigation stack so previous() is purely index-based
-    _navigationStack.clear();
+    // 2. Returning from transient or advancing in context
+    if (_isTransientActive) {
+      if (_currentTrack != null) {
+        _pushNavigation(
+          _currentTrack!,
+          isTransient: true,
+          contextIndex: _contextIndex,
+        );
+      }
+      _isTransientActive = false;
+    } else {
+      _navigationStack.clear();
+    }
 
     // 2. Otherwise advance in contextQueue
     final active = _activeContext;
@@ -669,16 +758,13 @@ class AudioPlayerService {
 
     // 2. Desandar la pila de navegación (reservada para pistas fuera de contexto como userQueue)
     if (_navigationStack.isNotEmpty) {
-      final prevTrack = _navigationStack.removeLast();
+      final entry = _navigationStack.removeLast();
       if (_currentTrack != null) {
         _pushHistory(_currentTrack!);
       }
-      final active = _activeContext;
-      final matchIdx = active.lastIndexOf(prevTrack);
-      if (matchIdx != -1) {
-        _contextIndex = matchIdx;
-      }
-      _currentTrack = prevTrack;
+      _contextIndex = entry.contextIndex;
+      _isTransientActive = entry.isTransient;
+      _currentTrack = entry.track;
       await _openTrack(_currentTrack!);
       _notifyState();
       return;
@@ -689,6 +775,7 @@ class AudioPlayerService {
       if (_currentTrack != null) {
         _pushHistory(_currentTrack!);
       }
+      _isTransientActive = false;
       _contextIndex--;
       _currentTrack = _activeContext[_contextIndex];
       await _openTrack(_currentTrack!);
@@ -740,6 +827,7 @@ class AudioPlayerService {
   void playNext(Track track) {
     _userQueue.insert(0, track);
     if (_currentTrack == null && _activeContext.isEmpty) {
+      _isTransientActive = true;
       _currentTrack = _userQueue.removeAt(0);
       _openTrack(_currentTrack!);
     }
@@ -749,6 +837,7 @@ class AudioPlayerService {
   /// Appends [track] to the end of userQueue.
   void addToQueue(Track track) {
     if (_currentTrack == null && _activeContext.isEmpty && _userQueue.isEmpty) {
+      _isTransientActive = true;
       _currentTrack = track;
       _openTrack(track);
     } else {
@@ -811,6 +900,7 @@ class AudioPlayerService {
   /// Clears userQueue and upcoming context except the current track, preserving the immutable history log.
   void clearQueue() {
     _userQueue.clear();
+    _isTransientActive = false;
     if (_currentTrack != null) {
       _contextTracks = [_currentTrack!];
       _shuffledContextTracks = null;
@@ -869,18 +959,17 @@ class AudioPlayerService {
     if (index < 0 || index >= _userQueue.length) return;
     if (_currentTrack != null) {
       _pushHistory(_currentTrack!);
-      _pushNavigation(_currentTrack!);
+      _pushNavigation(
+        _currentTrack!,
+        isTransient: _isTransientActive,
+        contextIndex: _contextIndex,
+      );
     }
 
     final target = _userQueue[index];
     _userQueue.removeRange(0, index + 1);
 
-    final active = _activeContext;
-    final matchIdx = active.lastIndexOf(target);
-    if (matchIdx != -1) {
-      _contextIndex = matchIdx;
-    }
-
+    _isTransientActive = true;
     _currentTrack = target;
     await _openTrack(target);
     _notifyState();
@@ -897,6 +986,7 @@ class AudioPlayerService {
       _pushHistory(_currentTrack!);
     }
     _navigationStack.clear();
+    _isTransientActive = false;
 
     _contextIndex = targetIndex;
     _currentTrack = active[_contextIndex];
@@ -919,6 +1009,7 @@ class AudioPlayerService {
       _pushHistory(_currentTrack!);
     }
     _navigationStack.clear();
+    _isTransientActive = false;
 
     _contextIndex = absoluteIndex;
     _currentTrack = active[_contextIndex];
@@ -947,10 +1038,16 @@ class AudioPlayerService {
     if (matchIdx != -1) {
       _navigationStack.clear();
       _contextIndex = matchIdx;
+      _isTransientActive = false;
     } else {
       if (_currentTrack != null) {
-        _pushNavigation(_currentTrack!);
+        _pushNavigation(
+          _currentTrack!,
+          isTransient: _isTransientActive,
+          contextIndex: _contextIndex,
+        );
       }
+      _isTransientActive = true;
     }
 
     _currentTrack = targetTrack;
@@ -1134,6 +1231,7 @@ class AudioPlayerService {
     _contextQueueController.add(contextQueue);
     _pastContextController.add(pastContext);
     _activeContextController.add(activeContextTracks);
+    _playbackDisplayController.add(playbackDisplayTracks);
     _contextNameController.add(_contextName);
     _canSkipNextController.add(canSkipNext);
     // Auto-sync radio badge: active when contextName starts with 'Radio:'.
@@ -1164,6 +1262,7 @@ class AudioPlayerService {
     await _userQueueController.close();
     await _contextQueueController.close();
     await _activeContextController.close();
+    await _playbackDisplayController.close();
     await _historyController.close();
     await _pastContextController.close();
     await _contextNameController.close();
