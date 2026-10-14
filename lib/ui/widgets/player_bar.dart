@@ -173,6 +173,7 @@ class _CoverArt extends StatelessWidget {
                 ? Image.file(
                     File(coverPath!),
                     fit: BoxFit.cover,
+                    cacheWidth: 110,
                     errorBuilder: (context, error, stackTrace) => _placeholder(),
                   )
                 : _placeholder(),

@@ -88,7 +88,9 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     // 1. Sync Queue
     _subscriptions.add(player.queueStream.listen((tracks) {
       if (_disposed) return;
-      queue.add(tracks.map((t) => _mapTrackToMediaItem(t)).toList());
+      // Ventana de hasta 100 pistas hacia el puente IPC nativo para evitar saturación del platform channel
+      final queueSlice = tracks.length > 100 ? tracks.sublist(0, 100) : tracks;
+      queue.add(queueSlice.map((t) => _mapTrackToMediaItem(t, verifyDisk: false)).toList());
       _emitAtomicState();
     }));
 
@@ -142,23 +144,38 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     );
   }
 
-  Uri? _resolveArtUri(String? coverPath) {
+  final Map<String, Uri?> _artUriCache = {};
+
+  Uri? _resolveArtUri(String? coverPath, {bool verifyOnDisk = false}) {
     if (coverPath == null || coverPath.trim().isEmpty) return null;
+    final cached = _artUriCache[coverPath];
+    if (cached != null) return cached;
+    if (_artUriCache.containsKey(coverPath)) return null;
+
+    if (!verifyOnDisk) {
+      final uri = Uri.file(coverPath);
+      _artUriCache[coverPath] = uri;
+      return uri;
+    }
+
     try {
       final file = File(coverPath);
       if (file.existsSync() && file.lengthSync() > 0) {
-        return Uri.file(file.absolute.path);
+        final uri = Uri.file(file.absolute.path);
+        _artUriCache[coverPath] = uri;
+        return uri;
       }
     } catch (_) {
       // Catch file-system or path resolution errors cleanly
     }
+    _artUriCache[coverPath] = null;
     return null;
   }
 
-  MediaItem _mapTrackToMediaItem(Track track) {
+  MediaItem _mapTrackToMediaItem(Track track, {bool verifyDisk = false}) {
     final player = AudioPlayerService.instance;
     final coverPath = track.customMetadata.customCoverPath;
-    final artUri = _resolveArtUri(coverPath);
+    final artUri = _resolveArtUri(coverPath, verifyOnDisk: verifyDisk);
 
     final safeId = track.trackId.trim().isNotEmpty
         ? track.trackId.trim()
@@ -207,7 +224,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
           DebugLogger.log('OrpheusAudioHandler: mediaItem.add(null) emitido');
         }
       } else {
-        final newItem = _mapTrackToMediaItem(currentTrack);
+        final newItem = _mapTrackToMediaItem(currentTrack, verifyDisk: true);
         if (mediaItem.value == null ||
             mediaItem.value?.id != newItem.id ||
             mediaItem.value?.title != newItem.title ||
@@ -354,7 +371,7 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     int? initialIndex,
     String? contextName,
   }) async {
-    mediaItem.add(_mapTrackToMediaItem(track));
+    mediaItem.add(_mapTrackToMediaItem(track, verifyDisk: true));
     await AudioPlayerService.instance.playFromExternalContext(
       track,
       contextTracks,

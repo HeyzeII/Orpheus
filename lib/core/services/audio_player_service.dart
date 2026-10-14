@@ -1069,10 +1069,10 @@ class AudioPlayerService {
     }
     _is80PercentTracked = false;
 
-    await _saveCurrentPlaybackState(
+    unawaited(_saveCurrentPlaybackState(
       overrideTrackId: track.trackId,
       overridePositionMs: 0,
-    );
+    ));
 
     if (Platform.environment.containsKey('FLUTTER_TEST')) {
       return;

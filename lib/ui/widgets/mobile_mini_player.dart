@@ -90,6 +90,7 @@ class MobileMiniPlayer extends StatelessWidget {
         if (track == null || track.trackId.isEmpty) return const SizedBox.shrink();
 
         return GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: () => _openExpandedPlayer(context),
           child: Container(
             height: 64,

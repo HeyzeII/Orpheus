@@ -115,6 +115,7 @@ class _BlurredImageBackground extends StatelessWidget {
             child: Image.file(
               File(coverPath),
               fit: BoxFit.cover,
+              cacheWidth: 600,
               errorBuilder: (context, error, stackTrace) =>
                   const ColoredBox(color: Color(0xFF141414)),
             ),
@@ -865,6 +866,7 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                                                             key: ValueKey(
                                                                 'cover_${pageTrack.trackId}_${index}_$pageCover'),
                                                             fit: BoxFit.cover,
+                                                            cacheWidth: 600,
                                                             width: double.infinity,
                                                             height: double.infinity,
                                                           )

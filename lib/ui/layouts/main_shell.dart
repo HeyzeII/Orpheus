@@ -643,6 +643,7 @@ class _MiniPlayerStrip extends StatelessWidget {
     final handler = OrpheusAudioHandler.instance;
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: SizedBox(
         height: height,
@@ -656,27 +657,29 @@ class _MiniPlayerStrip extends StatelessWidget {
                   _coverArt(),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        MarqueeText(
-                          text: track.displayTitle,
-                          style: const TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
+                    child: IgnorePointer(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          MarqueeText(
+                            text: track.displayTitle,
+                            style: const TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        MarqueeText(
-                          text: track.displayArtist,
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 11,
+                          const SizedBox(height: 2),
+                          MarqueeText(
+                            text: track.displayArtist,
+                            style: const TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 11,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                   // Play/Pause
@@ -698,10 +701,11 @@ class _MiniPlayerStrip extends StatelessWidget {
                     },
                   ),
                   // Skip next
-                  StreamBuilder<Track?>(
-                    stream: handler.currentTrackStream,
-                    builder: (context, _) {
-                      final canNext = handler.canSkipNext;
+                  StreamBuilder<bool>(
+                    stream: handler.canSkipNextStream,
+                    initialData: handler.canSkipNext,
+                    builder: (context, snap) {
+                      final canNext = snap.data ?? handler.canSkipNext;
                       return IconButton(
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints.tightFor(width: 36, height: 40),
