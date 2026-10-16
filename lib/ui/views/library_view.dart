@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
+import '../../core/services/app_navigation_coordinator.dart';
 import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/permission_service.dart';
@@ -52,6 +53,21 @@ class _LibraryViewState extends State<LibraryView> {
   String? _selectedAlbum;
   String? _selectedArtist;
   Playlist? _selectedPlaylist;
+
+  void _clearSelectedAlbum() {
+    AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
+    setState(() => _selectedAlbum = null);
+  }
+
+  void _clearSelectedArtist() {
+    AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
+    setState(() => _selectedArtist = null);
+  }
+
+  void _clearSelectedPlaylist() {
+    AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
+    setState(() => _selectedPlaylist = null);
+  }
 
   StreamSubscription<void>? _tracksSubscription;
   StreamSubscription<void>? _playlistsSubscription;
@@ -682,9 +698,7 @@ class _LibraryViewState extends State<LibraryView> {
 
     if (confirm == true) {
       await LocalDatabase.instance.deletePlaylist(playlist.id);
-      setState(() {
-        _selectedPlaylist = null;
-      });
+      _clearSelectedPlaylist();
       _refreshData();
     }
   }
@@ -1191,7 +1205,7 @@ class _LibraryViewState extends State<LibraryView> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        setState(() => _selectedAlbum = null);
+        _clearSelectedAlbum();
       },
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -1202,7 +1216,7 @@ class _LibraryViewState extends State<LibraryView> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                  onPressed: () => setState(() => _selectedAlbum = null),
+                  onPressed: _clearSelectedAlbum,
                 ),
                 const SizedBox(width: 8),
                 const Text('Volver a Álbumes', style: TextStyle(color: AppTheme.textSecondary)),
@@ -1361,7 +1375,7 @@ class _LibraryViewState extends State<LibraryView> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        setState(() => _selectedArtist = null);
+        _clearSelectedArtist();
       },
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -1372,7 +1386,7 @@ class _LibraryViewState extends State<LibraryView> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                  onPressed: () => setState(() => _selectedArtist = null),
+                  onPressed: _clearSelectedArtist,
                 ),
                 const SizedBox(width: 8),
                 const Text('Volver a Artistas', style: TextStyle(color: AppTheme.textSecondary)),
@@ -1505,7 +1519,7 @@ class _LibraryViewState extends State<LibraryView> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        setState(() => _selectedAlbum = null);
+        _clearSelectedAlbum();
       },
       child: SafeArea(
         child: NotificationListener<ScrollNotification>(
@@ -1554,7 +1568,7 @@ class _LibraryViewState extends State<LibraryView> {
                 ),
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                  onPressed: () => setState(() => _selectedAlbum = null),
+                  onPressed: _clearSelectedAlbum,
                 ),
                 title: ValueListenableBuilder<double>(
                   valueListenable: scrollProgressNotifier,
@@ -1861,7 +1875,7 @@ class _LibraryViewState extends State<LibraryView> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        setState(() => _selectedArtist = null);
+        _clearSelectedArtist();
       },
       child: SafeArea(
         child: CustomScrollView(
@@ -1877,7 +1891,7 @@ class _LibraryViewState extends State<LibraryView> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                          onPressed: () => setState(() => _selectedArtist = null),
+                          onPressed: _clearSelectedArtist,
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
@@ -2138,7 +2152,7 @@ class _LibraryViewState extends State<LibraryView> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        setState(() => _selectedPlaylist = null);
+        _clearSelectedPlaylist();
       },
       child: StreamBuilder<Playlist?>(
         stream: LocalDatabase.instance.watchPlaylistById(initialPlaylist.playlistId),
@@ -2203,7 +2217,7 @@ class _LibraryViewState extends State<LibraryView> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                          onPressed: () => setState(() => _selectedPlaylist = null),
+                          onPressed: _clearSelectedPlaylist,
                         ),
                         const SizedBox(width: 8),
                         const Text('Volver a Playlists', style: TextStyle(color: AppTheme.textSecondary)),
@@ -2354,7 +2368,7 @@ class _LibraryViewState extends State<LibraryView> {
                   ),
                   leading: IconButton(
                     icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                    onPressed: () => setState(() => _selectedPlaylist = null),
+                    onPressed: _clearSelectedPlaylist,
                   ),
                   title: ValueListenableBuilder<double>(
                     valueListenable: scrollProgressNotifier,

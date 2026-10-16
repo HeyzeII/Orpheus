@@ -15,6 +15,19 @@ class AppNavigationCoordinator {
   /// Reactive notifier for the desktop lyrics slide-up panel visibility.
   final ValueNotifier<bool> desktopLyricsOpen = ValueNotifier<bool>(false);
 
+  /// One-frame pointer blocking notifier to prevent GestureArena race conditions
+  /// when exiting detail views or closing modals via native Android gestures.
+  final ValueNotifier<bool> miniPlayerPointerBlocked = ValueNotifier<bool>(false);
+
+  /// Temporarily blocks pointer events on the mini-player for exactly 1 frame.
+  void triggerMiniPlayerGestureLock() {
+    miniPlayerPointerBlocked.value = true;
+    WidgetsBinding.instance.scheduleFrame();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      miniPlayerPointerBlocked.value = false;
+    });
+  }
+
   /// Navigates to a target [destination] and closes any overlay panels.
   void navigateTo(NavDestination destination) {
     desktopLyricsOpen.value = false;

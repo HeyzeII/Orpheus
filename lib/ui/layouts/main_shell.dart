@@ -371,6 +371,7 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
 
   Future<void> _openExpandedPlayer() async {
     setState(() => _expandedPlayerOpen = true);
+    bool statusListenerAttached = false;
     await showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -378,18 +379,32 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
       barrierColor: Colors.black.withAlpha(128),
       transitionDuration: const Duration(milliseconds: 320),
       pageBuilder: (ctx, _, __) => const ExpandedPlayerView(),
-      transitionBuilder: (ctx, animation, _, child) => SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 1),
-          end: Offset.zero,
-        ).animate(CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-        )),
-        child: child,
-      ),
+      transitionBuilder: (ctx, animation, _, child) {
+        if (!statusListenerAttached) {
+          statusListenerAttached = true;
+          animation.addStatusListener((status) {
+            if (status == AnimationStatus.dismissed && mounted) {
+              AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
+              setState(() => _expandedPlayerOpen = false);
+            }
+          });
+        }
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 1),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          )),
+          child: child,
+        );
+      },
     );
-    if (mounted) setState(() => _expandedPlayerOpen = false);
+    if (mounted && _expandedPlayerOpen) {
+      AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
+      setState(() => _expandedPlayerOpen = false);
+    }
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -430,12 +445,14 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
 
           // 1. Close expanded player dialog if open
           if (_expandedPlayerOpen) {
+            AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
             Navigator.of(context).pop();
             return;
           }
 
           // 3. Pop tab history if we have previous tab visits
           if (_navigationHistory.isNotEmpty) {
+            AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
             setState(() {
               _currentIndex = _navigationHistory.removeLast();
             });
@@ -521,75 +538,84 @@ class _UnifiedBottomPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(32),
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(32),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.12),
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.4),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppNavigationCoordinator.instance.miniPlayerPointerBlocked,
+      builder: (context, isBlocked, panelChild) {
+        return IgnorePointer(
+          ignoring: isBlocked,
+          child: panelChild,
+        );
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(32),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(32),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.12),
+                width: 1,
               ),
-            ],
-          ),
-          child: ValueListenableBuilder<bool>(
-            valueListenable: AudioScannerService.isScanningNotifier,
-            builder: (context, isScanning, child) {
-              return AbsorbPointer(
-                absorbing: isScanning,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 250),
-                  opacity: isScanning ? 0.45 : 1.0,
-                  child: child,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.4),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
                 ),
-              );
-            },
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // ── Mini-player strip (only when a track is loaded) ─────
-                StreamBuilder<Track?>(
-                  stream: OrpheusAudioHandler.instance.currentTrackStream,
-                  initialData: OrpheusAudioHandler.instance.currentTrack,
-                  builder: (context, snap) {
-                    final track = snap.data;
-                    if (track == null || track.trackId.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-                    return _MiniPlayerStrip(
-                      track: track,
-                      height: miniPlayerHeight,
-                      onTap: onMiniPlayerTap,
-                    );
-                  },
-                ),
-
-                // ── Nav icons row ───────────────────────────────────────
-                SizedBox(
-                  height: navBarHeight,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _NavBtn(icon: Icons.home_rounded,           label: 'Inicio',       index: 0, current: currentIndex, onTap: onNavTap),
-                      _NavBtn(icon: Icons.explore_rounded,        label: 'Explorar',     index: 1, current: currentIndex, onTap: onNavTap),
-                      _NavBtn(icon: Icons.library_music_rounded,  label: 'Biblioteca',   index: 2, current: currentIndex, onTap: onNavTap),
-                      _NavBtn(icon: Icons.settings_rounded,       label: 'Ajustes',      index: 3, current: currentIndex, onTap: onNavTap),
-                    ],
-                  ),
-                ),
-
-                // System nav bar inset spacer if needed
-                SizedBox(height: MediaQuery.of(context).padding.bottom > 0 ? 4 : 0),
               ],
+            ),
+            child: ValueListenableBuilder<bool>(
+              valueListenable: AudioScannerService.isScanningNotifier,
+              builder: (context, isScanning, child) {
+                return AbsorbPointer(
+                  absorbing: isScanning,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 250),
+                    opacity: isScanning ? 0.45 : 1.0,
+                    child: child,
+                  ),
+                );
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ── Mini-player strip (only when a track is loaded) ─────
+                  StreamBuilder<Track?>(
+                    stream: OrpheusAudioHandler.instance.currentTrackStream,
+                    initialData: OrpheusAudioHandler.instance.currentTrack,
+                    builder: (context, snap) {
+                      final track = snap.data;
+                      if (track == null || track.trackId.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return _MiniPlayerStrip(
+                        track: track,
+                        height: miniPlayerHeight,
+                        onTap: onMiniPlayerTap,
+                      );
+                    },
+                  ),
+
+                  // ── Nav icons row ───────────────────────────────────────
+                  SizedBox(
+                    height: navBarHeight,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _NavBtn(icon: Icons.home_rounded,           label: 'Inicio',       index: 0, current: currentIndex, onTap: onNavTap),
+                        _NavBtn(icon: Icons.explore_rounded,        label: 'Explorar',     index: 1, current: currentIndex, onTap: onNavTap),
+                        _NavBtn(icon: Icons.library_music_rounded,  label: 'Biblioteca',   index: 2, current: currentIndex, onTap: onNavTap),
+                        _NavBtn(icon: Icons.settings_rounded,       label: 'Ajustes',      index: 3, current: currentIndex, onTap: onNavTap),
+                      ],
+                    ),
+                  ),
+
+                  // System nav bar inset spacer if needed
+                  SizedBox(height: MediaQuery.of(context).padding.bottom > 0 ? 4 : 0),
+                ],
+              ),
             ),
           ),
         ),
