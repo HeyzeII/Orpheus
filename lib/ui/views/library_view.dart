@@ -54,6 +54,11 @@ class _LibraryViewState extends State<LibraryView> {
   String? _selectedArtist;
   Playlist? _selectedPlaylist;
 
+  // Pre-computed O(1) in-memory indexes for zero-cost grid & list building
+  Map<int, Track> _tracksById = {};
+  Map<String, Track> _firstTrackByAlbum = {};
+  Map<String, int> _trackCountByArtist = {};
+
   void _clearSelectedAlbum() {
     AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
     setState(() => _selectedAlbum = null);
@@ -101,9 +106,28 @@ class _LibraryViewState extends State<LibraryView> {
     final artists = await db.getUniqueArtists();
     final playlists = await db.getAllPlaylists();
 
+    // 1. Build O(1) track lookup dictionary
+    final tracksById = <int, Track>{for (final t in tracks) t.id: t};
+
+    // 2. Pre-index first track for each album cover
+    final firstTrackByAlbum = <String, Track>{};
+    for (final t in tracks) {
+      firstTrackByAlbum.putIfAbsent(t.displayAlbum, () => t);
+    }
+
+    // 3. Pre-index track counts per artist (avoiding linear scans on every list tile)
+    final trackCountByArtist = <String, int>{};
+    for (final t in tracks) {
+      for (final a in t.individualArtists) {
+        final key = a.toLowerCase();
+        trackCountByArtist[key] = (trackCountByArtist[key] ?? 0) + 1;
+      }
+    }
+
     final likedPlaylist = await db.getPlaylistById('__liked__');
     final likedIds = likedPlaylist?.trackIds
-            .map((id) => tracks.firstWhere((t) => t.id == id, orElse: () => Track()).trackId)
+            .map((id) => tracksById[id]?.trackId)
+            .whereType<String>()
             .where((tid) => tid.isNotEmpty)
             .toSet() ??
         <String>{};
@@ -115,6 +139,9 @@ class _LibraryViewState extends State<LibraryView> {
       _uniqueArtists = artists;
       _playlists = playlists;
       _likedTrackIds = likedIds;
+      _tracksById = tracksById;
+      _firstTrackByAlbum = firstTrackByAlbum;
+      _trackCountByArtist = trackCountByArtist;
       _isLoading = false;
 
       if (_selectedPlaylist != null) {
@@ -724,70 +751,90 @@ class _LibraryViewState extends State<LibraryView> {
             ? (hasTrack ? 60.0 + 64.0 + 12.0 : 60.0 + 12.0) + sysPad + 8.0
             : 0.0;
 
-        // ── Route detail view if any selected ────────────────────────────────────
-        if (_selectedAlbum != null) {
-          return _buildAlbumDetails(_selectedAlbum!, bottomPad: bottomPad);
-        }
-        if (_selectedArtist != null) {
-          return _buildArtistDetails(_selectedArtist!, bottomPad: bottomPad);
-        }
-        if (_selectedPlaylist != null) {
-          return _buildPlaylistDetails(_selectedPlaylist!, bottomPad: bottomPad);
-        }
+        final hasDetail = _selectedAlbum != null ||
+            _selectedArtist != null ||
+            _selectedPlaylist != null;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        return Stack(
           children: [
-            // ── Tabs Header ──────────────────────────────────────────────────────
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                isMobile ? 16 : 32,
-                isMobile ? (MediaQuery.of(context).padding.top + 12) : 36,
-                isMobile ? 16 : 32,
-                0,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Tu Biblioteca',
-                    style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          fontSize: isMobile ? 26 : null,
+            // ── Main Catalog View (Preserved in element tree for 0ms rebuild on exit) ──
+            Positioned.fill(
+              child: Offstage(
+                offstage: hasDetail,
+                child: TickerMode(
+                  enabled: !hasDetail,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ── Tabs Header ──────────────────────────────────────────────────────
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          isMobile ? 16 : 32,
+                          isMobile ? (MediaQuery.of(context).padding.top + 12) : 36,
+                          isMobile ? 16 : 32,
+                          0,
                         ),
-                  ),
-                  const SizedBox(height: 18),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    child: Row(
-                      children: [
-                        _buildTabButton(LibraryTab.tracks, 'Canciones'),
-                        _buildTabButton(LibraryTab.albums, 'Álbumes'),
-                        _buildTabButton(LibraryTab.artists, 'Artistas'),
-                        _buildTabButton(LibraryTab.playlists, 'Playlists'),
-                        _buildTabButton(LibraryTab.videos, 'Vídeos'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(color: AppTheme.divider, height: 1),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Tu Biblioteca',
+                              style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: isMobile ? 26 : null,
+                                  ),
+                            ),
+                            const SizedBox(height: 18),
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              child: Row(
+                                children: [
+                                  _buildTabButton(LibraryTab.tracks, 'Canciones'),
+                                  _buildTabButton(LibraryTab.albums, 'Álbumes'),
+                                  _buildTabButton(LibraryTab.artists, 'Artistas'),
+                                  _buildTabButton(LibraryTab.playlists, 'Playlists'),
+                                  _buildTabButton(LibraryTab.videos, 'Vídeos'),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(color: AppTheme.divider, height: 1),
 
-            // ── Active Tab View Content ──────────────────────────────────────────
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 32),
-                child: switch (_activeTab) {
-                  LibraryTab.tracks   => _buildTracksTab(bottomPad: bottomPad),
-                  LibraryTab.albums   => _buildAlbumsTab(bottomPad: bottomPad),
-                  LibraryTab.artists  => _buildArtistsTab(bottomPad: bottomPad),
-                  LibraryTab.playlists => _buildPlaylistsTab(bottomPad: bottomPad),
-                  LibraryTab.videos   => _buildVideosTab(bottomPad: bottomPad),
-                },
+                      // ── Active Tab View Content ──────────────────────────────────────────
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 32),
+                          child: switch (_activeTab) {
+                            LibraryTab.tracks   => _buildTracksTab(bottomPad: bottomPad),
+                            LibraryTab.albums   => _buildAlbumsTab(bottomPad: bottomPad),
+                            LibraryTab.artists  => _buildArtistsTab(bottomPad: bottomPad),
+                            LibraryTab.playlists => _buildPlaylistsTab(bottomPad: bottomPad),
+                            LibraryTab.videos   => _buildVideosTab(bottomPad: bottomPad),
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
+
+            // ── Route detail view if any selected ────────────────────────────────────
+            if (_selectedAlbum != null)
+              Positioned.fill(
+                child: _buildAlbumDetails(_selectedAlbum!, bottomPad: bottomPad),
+              ),
+            if (_selectedArtist != null)
+              Positioned.fill(
+                child: _buildArtistDetails(_selectedArtist!, bottomPad: bottomPad),
+              ),
+            if (_selectedPlaylist != null)
+              Positioned.fill(
+                child: _buildPlaylistDetails(_selectedPlaylist!, bottomPad: bottomPad),
+              ),
           ],
         );
       },
@@ -927,10 +974,11 @@ class _LibraryViewState extends State<LibraryView> {
               itemCount: filtered.length,
               itemBuilder: (context, idx) {
                 final albumName = filtered[idx];
-                final firstTrack = _allTracks.firstWhere(
-                  (t) => t.displayAlbum == albumName,
-                  orElse: () => _allTracks.first,
-                );
+                final firstTrack = _firstTrackByAlbum[albumName] ??
+                    _allTracks.firstWhere(
+                      (t) => t.displayAlbum == albumName,
+                      orElse: () => _allTracks.isNotEmpty ? _allTracks.first : Track(),
+                    );
                 final coverPath = firstTrack.customMetadata.customCoverPath;
 
                 return MouseRegion(
@@ -952,8 +1000,17 @@ class _LibraryViewState extends State<LibraryView> {
                               borderRadius: BorderRadius.circular(6),
                               child: AspectRatio(
                                 aspectRatio: 1,
-                                child: coverPath != null
-                                    ? Image.file(File(coverPath), fit: BoxFit.cover)
+                                child: coverPath != null && coverPath.isNotEmpty
+                                    ? Image.file(
+                                        File(coverPath),
+                                        fit: BoxFit.cover,
+                                        cacheWidth: 320,
+                                        errorBuilder: (_, __, ___) => Container(
+                                          color: AppTheme.bgHover,
+                                          child: const Icon(Icons.album_rounded,
+                                              color: AppTheme.textHint, size: 48),
+                                        ),
+                                      )
                                     : Container(
                                         color: AppTheme.bgHover,
                                         child: const Icon(Icons.album_rounded,
@@ -1019,10 +1076,7 @@ class _LibraryViewState extends State<LibraryView> {
             itemCount: filtered.length,
             itemBuilder: (context, idx) {
               final artistName = filtered[idx];
-              final count = _allTracks
-                  .where((t) => t.individualArtists
-                      .any((a) => a.toLowerCase() == artistName.toLowerCase()))
-                  .length;
+              final count = _trackCountByArtist[artistName.toLowerCase()] ?? 0;
 
               return Material(
                 color: AppTheme.bgSurface,
@@ -1151,6 +1205,7 @@ class _LibraryViewState extends State<LibraryView> {
                                             child: PlaylistCover(
                                               playlist: livePlaylist,
                                               allTracks: _allTracks,
+                                              tracksById: _tracksById,
                                               size: 180,
                                               coverVersion: _coverVersions[livePlaylist.playlistId],
                                             ),
@@ -2234,6 +2289,7 @@ class _LibraryViewState extends State<LibraryView> {
                                 child: _PlaylistCoverPicker(
                                   playlist: playlist,
                                   allTracks: _allTracks,
+                                  tracksById: _tracksById,
                                   onPickCover: isLiked ? null : () => _pickPlaylistCover(playlist),
                                   onClearCover: (isLiked || playlist.customCoverPath == null)
                                       ? null
@@ -2263,6 +2319,7 @@ class _LibraryViewState extends State<LibraryView> {
                             child: _PlaylistCoverPicker(
                               playlist: playlist,
                               allTracks: _allTracks,
+                              tracksById: _tracksById,
                               size: 230,
                               borderRadius: BorderRadius.circular(12),
                               onPickCover: isLiked ? null : () => _pickPlaylistCover(playlist),
@@ -2440,6 +2497,7 @@ class _LibraryViewState extends State<LibraryView> {
                           child: _PlaylistCoverPicker(
                             playlist: playlist,
                             allTracks: _allTracks,
+                            tracksById: _tracksById,
                             size: heroSize,
                             borderRadius: BorderRadius.circular(16),
                             onPickCover: isLiked ? null : () => _pickPlaylistCover(playlist),
@@ -4008,6 +4066,7 @@ class _TrackRowState extends State<_TrackRow> {
 class PlaylistCover extends StatelessWidget {
   final Playlist playlist;
   final List<Track> allTracks;
+  final Map<int, Track>? tracksById;
   final double size;
   final int? coverVersion;
 
@@ -4015,6 +4074,7 @@ class PlaylistCover extends StatelessWidget {
     super.key,
     required this.playlist,
     required this.allTracks,
+    this.tracksById,
     required this.size,
     this.coverVersion,
   });
@@ -4025,16 +4085,16 @@ class PlaylistCover extends StatelessWidget {
 
     // 1. Custom playlist cover (priority 1) with cache breaker
     final customPath = playlist.customCoverPath;
-    if (customPath != null && customPath.isNotEmpty && File(customPath).existsSync()) {
-      final file = File(customPath);
-      final lastModified = file.lastModifiedSync().millisecondsSinceEpoch;
-      final version = coverVersion ?? lastModified;
+    if (customPath != null && customPath.isNotEmpty) {
+      final version = coverVersion ?? 0;
       return Image.file(
-        file,
+        File(customPath),
         key: ValueKey('${customPath}_$version'),
         width: size,
         height: size,
         fit: BoxFit.cover,
+        cacheWidth: 320,
+        errorBuilder: (_, __, ___) => _buildVinylPlaceholder(isLiked),
       );
     }
 
@@ -4044,9 +4104,9 @@ class PlaylistCover extends StatelessWidget {
       return _buildVinylPlaceholder(true);
     }
 
-    // Resolve tracks in order using the database int ID
+    // Resolve tracks in order using the database int ID with O(1) dictionary
     final playlistTracks = playlist.trackIds
-        .map((id) => allTracks.firstWhere((t) => t.id == id, orElse: () => Track()))
+        .map((id) => tracksById?[id] ?? allTracks.firstWhere((t) => t.id == id, orElse: () => Track()))
         .where((t) => t.trackId.isNotEmpty)
         .toList();
 
@@ -4057,15 +4117,15 @@ class PlaylistCover extends StatelessWidget {
       // 1 to 3 songs: first song cover with cache breaker
       final firstTrack = playlistTracks.first;
       final coverPath = firstTrack.customMetadata.customCoverPath;
-      if (coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync()) {
-        final file = File(coverPath);
-        final lastModified = file.lastModifiedSync().millisecondsSinceEpoch;
+      if (coverPath != null && coverPath.isNotEmpty) {
         return Image.file(
-          file,
-          key: ValueKey('${coverPath}_$lastModified'),
+          File(coverPath),
+          key: ValueKey('${coverPath}_$coverVersion'),
           width: size,
           height: size,
           fit: BoxFit.cover,
+          cacheWidth: 320,
+          errorBuilder: (_, __, ___) => _buildTrackPlaceholder(isLiked),
         );
       } else {
         return _buildTrackPlaceholder(isLiked);
@@ -4085,13 +4145,13 @@ class PlaylistCover extends StatelessWidget {
             final cellIdx = entry.key;
             final track = entry.value;
             final coverPath = track.customMetadata.customCoverPath;
-            if (coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync()) {
-              final file = File(coverPath);
-              final lastModified = file.lastModifiedSync().millisecondsSinceEpoch;
+            if (coverPath != null && coverPath.isNotEmpty) {
               return Image.file(
-                file,
-                key: ValueKey('collage_${cellIdx}_${track.id}_$lastModified'),
+                File(coverPath),
+                key: ValueKey('collage_${cellIdx}_${track.id}_$coverVersion'),
                 fit: BoxFit.cover,
+                cacheWidth: 160,
+                errorBuilder: (_, __, ___) => _buildTrackPlaceholder(false, iconSize: size / 6),
               );
             } else {
               return _buildTrackPlaceholder(false, iconSize: size / 6);
@@ -4219,6 +4279,7 @@ class _PlaylistCoverPicker extends StatefulWidget {
   const _PlaylistCoverPicker({
     required this.playlist,
     required this.allTracks,
+    this.tracksById,
     this.onPickCover,
     this.onClearCover,
     this.coverVersion,
@@ -4228,6 +4289,7 @@ class _PlaylistCoverPicker extends StatefulWidget {
 
   final Playlist playlist;
   final List<Track> allTracks;
+  final Map<int, Track>? tracksById;
   final VoidCallback? onPickCover;
   final VoidCallback? onClearCover;
   final int? coverVersion;
@@ -4313,6 +4375,7 @@ class _PlaylistCoverPickerState extends State<_PlaylistCoverPicker> {
                 PlaylistCover(
                   playlist: widget.playlist,
                   allTracks: widget.allTracks,
+                  tracksById: widget.tracksById,
                   size: widget.size,
                   coverVersion: widget.coverVersion,
                 ),

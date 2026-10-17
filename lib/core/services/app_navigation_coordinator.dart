@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../ui/widgets/sidebar.dart';
@@ -19,12 +20,24 @@ class AppNavigationCoordinator {
   /// when exiting detail views or closing modals via native Android gestures.
   final ValueNotifier<bool> miniPlayerPointerBlocked = ValueNotifier<bool>(false);
 
+  Timer? _gestureLockTimer;
+
   /// Temporarily blocks pointer events on the mini-player for exactly 1 frame.
-  void triggerMiniPlayerGestureLock() {
+  /// Includes a strict failsafe timer (35 ms) so that an anomalous lag spike
+  /// never holds the tactile lock beyond human perception.
+  void triggerMiniPlayerGestureLock({Duration maxDuration = const Duration(milliseconds: 35)}) {
+    _gestureLockTimer?.cancel();
     miniPlayerPointerBlocked.value = true;
     WidgetsBinding.instance.scheduleFrame();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _gestureLockTimer?.cancel();
       miniPlayerPointerBlocked.value = false;
+    });
+
+    _gestureLockTimer = Timer(maxDuration, () {
+      if (miniPlayerPointerBlocked.value) {
+        miniPlayerPointerBlocked.value = false;
+      }
     });
   }
 
