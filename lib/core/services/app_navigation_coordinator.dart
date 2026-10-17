@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../ui/widgets/sidebar.dart';
@@ -15,31 +14,6 @@ class AppNavigationCoordinator {
 
   /// Reactive notifier for the desktop lyrics slide-up panel visibility.
   final ValueNotifier<bool> desktopLyricsOpen = ValueNotifier<bool>(false);
-
-  /// One-frame pointer blocking notifier to prevent GestureArena race conditions
-  /// when exiting detail views or closing modals via native Android gestures.
-  final ValueNotifier<bool> miniPlayerPointerBlocked = ValueNotifier<bool>(false);
-
-  Timer? _gestureLockTimer;
-
-  /// Temporarily blocks pointer events on the mini-player for exactly 1 frame.
-  /// Includes a strict failsafe timer (35 ms) so that an anomalous lag spike
-  /// never holds the tactile lock beyond human perception.
-  void triggerMiniPlayerGestureLock({Duration maxDuration = const Duration(milliseconds: 35)}) {
-    _gestureLockTimer?.cancel();
-    miniPlayerPointerBlocked.value = true;
-    WidgetsBinding.instance.scheduleFrame();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _gestureLockTimer?.cancel();
-      miniPlayerPointerBlocked.value = false;
-    });
-
-    _gestureLockTimer = Timer(maxDuration, () {
-      if (miniPlayerPointerBlocked.value) {
-        miniPlayerPointerBlocked.value = false;
-      }
-    });
-  }
 
   /// Navigates to a target [destination] and closes any overlay panels.
   void navigateTo(NavDestination destination) {

@@ -371,38 +371,27 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
 
   Future<void> _openExpandedPlayer() async {
     setState(() => _expandedPlayerOpen = true);
-    bool statusListenerAttached = false;
     await showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Dismiss',
       barrierColor: Colors.black.withAlpha(128),
-      transitionDuration: const Duration(milliseconds: 320),
+      transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (ctx, _, __) => const ExpandedPlayerView(),
       transitionBuilder: (ctx, animation, _, child) {
-        if (!statusListenerAttached) {
-          statusListenerAttached = true;
-          animation.addStatusListener((status) {
-            if (status == AnimationStatus.dismissed && mounted) {
-              AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
-              setState(() => _expandedPlayerOpen = false);
-            }
-          });
-        }
         return SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(0, 1),
             end: Offset.zero,
           ).animate(CurvedAnimation(
             parent: animation,
-            curve: Curves.easeOutCubic,
+            curve: Curves.fastOutSlowIn,
           )),
           child: child,
         );
       },
     );
     if (mounted && _expandedPlayerOpen) {
-      AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
       setState(() => _expandedPlayerOpen = false);
     }
   }
@@ -445,14 +434,12 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
 
           // 1. Close expanded player dialog if open
           if (_expandedPlayerOpen) {
-            AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
             Navigator.of(context).pop();
             return;
           }
 
           // 3. Pop tab history if we have previous tab visits
           if (_navigationHistory.isNotEmpty) {
-            AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
             setState(() {
               _currentIndex = _navigationHistory.removeLast();
             });
@@ -538,17 +525,9 @@ class _UnifiedBottomPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: AppNavigationCoordinator.instance.miniPlayerPointerBlocked,
-      builder: (context, isBlocked, panelChild) {
-        return IgnorePointer(
-          ignoring: isBlocked,
-          child: panelChild,
-        );
-      },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(32),
-        child: BackdropFilter(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(32),
+      child: BackdropFilter(
           filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
           child: Container(
             decoration: BoxDecoration(
@@ -619,8 +598,7 @@ class _UnifiedBottomPanel extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 

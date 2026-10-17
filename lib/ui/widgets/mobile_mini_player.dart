@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../core/models/track.dart';
-import '../../core/services/app_navigation_coordinator.dart';
 import '../../core/services/audio_handler.dart';
 import '../theme/app_theme.dart';
 import '../widgets/radio_indicator_badge.dart';
@@ -24,34 +23,23 @@ class MobileMiniPlayer extends StatelessWidget {
   // ── Navigation ────────────────────────────────────────────────────────────
 
   void _openExpandedPlayer(BuildContext context) {
-    bool statusListenerAttached = false;
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Dismiss',
       barrierColor: Colors.black.withAlpha(128),
-      transitionDuration: const Duration(milliseconds: 320),
+      transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (ctx, _, __) => const ExpandedPlayerView(),
-      transitionBuilder: (ctx, animation, _, child) {
-        if (!statusListenerAttached) {
-          statusListenerAttached = true;
-          animation.addStatusListener((status) {
-            if (status == AnimationStatus.dismissed) {
-              AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
-            }
-          });
-        }
-        return SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 1),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutCubic,
-          )),
-          child: child,
-        );
-      },
+      transitionBuilder: (ctx, animation, _, child) => SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 1),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(
+          parent: animation,
+          curve: Curves.fastOutSlowIn,
+        )),
+        child: child,
+      ),
     );
   }
 

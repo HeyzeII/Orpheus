@@ -10,7 +10,6 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
-import '../../core/services/app_navigation_coordinator.dart';
 import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/permission_service.dart';
@@ -49,29 +48,72 @@ class _LibraryViewState extends State<LibraryView> {
   String _searchQuery = '';
   bool _isLoading = true;
 
-  // Detail view state
-  String? _selectedAlbum;
-  String? _selectedArtist;
-  Playlist? _selectedPlaylist;
-
   // Pre-computed O(1) in-memory indexes for zero-cost grid & list building
   Map<int, Track> _tracksById = {};
   Map<String, Track> _firstTrackByAlbum = {};
   Map<String, int> _trackCountByArtist = {};
 
-  void _clearSelectedAlbum() {
-    AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
-    setState(() => _selectedAlbum = null);
+  void _openAlbum(String albumName, [double? bottomPad]) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (ctx, _, __) => Scaffold(
+          backgroundColor: AppTheme.bgDeep,
+          body: _buildAlbumDetails(albumName, bottomPad: bottomPad ?? 0),
+        ),
+        transitionsBuilder: (ctx, animation, _, child) => SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          )),
+          child: child,
+        ),
+      ),
+    );
   }
 
-  void _clearSelectedArtist() {
-    AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
-    setState(() => _selectedArtist = null);
+  void _openArtist(String artistName, [double? bottomPad]) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (ctx, _, __) => Scaffold(
+          backgroundColor: AppTheme.bgDeep,
+          body: _buildArtistDetails(artistName, bottomPad: bottomPad ?? 0),
+        ),
+        transitionsBuilder: (ctx, animation, _, child) => SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          )),
+          child: child,
+        ),
+      ),
+    );
   }
 
-  void _clearSelectedPlaylist() {
-    AppNavigationCoordinator.instance.triggerMiniPlayerGestureLock();
-    setState(() => _selectedPlaylist = null);
+  void _openPlaylist(Playlist playlist, [double? bottomPad]) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (ctx, _, __) => Scaffold(
+          backgroundColor: AppTheme.bgDeep,
+          body: _buildPlaylistDetails(playlist, bottomPad: bottomPad ?? 0),
+        ),
+        transitionsBuilder: (ctx, animation, _, child) => SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1, 0),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          )),
+          child: child,
+        ),
+      ),
+    );
   }
 
   StreamSubscription<void>? _tracksSubscription;
@@ -143,20 +185,6 @@ class _LibraryViewState extends State<LibraryView> {
       _firstTrackByAlbum = firstTrackByAlbum;
       _trackCountByArtist = trackCountByArtist;
       _isLoading = false;
-
-      if (_selectedPlaylist != null) {
-        final updated = playlists.firstWhere(
-          (p) => p.playlistId == _selectedPlaylist!.playlistId,
-          orElse: () => _selectedPlaylist!,
-        );
-        _selectedPlaylist = updated;
-      }
-    });
-  }
-
-  void _selectPlaylist(Playlist playlist) {
-    setState(() {
-      _selectedPlaylist = playlist;
     });
   }
 
@@ -725,7 +753,9 @@ class _LibraryViewState extends State<LibraryView> {
 
     if (confirm == true) {
       await LocalDatabase.instance.deletePlaylist(playlist.id);
-      _clearSelectedPlaylist();
+      if (mounted) {
+        Navigator.of(context).maybePop();
+      }
       _refreshData();
     }
   }
@@ -751,90 +781,59 @@ class _LibraryViewState extends State<LibraryView> {
             ? (hasTrack ? 60.0 + 64.0 + 12.0 : 60.0 + 12.0) + sysPad + 8.0
             : 0.0;
 
-        final hasDetail = _selectedAlbum != null ||
-            _selectedArtist != null ||
-            _selectedPlaylist != null;
-
-        return Stack(
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Main Catalog View (Preserved in element tree for 0ms rebuild on exit) ──
-            Positioned.fill(
-              child: Offstage(
-                offstage: hasDetail,
-                child: TickerMode(
-                  enabled: !hasDetail,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // ── Tabs Header ──────────────────────────────────────────────────────
-                      Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          isMobile ? 16 : 32,
-                          isMobile ? (MediaQuery.of(context).padding.top + 12) : 36,
-                          isMobile ? 16 : 32,
-                          0,
+            // ── Tabs Header ──────────────────────────────────────────────────────
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                isMobile ? 16 : 32,
+                isMobile ? (MediaQuery.of(context).padding.top + 12) : 36,
+                isMobile ? 16 : 32,
+                0,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Tu Biblioteca',
+                    style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          fontSize: isMobile ? 26 : null,
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Tu Biblioteca',
-                              style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: isMobile ? 26 : null,
-                                  ),
-                            ),
-                            const SizedBox(height: 18),
-                            SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              physics: const BouncingScrollPhysics(),
-                              child: Row(
-                                children: [
-                                  _buildTabButton(LibraryTab.tracks, 'Canciones'),
-                                  _buildTabButton(LibraryTab.albums, 'Álbumes'),
-                                  _buildTabButton(LibraryTab.artists, 'Artistas'),
-                                  _buildTabButton(LibraryTab.playlists, 'Playlists'),
-                                  _buildTabButton(LibraryTab.videos, 'Vídeos'),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Divider(color: AppTheme.divider, height: 1),
-
-                      // ── Active Tab View Content ──────────────────────────────────────────
-                      Expanded(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 32),
-                          child: switch (_activeTab) {
-                            LibraryTab.tracks   => _buildTracksTab(bottomPad: bottomPad),
-                            LibraryTab.albums   => _buildAlbumsTab(bottomPad: bottomPad),
-                            LibraryTab.artists  => _buildArtistsTab(bottomPad: bottomPad),
-                            LibraryTab.playlists => _buildPlaylistsTab(bottomPad: bottomPad),
-                            LibraryTab.videos   => _buildVideosTab(bottomPad: bottomPad),
-                          },
-                        ),
-                      ),
-                    ],
                   ),
-                ),
+                  const SizedBox(height: 18),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      children: [
+                        _buildTabButton(LibraryTab.tracks, 'Canciones'),
+                        _buildTabButton(LibraryTab.albums, 'Álbumes'),
+                        _buildTabButton(LibraryTab.artists, 'Artistas'),
+                        _buildTabButton(LibraryTab.playlists, 'Playlists'),
+                        _buildTabButton(LibraryTab.videos, 'Vídeos'),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
+            const Divider(color: AppTheme.divider, height: 1),
 
-            // ── Route detail view if any selected ────────────────────────────────────
-            if (_selectedAlbum != null)
-              Positioned.fill(
-                child: _buildAlbumDetails(_selectedAlbum!, bottomPad: bottomPad),
+            // ── Active Tab View Content ──────────────────────────────────────────
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 32),
+                child: switch (_activeTab) {
+                  LibraryTab.tracks   => _buildTracksTab(bottomPad: bottomPad),
+                  LibraryTab.albums   => _buildAlbumsTab(bottomPad: bottomPad),
+                  LibraryTab.artists  => _buildArtistsTab(bottomPad: bottomPad),
+                  LibraryTab.playlists => _buildPlaylistsTab(bottomPad: bottomPad),
+                  LibraryTab.videos   => _buildVideosTab(bottomPad: bottomPad),
+                },
               ),
-            if (_selectedArtist != null)
-              Positioned.fill(
-                child: _buildArtistDetails(_selectedArtist!, bottomPad: bottomPad),
-              ),
-            if (_selectedPlaylist != null)
-              Positioned.fill(
-                child: _buildPlaylistDetails(_selectedPlaylist!, bottomPad: bottomPad),
-              ),
+            ),
           ],
         );
       },
@@ -984,7 +983,7 @@ class _LibraryViewState extends State<LibraryView> {
                 return MouseRegion(
                   cursor: SystemMouseCursors.click,
                   child: GestureDetector(
-                    onTap: () => setState(() => _selectedAlbum = albumName),
+                    onTap: () => _openAlbum(albumName, bottomPad),
                     child: Container(
                       decoration: BoxDecoration(
                         color: AppTheme.bgSurface,
@@ -1109,7 +1108,7 @@ class _LibraryViewState extends State<LibraryView> {
                       style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
                     ),
                     trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textSecondary),
-                    onTap: () => setState(() => _selectedArtist = artistName),
+                    onTap: () => _openArtist(artistName, bottomPad),
                   ),
                 ),
               );
@@ -1186,7 +1185,7 @@ class _LibraryViewState extends State<LibraryView> {
                             return MouseRegion(
                               cursor: SystemMouseCursors.click,
                               child: GestureDetector(
-                                onTap: () => _selectPlaylist(livePlaylist),
+                                onTap: () => _openPlaylist(livePlaylist, bottomPad),
                                 child: Container(
                                   decoration: BoxDecoration(
                                     color: AppTheme.bgSurface,
@@ -1256,27 +1255,21 @@ class _LibraryViewState extends State<LibraryView> {
     final albumTracks = _allTracks.where((t) => t.displayAlbum == albumName).toList();
     final coverPath = albumTracks.isNotEmpty ? albumTracks.first.customMetadata.customCoverPath : null;
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        _clearSelectedAlbum();
-      },
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                  onPressed: _clearSelectedAlbum,
-                ),
-                const SizedBox(width: 8),
-                const Text('Volver a Álbumes', style: TextStyle(color: AppTheme.textSecondary)),
-              ],
-            ),
+    return Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              const SizedBox(width: 8),
+              const Text('Volver a Álbumes', style: TextStyle(color: AppTheme.textSecondary)),
+            ],
+          ),
             const SizedBox(height: 24),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -1412,8 +1405,7 @@ class _LibraryViewState extends State<LibraryView> {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 
   // ── Artist Details View ────────────────────────────────────────────────────
@@ -1426,27 +1418,21 @@ class _LibraryViewState extends State<LibraryView> {
             .any((a) => a.toLowerCase() == artistName.toLowerCase()))
         .toList();
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        _clearSelectedArtist();
-      },
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                  onPressed: _clearSelectedArtist,
-                ),
-                const SizedBox(width: 8),
-                const Text('Volver a Artistas', style: TextStyle(color: AppTheme.textSecondary)),
-              ],
-            ),
+    return Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+              const SizedBox(width: 8),
+              const Text('Volver a Artistas', style: TextStyle(color: AppTheme.textSecondary)),
+            ],
+          ),
             const SizedBox(height: 24),
             Row(
               children: [
@@ -1553,8 +1539,7 @@ class _LibraryViewState extends State<LibraryView> {
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 
   // ── Mobile Album Details View ──────────────────────────────────────────────
@@ -1570,14 +1555,8 @@ class _LibraryViewState extends State<LibraryView> {
     final heroSize = (screenWidth * 0.58).clamp(180.0, 230.0);
     final ValueNotifier<double> scrollProgressNotifier = ValueNotifier<double>(0.0);
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        _clearSelectedAlbum();
-      },
-      child: SafeArea(
-        child: NotificationListener<ScrollNotification>(
+    return SafeArea(
+      child: NotificationListener<ScrollNotification>(
           onNotification: (notification) {
             final progress = (notification.metrics.pixels / 140.0).clamp(0.0, 1.0);
             if (scrollProgressNotifier.value != progress) {
@@ -1623,7 +1602,7 @@ class _LibraryViewState extends State<LibraryView> {
                 ),
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                  onPressed: _clearSelectedAlbum,
+                  onPressed: () => Navigator.of(context).pop(),
                 ),
                 title: ValueListenableBuilder<double>(
                   valueListenable: scrollProgressNotifier,
@@ -1914,8 +1893,7 @@ class _LibraryViewState extends State<LibraryView> {
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 
   // ── Mobile Artist Details View ─────────────────────────────────────────────
@@ -1926,14 +1904,8 @@ class _LibraryViewState extends State<LibraryView> {
         .toList();
     final contextName = 'Artista: $artistName';
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        _clearSelectedArtist();
-      },
-      child: SafeArea(
-        child: CustomScrollView(
+    return SafeArea(
+      child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
@@ -1946,7 +1918,7 @@ class _LibraryViewState extends State<LibraryView> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                          onPressed: _clearSelectedArtist,
+                          onPressed: () => Navigator.of(context).pop(),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
@@ -2197,19 +2169,12 @@ class _LibraryViewState extends State<LibraryView> {
               ),
           ],
         ),
-      ),
-    );
+      );
   }
 
   // ── Playlist Details View ──────────────────────────────────────────────────
   Widget _buildPlaylistDetails(Playlist initialPlaylist, {double bottomPad = 0}) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        _clearSelectedPlaylist();
-      },
-      child: StreamBuilder<Playlist?>(
+    return StreamBuilder<Playlist?>(
         stream: LocalDatabase.instance.watchPlaylistById(initialPlaylist.playlistId),
         initialData: initialPlaylist,
         builder: (context, snapshot) {
@@ -2272,7 +2237,7 @@ class _LibraryViewState extends State<LibraryView> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                          onPressed: _clearSelectedPlaylist,
+                          onPressed: () => Navigator.of(context).pop(),
                         ),
                         const SizedBox(width: 8),
                         const Text('Volver a Playlists', style: TextStyle(color: AppTheme.textSecondary)),
@@ -2353,9 +2318,8 @@ class _LibraryViewState extends State<LibraryView> {
           ],
         );
       },
-    ),
-  );
-}
+    );
+  }
 
   /// Mobile-optimised Playlist Detail View using CustomScrollView and pinned SliverAppBar.
   Widget _buildMobilePlaylistDetails(
@@ -2425,7 +2389,7 @@ class _LibraryViewState extends State<LibraryView> {
                   ),
                   leading: IconButton(
                     icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                    onPressed: _clearSelectedPlaylist,
+                    onPressed: () => Navigator.of(context).pop(),
                   ),
                   title: ValueListenableBuilder<double>(
                     valueListenable: scrollProgressNotifier,
@@ -3031,7 +2995,7 @@ class _LibraryViewState extends State<LibraryView> {
                           style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
                       onTap: () {
                         Navigator.pop(ctx);
-                        setState(() => _selectedAlbum = track.displayAlbum);
+                        _openAlbum(track.displayAlbum);
                       },
                     ),
                     ListTile(
@@ -3040,7 +3004,7 @@ class _LibraryViewState extends State<LibraryView> {
                           style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
                       onTap: () {
                         Navigator.pop(ctx);
-                        setState(() => _selectedArtist = track.displayArtist);
+                        _openArtist(track.displayArtist);
                       },
                     ),
                     ListTile(
