@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
+import '../../core/services/app_navigation_coordinator.dart';
 import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/permission_service.dart';
@@ -18,6 +19,7 @@ import '../theme/app_theme.dart';
 import '../widgets/animated_equalizer.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/radio_launch_sheet.dart';
+import '../widgets/track_options_sheet.dart';
 import '../widgets/video_badge.dart';
 
 enum LibraryTab { tracks, albums, artists, playlists, videos }
@@ -137,6 +139,8 @@ class _LibraryViewState extends State<LibraryView> {
   @override
   void initState() {
     super.initState();
+    AppNavigationCoordinator.instance.onOpenAlbum = _openAlbum;
+    AppNavigationCoordinator.instance.onOpenArtist = _openArtist;
     _refreshData(showSpinner: true);
     _tracksSubscription = LocalDatabase.instance.watchTracks().listen((_) {
       _refreshData(showSpinner: false);
@@ -148,6 +152,12 @@ class _LibraryViewState extends State<LibraryView> {
 
   @override
   void dispose() {
+    if (AppNavigationCoordinator.instance.onOpenAlbum == _openAlbum) {
+      AppNavigationCoordinator.instance.onOpenAlbum = null;
+    }
+    if (AppNavigationCoordinator.instance.onOpenArtist == _openArtist) {
+      AppNavigationCoordinator.instance.onOpenArtist = null;
+    }
     _tracksSubscription?.cancel();
     _playlistsSubscription?.cancel();
     super.dispose();
@@ -2917,175 +2927,21 @@ class _LibraryViewState extends State<LibraryView> {
     Playlist? playlistSource,
     int? trackIndexInPlaylist,
   }) {
-    final coverPath = track.customMetadata.customCoverPath;
-    final hasArt = coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
-    final db = LocalDatabase.instance;
-
-    showModalBottomSheet(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: AppTheme.bgSurface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          top: false,
-          bottom: true,
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: ValueListenableBuilder<Set<String>>(
-                valueListenable: db.likedTrackIdsNotifier,
-                builder: (context, likedTrackIds, _) {
-                  final isLiked = likedTrackIds.contains(track.trackId);
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header: Cover + Title + Artist
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: SizedBox(
-                              width: 48,
-                              height: 48,
-                              child: hasArt
-                                  ? Image.file(File(coverPath), fit: BoxFit.cover, cacheWidth: 96)
-                                  : const ColoredBox(
-                                      color: AppTheme.bgHover,
-                                      child: Icon(Icons.music_note_rounded,
-                                          color: AppTheme.textHint, size: 24),
-                                    ),
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  track.displayTitle,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: AppTheme.textPrimary,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  track.displayArtist,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: AppTheme.textSecondary,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Divider(color: AppTheme.divider, height: 1),
-                    const SizedBox(height: 4),
-
-                    // Options List
-                    ListTile(
-                      leading: const Icon(Icons.playlist_play_rounded, color: AppTheme.textPrimary),
-                      title: const Text('Reproducir a continuación',
-                          style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        OrpheusAudioHandler.instance.playNext(track);
-                      },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.queue_music_rounded, color: AppTheme.textPrimary),
-                      title: const Text('Añadir a la cola',
-                          style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        OrpheusAudioHandler.instance.addToQueue(track);
-                      },
-                    ),
-                    if (playlistSource != null && !playlistSource.isDefault && trackIndexInPlaylist != null)
-                      ListTile(
-                        leading: const Icon(Icons.remove_circle_outline_rounded, color: Colors.redAccent),
-                        title: const Text('Quitar de la playlist',
-                            style: TextStyle(color: Colors.redAccent, fontSize: 14)),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _removeTrackFromPlaylistAt(playlistSource, trackIndexInPlaylist);
-                        },
-                      ),
-                    ListTile(
-                      leading: const Icon(Icons.playlist_add_rounded, color: AppTheme.textPrimary),
-                      title: const Text('Añadir a playlist',
-                          style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _showAddToPlaylistModal(context, track);
-                      },
-                    ),
-                    ListTile(
-                      leading: Icon(
-                        isLiked ? Icons.favorite : Icons.favorite_border,
-                        color: isLiked ? Colors.redAccent : AppTheme.textPrimary,
-                      ),
-                      title: Text(
-                        isLiked ? 'Quitar de Me gusta' : 'Añadir a Me gusta',
-                        style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
-                      ),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        db.toggleLikeOptimistic(track.trackId);
-                      },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.album_rounded, color: AppTheme.textPrimary),
-                      title: const Text('Ir al álbum',
-                          style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _openAlbum(track.displayAlbum);
-                      },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.person_rounded, color: AppTheme.textPrimary),
-                      title: const Text('Ir al artista',
-                          style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _openArtist(track.displayArtist);
-                      },
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.edit_rounded, color: AppTheme.textPrimary),
-                      title: const Text('Editar información',
-                          style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _showEditMetadataDialog(context, track);
-                      },
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ),
-      );
-    },
-  );
+    TrackOptionsSheet.show(
+      context,
+      track: track,
+      playlistSource: playlistSource,
+      trackIndexInPlaylist: trackIndexInPlaylist,
+      onRemoveFromPlaylist: (playlistSource != null &&
+              !playlistSource.isDefault &&
+              trackIndexInPlaylist != null)
+          ? () =>
+              _removeTrackFromPlaylistAt(playlistSource, trackIndexInPlaylist)
+          : null,
+      onOpenAlbum: _openAlbum,
+      onOpenArtist: _openArtist,
+      onRefreshData: _refreshData,
+    );
   }
 
   void _showAddTracksToPlaylistModal(
@@ -3177,132 +3033,6 @@ class _LibraryViewState extends State<LibraryView> {
               ],
             ),
           ),
-        );
-      },
-    );
-  }
-
-  void _showAddToPlaylistModal(BuildContext context, Track track) {
-    _showAddTracksToPlaylistModal(context, [track], collectionTitle: track.displayTitle);
-  }
-
-  void _showEditMetadataDialog(BuildContext context, Track track) {
-    final titleController = TextEditingController(text: track.displayTitle);
-    final artistController = TextEditingController(text: track.displayArtist);
-    final albumController = TextEditingController(text: track.displayAlbum);
-
-    showDialog(
-      context: context,
-      builder: (dialogCtx) {
-        return AlertDialog(
-          backgroundColor: AppTheme.bgSurface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: AppTheme.divider),
-          ),
-          title: const Row(
-            children: [
-              Icon(Icons.edit_rounded, color: AppTheme.accent, size: 20),
-              SizedBox(width: 8),
-              Text(
-                'Editar información',
-                style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
-              ),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  autofocus: true,
-                  style: const TextStyle(color: AppTheme.textPrimary),
-                  decoration: const InputDecoration(
-                    labelText: 'Título',
-                    labelStyle: TextStyle(color: AppTheme.textSecondary),
-                    enabledBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: AppTheme.divider),
-                    ),
-                    focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: AppTheme.accent),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: artistController,
-                  style: const TextStyle(color: AppTheme.textPrimary),
-                  decoration: const InputDecoration(
-                    labelText: 'Artista',
-                    labelStyle: TextStyle(color: AppTheme.textSecondary),
-                    enabledBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: AppTheme.divider),
-                    ),
-                    focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: AppTheme.accent),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: albumController,
-                  style: const TextStyle(color: AppTheme.textPrimary),
-                  decoration: const InputDecoration(
-                    labelText: 'Álbum',
-                    labelStyle: TextStyle(color: AppTheme.textSecondary),
-                    enabledBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: AppTheme.divider),
-                    ),
-                    focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: AppTheme.accent),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx),
-              child: const Text('Cancelar', style: TextStyle(color: AppTheme.textSecondary)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.accent,
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              onPressed: () async {
-                final newTitle = titleController.text.trim();
-                final newArtist = artistController.text.trim();
-                final newAlbum = albumController.text.trim();
-                Navigator.pop(dialogCtx);
-
-                await LocalDatabase.instance.updateTrackMetadata(
-                  track,
-                  newTitle: newTitle,
-                  newArtist: newArtist,
-                  newAlbum: newAlbum,
-                  resetMediaFlags: true,
-                );
-
-                // Update in player if it's currently loaded
-                AudioPlayerService.instance.updateTrack(track);
-
-                if (mounted) {
-                  await _refreshData();
-                }
-              },
-              child: const Text('Guardar', style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
-          ],
         );
       },
     );

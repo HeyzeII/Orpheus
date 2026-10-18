@@ -897,6 +897,14 @@ class AudioPlayerService {
     _notifyState();
   }
 
+  /// Removes a single track from [_userQueue] by [index].
+  /// No-op if [index] is out of range.
+  void removeFromUserQueue(int index) {
+    if (index < 0 || index >= _userQueue.length) return;
+    _userQueue.removeAt(index);
+    _notifyState();
+  }
+
   /// Clears userQueue and upcoming context except the current track, preserving the immutable history log.
   void clearQueue() {
     _userQueue.clear();
@@ -949,6 +957,45 @@ class AudioPlayerService {
     if (_shuffle && _shuffledOriginalIndices != null && absOld < _shuffledOriginalIndices!.length) {
       final origIdx = _shuffledOriginalIndices!.removeAt(absOld);
       _shuffledOriginalIndices!.insert(absNew.clamp(0, _shuffledOriginalIndices!.length), origIdx);
+    }
+
+    _notifyState();
+  }
+
+  /// Removes a single track from the upcoming context queue by [index].
+  /// No-op if [index] is out of range.
+  void removeFromContextQueue(int index) {
+    final upcoming = _upcomingContext;
+    if (index < 0 || index >= upcoming.length) return;
+
+    final absIndex = _contextIndex + 1 + index;
+    if (_shuffle && _shuffledContextTracks != null) {
+      if (absIndex < 0 || absIndex >= _shuffledContextTracks!.length) return;
+      final removedTrack = _shuffledContextTracks!.removeAt(absIndex);
+
+      int? origIdx;
+      if (_shuffledOriginalIndices != null &&
+          absIndex < _shuffledOriginalIndices!.length) {
+        origIdx = _shuffledOriginalIndices!.removeAt(absIndex);
+      }
+
+      // Also remove from _contextTracks so it does not reappear if shuffle is toggled off
+      if (origIdx != null && origIdx >= 0 && origIdx < _contextTracks.length) {
+        _contextTracks.removeAt(origIdx);
+        // Adjust remaining original indices that pointed to elements after origIdx
+        if (_shuffledOriginalIndices != null) {
+          for (int i = 0; i < _shuffledOriginalIndices!.length; i++) {
+            if (_shuffledOriginalIndices![i] > origIdx) {
+              _shuffledOriginalIndices![i]--;
+            }
+          }
+        }
+      } else {
+        _contextTracks.remove(removedTrack);
+      }
+    } else {
+      if (absIndex < 0 || absIndex >= _contextTracks.length) return;
+      _contextTracks.removeAt(absIndex);
     }
 
     _notifyState();

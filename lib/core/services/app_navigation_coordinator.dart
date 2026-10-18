@@ -48,4 +48,36 @@ class AppNavigationCoordinator {
     // 3. Switch main shell tab to settings
     currentDestination.value = NavDestination.settings;
   }
+
+  /// Callbacks registered by LibraryView for navigating directly to album or artist.
+  void Function(String albumName)? onOpenAlbum;
+  void Function(String artistName)? onOpenArtist;
+
+  /// Navigates cleanly to album details in Library from any context.
+  void openAlbum(BuildContext context, String albumName) {
+    if (albumName.trim().isEmpty) return;
+    final rootNav = Navigator.of(context, rootNavigator: true);
+    if (rootNav.canPop()) {
+      rootNav.pop();
+    }
+    desktopLyricsOpen.value = false;
+    currentDestination.value = NavDestination.library;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      onOpenAlbum?.call(albumName);
+    });
+  }
+
+  /// Navigates cleanly to artist details in Library from any context.
+  void openArtist(BuildContext context, String artistName) {
+    if (artistName.trim().isEmpty) return;
+    final rootNav = Navigator.of(context, rootNavigator: true);
+    if (rootNav.canPop()) {
+      rootNav.pop();
+    }
+    desktopLyricsOpen.value = false;
+    currentDestination.value = NavDestination.library;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      onOpenArtist?.call(artistName);
+    });
+  }
 }

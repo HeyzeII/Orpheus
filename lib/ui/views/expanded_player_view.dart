@@ -17,6 +17,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/marquee_text.dart';
 import '../widgets/radio_launch_sheet.dart';
 import '../widgets/similar_tracks_panel.dart';
+import '../widgets/track_options_sheet.dart';
 import '../widgets/video_canvas.dart';
 import 'lyrics_view.dart';
 
@@ -378,9 +379,12 @@ class _DesktopVideoLayoutState extends State<_DesktopVideoLayout> {
                                     height: 1,
                                     color: Color(0x1FFFFFFF),
                                   ),
-                                  // Queue Content
+                                  // P7: Lateral padding inside glassmorphism overlay
                                   const Expanded(
-                                    child: _QueueTab(),
+                                    child: Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 8),
+                                      child: _QueueTab(),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1623,17 +1627,15 @@ class _QueueTab extends StatefulWidget {
 }
 
 class _QueueTabState extends State<_QueueTab> {
-  static const double _itemTileHeight = 56.0;
-  // Estimated height of a section header label (label text + vertical padding)
-  static const double _sectionHeaderHeight = 34.0;
-  // Divider + vertical padding between past context and current track sections
-  static const double _dividerHeight = 13.0;
+  // P5: GlobalKey for exact scroll-to-active using Scrollable.ensureVisible
+  final GlobalKey _currentTrackKey = GlobalKey();
 
   final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
+    // P5: Scroll after first frame using ensureVisible for pixel-perfect positioning
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToCurrentTrack());
   }
 
@@ -1643,20 +1645,17 @@ class _QueueTabState extends State<_QueueTab> {
     super.dispose();
   }
 
-  /// Jumps the scroll view so that "REPRODUCIENDO ACTUALMENTE" is at the top
-  /// of the visible area. Offset is estimated from past context item count.
+  /// P5: Scrolls so the active track card is at the top of the visible area
+  /// using [Scrollable.ensureVisible] instead of arithmetic estimation.
   void _scrollToCurrentTrack() {
-    if (!_scrollController.hasClients) return;
-    if (!OrpheusAudioHandler.hasInstance) return;
-    final pastCount = OrpheusAudioHandler.instance.pastContext.length;
-    if (pastCount == 0) return; // Already at top — nothing to scroll
-
-    // Estimated scroll offset to reach the current track section header
-    final targetOffset =
-        pastCount * _itemTileHeight + _sectionHeaderHeight + _dividerHeight;
-    final maxScroll = _scrollController.position.maxScrollExtent;
-
-    _scrollController.jumpTo(targetOffset.clamp(0.0, maxScroll));
+    final ctx = _currentTrackKey.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      alignment: 0.0,
+      duration: Duration.zero,
+      curve: Curves.linear,
+    );
   }
 
   Widget _buildCover(Track track, {double size = 40, bool dimmed = false}) {
@@ -1684,10 +1683,11 @@ class _QueueTabState extends State<_QueueTab> {
   }
 
   Widget _buildDragHandle(int index, String keyPrefix) {
+    // P4: Widened horizontal padding from 8→12 px for a 44 px hit target
     return ReorderableDragStartListener(
       index: index,
       child: const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 8),
+        padding: EdgeInsets.symmetric(horizontal: 12),
         child: Icon(Icons.drag_handle_rounded, color: Colors.white38, size: 20),
       ),
     );
@@ -1698,14 +1698,18 @@ class _QueueTabState extends State<_QueueTab> {
     required bool isCurrentTrack,
     required VoidCallback onTap,
     required Widget trailing,
+    VoidCallback? onLongPress,
     bool dimmed = false,
   }) {
+    // P4: contentPadding h:4→h:12 for comfortable lateral spacing
+    // P4: subtitle fontSize 11→12 (Material 3 minimum)
     return SizedBox(
-      height: _itemTileHeight,
+      height: 60.0,
       child: ListTile(
         dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
         onTap: onTap,
+        onLongPress: onLongPress,
         leading: _buildCover(track, dimmed: dimmed),
         title: Text(
           track.displayTitle,
@@ -1725,7 +1729,7 @@ class _QueueTabState extends State<_QueueTab> {
             color: dimmed
                 ? Colors.white.withValues(alpha: 0.3)
                 : Colors.white.withValues(alpha: 0.5),
-            fontSize: 11,
+            fontSize: 12,
           ),
         ),
         trailing: trailing,
@@ -1797,19 +1801,21 @@ class _QueueTabState extends State<_QueueTab> {
                       },
                     ),
                   ),
+                  // P6: Single-layer attenuation — outer Opacity(0.55) removed.
+                  // _buildTrackTile(dimmed:true) already applies cover Opacity(0.5)
+                  // and subtitle alpha:0.3, giving a clean ~50% visual dimming.
                   SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (context, index) {
                         final track = pastContext[index];
-                        return Opacity(
-                          opacity: 0.55,
-                          child: _buildTrackTile(
-                            track: track,
-                            isCurrentTrack: false,
-                            dimmed: true,
-                            onTap: () => handler.playContextPastItem(index),
-                            trailing: const SizedBox.shrink(),
-                          ),
+                        return _buildTrackTile(
+                          track: track,
+                          isCurrentTrack: false,
+                          dimmed: true,
+                          onTap: () => handler.playContextPastItem(index),
+                          onLongPress: () =>
+                              TrackOptionsSheet.show(context, track: track),
+                          trailing: const SizedBox.shrink(),
                         );
                       },
                       childCount: pastContext.length,
@@ -1828,41 +1834,57 @@ class _QueueTabState extends State<_QueueTab> {
                   SliverToBoxAdapter(
                     child: _sectionHeader('REPRODUCIENDO ACTUALMENTE'),
                   ),
+                  // P3 + P5: Accent-bordered card with GlobalKey for Scrollable.ensureVisible
                   SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: _itemTileHeight,
-                      child: ListTile(
-                        dense: true,
-                        contentPadding:
-                            const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-                        leading: _buildCover(currentTrack),
-                        title: Text(
-                          currentTrack.displayTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppTheme.accent,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
+                    child: Container(
+                      key: _currentTrackKey,
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accent.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: AppTheme.accent.withValues(alpha: 0.28),
+                          width: 1,
+                        ),
+                      ),
+                      child: SizedBox(
+                        height: 64,
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 0),
+                          onLongPress: () =>
+                              TrackOptionsSheet.show(context, track: currentTrack),
+                          leading: _buildCover(currentTrack),
+                          title: Text(
+                            currentTrack.displayTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppTheme.accent,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                        subtitle: Text(
-                          currentTrack.displayArtist,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: AppTheme.textSecondary, fontSize: 12),
-                        ),
-                        trailing: StreamBuilder<bool>(
-                          stream: handler.isPlayingStream,
-                          initialData: handler.isPlaying,
-                          builder: (_, snap) => AnimatedEqualizer(
-                            isPlaying: snap.data ?? false,
-                            barCount: 3,
-                            barWidth: 2.8,
-                            maxHeight: 16.0,
-                            minHeight: 4.0,
-                            spacing: 2.5,
+                          subtitle: Text(
+                            currentTrack.displayArtist,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: AppTheme.textSecondary, fontSize: 12),
+                          ),
+                          trailing: StreamBuilder<bool>(
+                            stream: handler.isPlayingStream,
+                            initialData: handler.isPlaying,
+                            builder: (_, snap) => AnimatedEqualizer(
+                              isPlaying: snap.data ?? false,
+                              barCount: 3,
+                              barWidth: 2.8,
+                              maxHeight: 16.0,
+                              minHeight: 4.0,
+                              spacing: 2.5,
+                            ),
                           ),
                         ),
                       ),
@@ -1881,6 +1903,7 @@ class _QueueTabState extends State<_QueueTab> {
               SliverToBoxAdapter(
                 child: _sectionHeader(
                   'TU COLA DE REPRODUCCIÓN',
+                  // P4: "Limpiar" now has a proper 72×36 minimum hit target
                   action: TextButton.icon(
                     onPressed: handler.clearUserQueue,
                     icon: const Icon(Icons.playlist_remove_rounded,
@@ -1892,13 +1915,13 @@ class _QueueTabState extends State<_QueueTab> {
                             fontFamily: 'Inter')),
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          horizontal: 8, vertical: 6),
+                      minimumSize: const Size(72, 36),
                     ),
                   ),
                 ),
               ),
+              // P2: Dismissible swipe-to-delete on every userQueue item
               SliverReorderableList(
                 itemCount: userQueue.length,
                 onReorder: handler.reorderUserQueue,
@@ -1907,11 +1930,31 @@ class _QueueTabState extends State<_QueueTab> {
                   return Material(
                     key: ValueKey('user_${track.trackId}_$index'),
                     color: Colors.transparent,
-                    child: _buildTrackTile(
-                      track: track,
-                      isCurrentTrack: false,
-                      onTap: () => handler.playUserQueueItem(index),
-                      trailing: _buildDragHandle(index, 'user'),
+                    child: Dismissible(
+                      key: ValueKey('dismiss_user_${track.trackId}_$index'),
+                      direction: DismissDirection.endToStart,
+                      onDismissed: (_) => handler.removeFromUserQueue(index),
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent.withValues(alpha: 0.80),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.delete_sweep_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                      ),
+                      child: _buildTrackTile(
+                        track: track,
+                        isCurrentTrack: false,
+                        onTap: () => handler.playUserQueueItem(index),
+                        onLongPress: () =>
+                            TrackOptionsSheet.show(context, track: track),
+                        trailing: _buildDragHandle(index, 'user'),
+                      ),
                     ),
                   );
                 },
@@ -1955,11 +1998,32 @@ class _QueueTabState extends State<_QueueTab> {
                   return Material(
                     key: ValueKey('ctx_${track.trackId}_$index'),
                     color: Colors.transparent,
-                    child: _buildTrackTile(
-                      track: track,
-                      isCurrentTrack: false,
-                      onTap: () => handler.playContextQueueItem(index),
-                      trailing: _buildDragHandle(index, 'ctx'),
+                    child: Dismissible(
+                      key: ValueKey('dismiss_ctx_${track.trackId}_$index'),
+                      direction: DismissDirection.endToStart,
+                      onDismissed: (_) =>
+                          handler.removeFromContextQueue(index),
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent.withValues(alpha: 0.80),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.delete_sweep_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                      ),
+                      child: _buildTrackTile(
+                        track: track,
+                        isCurrentTrack: false,
+                        onTap: () => handler.playContextQueueItem(index),
+                        onLongPress: () =>
+                            TrackOptionsSheet.show(context, track: track),
+                        trailing: _buildDragHandle(index, 'ctx'),
+                      ),
                     ),
                   );
                 },

@@ -466,6 +466,10 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
   }
   void clearUserQueue() => AudioPlayerService.instance.clearUserQueue();
 
+  /// Removes the track at [index] from the user queue.
+  void removeFromUserQueue(int index) =>
+      AudioPlayerService.instance.removeFromUserQueue(index);
+
   /// Clears all tracks except the currently playing one (user + context).
   void clearQueue() => AudioPlayerService.instance.clearQueue();
 
@@ -474,6 +478,10 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
   void reorderContextQueue(int oldIndex, int newIndex) =>
       AudioPlayerService.instance.reorderContextQueue(oldIndex, newIndex);
+
+  /// Removes the track at [index] from the upcoming context queue.
+  void removeFromContextQueue(int index) =>
+      AudioPlayerService.instance.removeFromContextQueue(index);
 
   Future<void> playUserQueueItem(int index) =>
       AudioPlayerService.instance.playUserQueueItem(index);
