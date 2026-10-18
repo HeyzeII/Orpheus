@@ -30,6 +30,7 @@ class RadioLaunchSheet extends StatefulWidget {
   static Future<void> show(BuildContext context, Track seedTrack) {
     return showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => RadioLaunchSheet(seedTrack: seedTrack),

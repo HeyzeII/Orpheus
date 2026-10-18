@@ -53,12 +53,23 @@ class _LibraryViewState extends State<LibraryView> {
   Map<String, Track> _firstTrackByAlbum = {};
   Map<String, int> _trackCountByArtist = {};
 
+  // ── Nested Navigator (library detail views) ────────────────────────────────
+  // Routes rendered here stay within the LibraryView slot of the IndexedStack,
+  // keeping the floating glass pill visible and touchable at all times.
+  final GlobalKey<NavigatorState> _libraryNavKey = GlobalKey<NavigatorState>();
+  // Cached bottomPad so the nested Navigator's page builder can read it.
+  double _currentBottomPad = 0;
+
+  /// Pushes an album detail view into the library's own nested Navigator.
+  /// The floating bottom panel remains visible because the push stays within
+  /// the LibraryView slot of the root IndexedStack.
   void _openAlbum(String albumName, [double? bottomPad]) {
-    Navigator.of(context).push(
+    if (bottomPad != null) _currentBottomPad = bottomPad;
+    _libraryNavKey.currentState?.push(
       PageRouteBuilder(
         pageBuilder: (ctx, _, __) => Scaffold(
           backgroundColor: AppTheme.bgDeep,
-          body: _buildAlbumDetails(albumName, bottomPad: bottomPad ?? 0),
+          body: _buildAlbumDetails(albumName, bottomPad: _currentBottomPad),
         ),
         transitionsBuilder: (ctx, animation, _, child) => SlideTransition(
           position: Tween<Offset>(
@@ -74,12 +85,14 @@ class _LibraryViewState extends State<LibraryView> {
     );
   }
 
+  /// Pushes an artist detail view into the library's own nested Navigator.
   void _openArtist(String artistName, [double? bottomPad]) {
-    Navigator.of(context).push(
+    if (bottomPad != null) _currentBottomPad = bottomPad;
+    _libraryNavKey.currentState?.push(
       PageRouteBuilder(
         pageBuilder: (ctx, _, __) => Scaffold(
           backgroundColor: AppTheme.bgDeep,
-          body: _buildArtistDetails(artistName, bottomPad: bottomPad ?? 0),
+          body: _buildArtistDetails(artistName, bottomPad: _currentBottomPad),
         ),
         transitionsBuilder: (ctx, animation, _, child) => SlideTransition(
           position: Tween<Offset>(
@@ -95,12 +108,14 @@ class _LibraryViewState extends State<LibraryView> {
     );
   }
 
+  /// Pushes a playlist detail view into the library's own nested Navigator.
   void _openPlaylist(Playlist playlist, [double? bottomPad]) {
-    Navigator.of(context).push(
+    if (bottomPad != null) _currentBottomPad = bottomPad;
+    _libraryNavKey.currentState?.push(
       PageRouteBuilder(
         pageBuilder: (ctx, _, __) => Scaffold(
           backgroundColor: AppTheme.bgDeep,
-          body: _buildPlaylistDetails(playlist, bottomPad: bottomPad ?? 0),
+          body: _buildPlaylistDetails(playlist, bottomPad: _currentBottomPad),
         ),
         transitionsBuilder: (ctx, animation, _, child) => SlideTransition(
           position: Tween<Offset>(
@@ -760,6 +775,68 @@ class _LibraryViewState extends State<LibraryView> {
     }
   }
 
+  /// Builds the base library page content (header + tabs + tab body).
+  /// This is the initial route of the nested Navigator.
+  Widget _buildLibraryRoot(BuildContext context, double bottomPad) {
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Tabs Header ────────────────────────────────────────────────────────
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            isMobile ? 16 : 32,
+            isMobile ? (MediaQuery.of(context).padding.top + 12) : 36,
+            isMobile ? 16 : 32,
+            0,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Tu Biblioteca',
+                style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontSize: isMobile ? 26 : null,
+                    ),
+              ),
+              const SizedBox(height: 18),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: Row(
+                  children: [
+                    _buildTabButton(LibraryTab.tracks, 'Canciones'),
+                    _buildTabButton(LibraryTab.albums, 'Álbumes'),
+                    _buildTabButton(LibraryTab.artists, 'Artistas'),
+                    _buildTabButton(LibraryTab.playlists, 'Playlists'),
+                    _buildTabButton(LibraryTab.videos, 'Vídeos'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(color: AppTheme.divider, height: 1),
+
+        // ── Active Tab View Content ────────────────────────────────────────────
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 32),
+            child: switch (_activeTab) {
+              LibraryTab.tracks    => _buildTracksTab(bottomPad: bottomPad),
+              LibraryTab.albums    => _buildAlbumsTab(bottomPad: bottomPad),
+              LibraryTab.artists   => _buildArtistsTab(bottomPad: bottomPad),
+              LibraryTab.playlists => _buildPlaylistsTab(bottomPad: bottomPad),
+              LibraryTab.videos    => _buildVideosTab(bottomPad: bottomPad),
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -781,60 +858,43 @@ class _LibraryViewState extends State<LibraryView> {
             ? (hasTrack ? 60.0 + 64.0 + 12.0 : 60.0 + 12.0) + sysPad + 8.0
             : 0.0;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Tabs Header ──────────────────────────────────────────────────────
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                isMobile ? 16 : 32,
-                isMobile ? (MediaQuery.of(context).padding.top + 12) : 36,
-                isMobile ? 16 : 32,
-                0,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Tu Biblioteca',
-                    style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          fontSize: isMobile ? 26 : null,
-                        ),
-                  ),
-                  const SizedBox(height: 18),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    child: Row(
-                      children: [
-                        _buildTabButton(LibraryTab.tracks, 'Canciones'),
-                        _buildTabButton(LibraryTab.albums, 'Álbumes'),
-                        _buildTabButton(LibraryTab.artists, 'Artistas'),
-                        _buildTabButton(LibraryTab.playlists, 'Playlists'),
-                        _buildTabButton(LibraryTab.videos, 'Vídeos'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(color: AppTheme.divider, height: 1),
+        // Keep the cached value in sync so pushes without an explicit
+        // bottomPad argument (e.g. from context-menu "Ir al álbum") still
+        // use the correct current value.
+        _currentBottomPad = bottomPad;
 
-            // ── Active Tab View Content ──────────────────────────────────────────
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 32),
-                child: switch (_activeTab) {
-                  LibraryTab.tracks   => _buildTracksTab(bottomPad: bottomPad),
-                  LibraryTab.albums   => _buildAlbumsTab(bottomPad: bottomPad),
-                  LibraryTab.artists  => _buildArtistsTab(bottomPad: bottomPad),
-                  LibraryTab.playlists => _buildPlaylistsTab(bottomPad: bottomPad),
-                  LibraryTab.videos   => _buildVideosTab(bottomPad: bottomPad),
-                },
+        // ── Nested Navigator ──────────────────────────────────────────────────
+        // Detail routes (album / artist / playlist) are pushed here instead of
+        // the root navigator, so the floating glass pill always remains visible
+        // and interactive on top of the MobileNavigationShell Stack.
+        //
+        // NavigatorPopHandler integrates Android back-button / predictive-back
+        // with the nested navigator before the root PopScope intercepts it.
+        return NavigatorPopHandler(
+          onPop: () {
+            _libraryNavKey.currentState?.maybePop();
+          },
+          child: Navigator(
+            key: _libraryNavKey,
+            onPopPage: (route, result) {
+              final didPop = route.didPop(result);
+              if (didPop) {
+                // Schedule a post-frame rebuild to flush any GestureArena
+                // residue left by the slide-out transition, restoring 100%
+                // touch responsiveness to the floating pill on the first tap.
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) setState(() {});
+                });
+              }
+              return didPop;
+            },
+            pages: [
+              MaterialPage(
+                key: const ValueKey('library_root'),
+                child: _buildLibraryRoot(context, bottomPad),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
@@ -1264,7 +1324,7 @@ class _LibraryViewState extends State<LibraryView> {
             children: [
               IconButton(
                 icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () => _libraryNavKey.currentState?.maybePop(),
               ),
               const SizedBox(width: 8),
               const Text('Volver a Álbumes', style: TextStyle(color: AppTheme.textSecondary)),
@@ -1427,7 +1487,7 @@ class _LibraryViewState extends State<LibraryView> {
             children: [
               IconButton(
                 icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () => _libraryNavKey.currentState?.maybePop(),
               ),
               const SizedBox(width: 8),
               const Text('Volver a Artistas', style: TextStyle(color: AppTheme.textSecondary)),
@@ -1602,7 +1662,7 @@ class _LibraryViewState extends State<LibraryView> {
                 ),
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () => _libraryNavKey.currentState?.maybePop(),
                 ),
                 title: ValueListenableBuilder<double>(
                   valueListenable: scrollProgressNotifier,
@@ -1918,7 +1978,7 @@ class _LibraryViewState extends State<LibraryView> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                          onPressed: () => Navigator.of(context).pop(),
+                          onPressed: () => _libraryNavKey.currentState?.maybePop(),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
@@ -2237,7 +2297,7 @@ class _LibraryViewState extends State<LibraryView> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                          onPressed: () => Navigator.of(context).pop(),
+                          onPressed: () => _libraryNavKey.currentState?.maybePop(),
                         ),
                         const SizedBox(width: 8),
                         const Text('Volver a Playlists', style: TextStyle(color: AppTheme.textSecondary)),
@@ -2389,7 +2449,7 @@ class _LibraryViewState extends State<LibraryView> {
                   ),
                   leading: IconButton(
                     icon: const Icon(Icons.arrow_back_rounded, color: AppTheme.textPrimary),
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed: () => _libraryNavKey.currentState?.maybePop(),
                   ),
                   title: ValueListenableBuilder<double>(
                     valueListenable: scrollProgressNotifier,
@@ -2863,6 +2923,7 @@ class _LibraryViewState extends State<LibraryView> {
 
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       backgroundColor: AppTheme.bgSurface,
       shape: const RoundedRectangleBorder(
@@ -3035,6 +3096,7 @@ class _LibraryViewState extends State<LibraryView> {
     if (tracks.isEmpty) return;
     showModalBottomSheet(
       context: context,
+      useRootNavigator: true,
       backgroundColor: AppTheme.bgSurface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
