@@ -658,6 +658,59 @@ void main() {
       expect(player.currentContextIndex, 2);
       expect(player.currentOriginalIndex, 2);
     });
+
+    test('removeFromUserQueue removes track at given index', () async {
+      final t0 = Track()..trackId = 'u0';
+      await player.loadPlaylist([t0], initialIndex: 0);
+      final t1 = Track()..trackId = 'u1';
+      final t2 = Track()..trackId = 'u2';
+      final t3 = Track()..trackId = 'u3';
+      player.addToQueue(t1);
+      player.addToQueue(t2);
+      player.addToQueue(t3);
+      expect(player.userQueue.length, 3);
+
+      player.removeFromUserQueue(1);
+      expect(player.userQueue.length, 2);
+      expect(player.userQueue[0].trackId, 'u1');
+      expect(player.userQueue[1].trackId, 'u3');
+
+      // Out of bounds check (no-op)
+      player.removeFromUserQueue(99);
+      expect(player.userQueue.length, 2);
+    });
+
+    test('removeFromContextQueue removes track from upcoming context queue in sequential mode', () async {
+      final tracks = List.generate(5, (i) => Track()..trackId = 'ctx_${i + 1}');
+      await player.playFromExternalContext(tracks[0], tracks, contextName: 'Context Test');
+      expect(player.contextQueue.length, 4);
+      expect(player.contextQueue[0].trackId, 'ctx_2');
+
+      // Remove index 0 in upcoming queue (which is tracks[1] / 'ctx_2')
+      player.removeFromContextQueue(0);
+      expect(player.contextQueue.length, 3);
+      expect(player.contextQueue[0].trackId, 'ctx_3');
+
+      // Out of bounds
+      player.removeFromContextQueue(-1);
+      player.removeFromContextQueue(10);
+      expect(player.contextQueue.length, 3);
+    });
+
+    test('removeFromContextQueue removes track from upcoming context queue in shuffle mode', () async {
+      final tracks = List.generate(6, (i) => Track()..trackId = 's_${i + 1}');
+      await player.playFromExternalContext(tracks[0], tracks, contextName: 'Context Shuffle Test');
+      player.toggleShuffle();
+      expect(player.shuffleEnabled, isTrue);
+
+      final initialUpcoming = List<Track>.from(player.contextQueue);
+      expect(initialUpcoming.length, 5);
+
+      final toRemove = initialUpcoming[1];
+      player.removeFromContextQueue(1);
+      expect(player.contextQueue.length, 4);
+      expect(player.contextQueue.any((t) => t.trackId == toRemove.trackId), isFalse);
+    });
   });
 }
 

@@ -759,6 +759,7 @@ class MediaCacheService {
         'name': pl.name,
         'description': pl.description,
         'customCoverPath': pl.customCoverPath,
+        'updatedAt': pl.updatedAt?.millisecondsSinceEpoch,
         'tracks': playlistTracks,
       });
     }

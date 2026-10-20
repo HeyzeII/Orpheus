@@ -36,4 +36,7 @@ class Playlist {
   /// - Preserves insertion order (the play order).
   /// - Allows duplicates for custom playlists.
   List<int> trackIds = [];
+
+  /// Timestamp of the last modification (creation, track addition, or edit).
+  DateTime? updatedAt;
 }

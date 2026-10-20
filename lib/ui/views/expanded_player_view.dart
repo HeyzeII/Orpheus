@@ -12,6 +12,7 @@ import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/audio_scanner.dart';
 import '../theme/app_theme.dart';
+import '../widgets/add_to_playlist_sheet.dart';
 import '../widgets/animated_equalizer.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/marquee_text.dart';
@@ -2118,46 +2119,18 @@ class _FavoriteHeartButtonState extends State<_FavoriteHeartButton>
   }
 }
 
-class _TrackMoreMenu extends StatefulWidget {
+class _TrackMoreMenu extends StatelessWidget {
   const _TrackMoreMenu({required this.track, this.iconSize = 22});
 
   final Track track;
   final double iconSize;
 
   @override
-  State<_TrackMoreMenu> createState() => _TrackMoreMenuState();
-}
-
-class _TrackMoreMenuState extends State<_TrackMoreMenu> {
-  List<Playlist> _playlists = [];
-  StreamSubscription? _sub;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchPlaylists();
-    _sub = LocalDatabase.instance.watchPlaylists().listen((_) => _fetchPlaylists());
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _fetchPlaylists() async {
-    final list = await LocalDatabase.instance.getAllPlaylists();
-    if (mounted) setState(() => _playlists = list);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final customPlaylists = _playlists.where((p) => !p.isDefault).toList();
-
-    return PopupMenuButton<dynamic>(
+    return PopupMenuButton<String>(
       icon: Icon(
         Icons.more_vert_rounded,
-        size: widget.iconSize,
+        size: iconSize,
         color: Colors.white70,
       ),
       color: AppTheme.bgSurface,
@@ -2167,145 +2140,60 @@ class _TrackMoreMenuState extends State<_TrackMoreMenu> {
       ),
       onSelected: (value) {
         if (value == 'play_next') {
-          OrpheusAudioHandler.instance.playNext(widget.track);
+          OrpheusAudioHandler.instance.playNext(track);
           AppToast.showText(context, 'Se reproducirá a continuación');
         } else if (value == 'add_to_queue') {
-          OrpheusAudioHandler.instance.addToQueue(widget.track);
+          OrpheusAudioHandler.instance.addToQueue(track);
           AppToast.showText(context, 'Añadida a la cola');
         } else if (value == 'start_radio') {
-          RadioLaunchSheet.show(context, widget.track);
-        } else if (value is Playlist) {
-          final playlist = value;
-          final isDuplicate = playlist.trackIds.contains(widget.track.id);
-          if (isDuplicate && playlist.playlistId != '__liked__') {
-            showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                backgroundColor: AppTheme.bgSurface,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: const BorderSide(color: AppTheme.divider),
-                ),
-                title: const Text(
-                  'Canción duplicada',
-                  style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
-                ),
-                content: Text(
-                  '"${widget.track.displayTitle}" ya está en "${playlist.name}". ¿Deseas agregarla de todos modos?',
-                  style: const TextStyle(color: AppTheme.textSecondary),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Cancelar', style: TextStyle(color: AppTheme.textSecondary)),
-                  ),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.accent,
-                      foregroundColor: AppTheme.bgDeep,
-                    ),
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Agregar de todos modos', style: TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                ],
-              ),
-            ).then((confirm) {
-              if (confirm == true) {
-                LocalDatabase.instance
-                    .addTrackToPlaylist(
-                  playlist: playlist,
-                  trackId: widget.track.trackId,
-                )
-                    .then((_) {
-                  if (context.mounted) {
-                    AppToast.showAddedToPlaylist(
-                      context,
-                      track: widget.track,
-                      playlist: playlist,
-                    );
-                  }
-                });
-              }
-            });
-          } else {
-            LocalDatabase.instance
-                .addTrackToPlaylist(
-              playlist: playlist,
-              trackId: widget.track.trackId,
-            )
-                .then((_) {
-              if (context.mounted) {
-                AppToast.showAddedToPlaylist(
-                  context,
-                  track: widget.track,
-                  playlist: playlist,
-                );
-              }
-            });
-          }
+          RadioLaunchSheet.show(context, track);
+        } else if (value == 'add_to_playlist') {
+          AddToPlaylistSheet.show(context, tracks: [track]);
         }
       },
-      itemBuilder: (context) {
-        final items = <PopupMenuEntry<dynamic>>[
-          const PopupMenuItem(
-            value: 'play_next',
-            child: Row(
-              children: [
-                Icon(Icons.playlist_play_rounded, size: 18, color: AppTheme.textSecondary),
-                SizedBox(width: 12),
-                Text('Reproducir siguiente', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
-              ],
-            ),
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: 'play_next',
+          child: Row(
+            children: [
+              Icon(Icons.playlist_play_rounded, size: 18, color: AppTheme.textSecondary),
+              SizedBox(width: 12),
+              Text('Reproducir siguiente', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+            ],
           ),
-          const PopupMenuItem(
-            value: 'add_to_queue',
-            child: Row(
-              children: [
-                Icon(Icons.queue_music_rounded, size: 18, color: AppTheme.textSecondary),
-                SizedBox(width: 12),
-                Text('Añadir a la cola', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
-              ],
-            ),
+        ),
+        PopupMenuItem(
+          value: 'add_to_queue',
+          child: Row(
+            children: [
+              Icon(Icons.queue_music_rounded, size: 18, color: AppTheme.textSecondary),
+              SizedBox(width: 12),
+              Text('Añadir a la cola', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+            ],
           ),
-          const PopupMenuItem(
-            value: 'start_radio',
-            child: Row(
-              children: [
-                Icon(Icons.radio_rounded, size: 18, color: AppTheme.accent),
-                SizedBox(width: 12),
-                Text('Iniciar Radio', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
-              ],
-            ),
+        ),
+        PopupMenuItem(
+          value: 'start_radio',
+          child: Row(
+            children: [
+              Icon(Icons.radio_rounded, size: 18, color: AppTheme.accent),
+              SizedBox(width: 12),
+              Text('Iniciar Radio', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+            ],
           ),
-        ];
-
-        if (customPlaylists.isNotEmpty) {
-          items.add(const PopupMenuDivider());
-          for (final pl in customPlaylists) {
-            items.add(
-              PopupMenuItem(
-                value: pl,
-                child: Row(
-                  children: [
-                    const Icon(Icons.playlist_add_rounded, size: 18, color: AppTheme.accent),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        pl.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
-        }
-
-        return items;
-      },
+        ),
+        PopupMenuDivider(),
+        PopupMenuItem(
+          value: 'add_to_playlist',
+          child: Row(
+            children: [
+              Icon(Icons.playlist_add_rounded, size: 18, color: AppTheme.accent),
+              SizedBox(width: 12),
+              Text('Añadir a playlist', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

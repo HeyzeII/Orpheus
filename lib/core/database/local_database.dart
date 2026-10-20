@@ -637,6 +637,7 @@ class LocalDatabase {
 
   /// Persists a new [playlist] or updates an existing one.
   Future<void> savePlaylist(Playlist playlist) async {
+    playlist.updatedAt ??= DateTime.now();
     await _isar.writeTxn(() async {
       await _isar.playlists.put(playlist);
     });
@@ -647,6 +648,18 @@ class LocalDatabase {
   Future<List<Playlist>> getAllPlaylists() async {
     if (_isTestUninitialized) return [];
     return _isar.playlists.where().findAll();
+  }
+
+  /// Returns all playlists ordered by latest modification / addition date ([Playlist.updatedAt] desc).
+  Future<List<Playlist>> getAllPlaylistsSortedByRecent() async {
+    if (_isTestUninitialized) return [];
+    final list = await _isar.playlists.where().findAll();
+    list.sort((a, b) {
+      final aTime = a.updatedAt?.millisecondsSinceEpoch ?? 0;
+      final bTime = b.updatedAt?.millisecondsSinceEpoch ?? 0;
+      return bTime.compareTo(aTime);
+    });
+    return list;
   }
 
   /// Returns the [Playlist] whose [Playlist.playlistId] matches, or `null`.
@@ -685,6 +698,7 @@ class LocalDatabase {
     final updated = List<int>.from(playlist.trackIds);
     updated.add(intId);
     playlist.trackIds = updated;
+    playlist.updatedAt = DateTime.now();
     await savePlaylist(playlist);
     
     if (isLiked) {
@@ -723,6 +737,7 @@ class LocalDatabase {
     }
 
     playlist.trackIds = updated;
+    playlist.updatedAt = DateTime.now();
     await savePlaylist(playlist);
 
     if (isLiked && newlyLikedStrings.isNotEmpty) {
@@ -809,6 +824,7 @@ class LocalDatabase {
     final updated = List<int>.from(playlist.trackIds);
     updated.remove(intId);
     playlist.trackIds = updated;
+    playlist.updatedAt = DateTime.now();
     await savePlaylist(playlist);
 
     if (playlist.playlistId == '__liked__') {
@@ -830,6 +846,7 @@ class LocalDatabase {
     final updated = List<int>.from(playlist.trackIds);
     updated.removeAt(index);
     playlist.trackIds = updated;
+    playlist.updatedAt = DateTime.now();
     await savePlaylist(playlist);
 
     if (playlist.playlistId == '__liked__') {

@@ -16,8 +16,10 @@ import '../../core/services/audio_player_service.dart';
 import '../../core/services/permission_service.dart';
 import '../dialogs/edit_metadata_dialog.dart';
 import '../theme/app_theme.dart';
+import '../widgets/add_to_playlist_sheet.dart';
 import '../widgets/animated_equalizer.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/playlist_cover.dart';
 import '../widgets/radio_launch_sheet.dart';
 import '../widgets/track_options_sheet.dart';
 import '../widgets/video_badge.dart';
@@ -433,12 +435,6 @@ class _LibraryViewState extends State<LibraryView> {
   Future<void> _addTrackToPlaylist(Track track, Playlist playlist) async {
     await _processAddTracksToPlaylist(context, [track], playlist, collectionTitle: track.displayTitle);
   }
-
-  // Add multiple tracks to custom playlist (delegates to centralized interceptor)
-  Future<void> _addTracksToPlaylist(List<Track> tracks, Playlist playlist, {String? collectionTitle}) async {
-    await _processAddTracksToPlaylist(context, tracks, playlist, collectionTitle: collectionTitle);
-  }
-
   // Remove track from custom playlist
   Future<void> _removeTrackFromPlaylist(Track track, Playlist playlist) async {
     await LocalDatabase.instance.removeTrackFromPlaylist(
@@ -1054,6 +1050,12 @@ class _LibraryViewState extends State<LibraryView> {
                   cursor: SystemMouseCursors.click,
                   child: GestureDetector(
                     onTap: () => _openAlbum(albumName, bottomPad),
+                    onLongPress: () {
+                      final albumTracks = _allTracks
+                          .where((t) => t.displayAlbum == albumName)
+                          .toList();
+                      _showAlbumContextMenu(context, albumName, albumTracks, firstTrack);
+                    },
                     child: Container(
                       decoration: BoxDecoration(
                         color: AppTheme.bgSurface,
@@ -1179,6 +1181,13 @@ class _LibraryViewState extends State<LibraryView> {
                     ),
                     trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textSecondary),
                     onTap: () => _openArtist(artistName, bottomPad),
+                    onLongPress: () {
+                      final artistTracks = _allTracks
+                          .where((t) => t.individualArtists.any(
+                              (a) => a.toLowerCase() == artistName.toLowerCase()))
+                          .toList();
+                      _showArtistContextMenu(context, artistName, artistTracks);
+                    },
                   ),
                 ),
               );
@@ -1256,6 +1265,13 @@ class _LibraryViewState extends State<LibraryView> {
                               cursor: SystemMouseCursors.click,
                               child: GestureDetector(
                                 onTap: () => _openPlaylist(livePlaylist, bottomPad),
+                                onLongPress: () {
+                                  final playlistTracks = livePlaylist.trackIds
+                                      .map((id) => _tracksById[id])
+                                      .whereType<Track>()
+                                      .toList();
+                                  _showPlaylistContextMenu(context, livePlaylist, playlistTracks);
+                                },
                                 child: Container(
                                   decoration: BoxDecoration(
                                     color: AppTheme.bgSurface,
@@ -1881,6 +1897,7 @@ class _LibraryViewState extends State<LibraryView> {
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                                 onTap: () => _playTracks(albumTracks, idx, contextName: contextName),
+                                onLongPress: () => _showTrackOptionsModal(context, track),
                                 leading: ClipRRect(
                                   borderRadius: BorderRadius.circular(6),
                                   child: SizedBox(
@@ -2156,6 +2173,7 @@ class _LibraryViewState extends State<LibraryView> {
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                                 onTap: () => _playTracks(artistTracks, idx, contextName: contextName),
+                                onLongPress: () => _showTrackOptionsModal(context, track),
                                 leading: ClipRRect(
                                   borderRadius: BorderRadius.circular(6),
                                   child: SizedBox(
@@ -2686,6 +2704,12 @@ class _LibraryViewState extends State<LibraryView> {
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                                   onTap: () => _playTracks(playlistTracks, idx, contextName: effectiveContextName),
+                                  onLongPress: () => _showTrackOptionsModal(
+                                    context,
+                                    track,
+                                    playlistSource: playlist,
+                                    trackIndexInPlaylist: idx,
+                                  ),
                                 leading: ClipRRect(
                                   borderRadius: BorderRadius.circular(6),
                                   child: SizedBox(
@@ -2921,6 +2945,381 @@ class _LibraryViewState extends State<LibraryView> {
     );
   }
 
+  // ── Collection-level context menus ──────────────────────────────────────
+
+  /// Bottom sheet with quick actions for an Album.
+  void _showAlbumContextMenu(
+    BuildContext context,
+    String albumName,
+    List<Track> albumTracks,
+    Track representativeTrack,
+  ) {
+    if (albumTracks.isEmpty) return;
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.bgSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final coverPath = representativeTrack.customMetadata.customCoverPath;
+        final hasArt = coverPath != null &&
+            coverPath.isNotEmpty &&
+            File(coverPath).existsSync();
+
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: SizedBox(
+                        width: 52,
+                        height: 52,
+                        child: hasArt
+                            ? Image.file(File(coverPath), fit: BoxFit.cover, cacheWidth: 104)
+                            : const ColoredBox(
+                                color: AppTheme.bgHover,
+                                child: Center(
+                                  child: Icon(Icons.album_rounded,
+                                      color: AppTheme.textHint, size: 28),
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(albumName,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: AppTheme.textPrimary,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15)),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${albumTracks.length} ${albumTracks.length == 1 ? 'canción' : 'canciones'}',
+                            style: const TextStyle(
+                                color: AppTheme.textSecondary, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Divider(color: AppTheme.divider, height: 1),
+                const SizedBox(height: 8),
+                // Actions
+                _ContextMenuTile(
+                  icon: Icons.play_arrow_rounded,
+                  label: 'Reproducir álbum',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _playTracks(albumTracks, 0,
+                        contextName: 'Álbum: $albumName');
+                  },
+                ),
+                _ContextMenuTile(
+                  icon: Icons.shuffle_rounded,
+                  label: 'Reproducir en aleatorio',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _shufflePlayTracks(albumTracks,
+                        contextName: 'Álbum: $albumName');
+                  },
+                ),
+                _ContextMenuTile(
+                  icon: Icons.add_to_queue_rounded,
+                  label: 'Agregar todas a la cola',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    for (final t in albumTracks) {
+                      OrpheusAudioHandler.instance.addToQueue(t);
+                    }
+                    AppToast.showText(context,
+                        '${albumTracks.length} canciones añadidas a la cola');
+                  },
+                ),
+                _ContextMenuTile(
+                  icon: Icons.playlist_add_rounded,
+                  label: 'Añadir todas a playlist',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showAddTracksToPlaylistModal(context, albumTracks,
+                        collectionTitle: albumName);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Bottom sheet with quick actions for an Artist.
+  void _showArtistContextMenu(
+    BuildContext context,
+    String artistName,
+    List<Track> artistTracks,
+  ) {
+    if (artistTracks.isEmpty) return;
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.bgSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: const BoxDecoration(
+                      color: AppTheme.bgHover,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.person_rounded,
+                        color: AppTheme.accent, size: 28),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(artistName,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15)),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${artistTracks.length} ${artistTracks.length == 1 ? 'canción' : 'canciones'}',
+                          style: const TextStyle(
+                              color: AppTheme.textSecondary, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Divider(color: AppTheme.divider, height: 1),
+              const SizedBox(height: 8),
+              // Actions
+              _ContextMenuTile(
+                icon: Icons.play_arrow_rounded,
+                label: 'Reproducir artista',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _playTracks(artistTracks, 0,
+                      contextName: 'Artista: $artistName');
+                },
+              ),
+              _ContextMenuTile(
+                icon: Icons.shuffle_rounded,
+                label: 'Reproducir en aleatorio',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _shufflePlayTracks(artistTracks,
+                      contextName: 'Artista: $artistName');
+                },
+              ),
+              _ContextMenuTile(
+                icon: Icons.add_to_queue_rounded,
+                label: 'Agregar todas a la cola',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  for (final t in artistTracks) {
+                    OrpheusAudioHandler.instance.addToQueue(t);
+                  }
+                  AppToast.showText(context,
+                      '${artistTracks.length} canciones añadidas a la cola');
+                },
+              ),
+              _ContextMenuTile(
+                icon: Icons.playlist_add_rounded,
+                label: 'Añadir todas a playlist',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showAddTracksToPlaylistModal(context, artistTracks,
+                      collectionTitle: artistName);
+                },
+              ),
+              _ContextMenuTile(
+                icon: Icons.radio_rounded,
+                label: 'Iniciar radio del artista',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  RadioLaunchSheet.show(context, artistTracks.first);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Bottom sheet with quick actions for a Playlist.
+  void _showPlaylistContextMenu(
+    BuildContext context,
+    Playlist playlist,
+    List<Track> playlistTracks,
+  ) {
+    final isLiked = playlist.playlistId == '__liked__';
+    showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.bgSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: 52,
+                      height: 52,
+                      child: PlaylistCover(
+                        playlist: playlist,
+                        allTracks: _allTracks,
+                        tracksById: _tracksById,
+                        size: 52,
+                        coverVersion: _coverVersions[playlist.playlistId],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(playlist.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15)),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${playlistTracks.length} ${playlistTracks.length == 1 ? 'canción' : 'canciones'}',
+                          style: const TextStyle(
+                              color: AppTheme.textSecondary, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Divider(color: AppTheme.divider, height: 1),
+              const SizedBox(height: 8),
+              // Actions
+              _ContextMenuTile(
+                icon: Icons.play_arrow_rounded,
+                label: 'Reproducir playlist',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (playlistTracks.isNotEmpty) {
+                    _playTracks(
+                      playlistTracks,
+                      0,
+                      contextName: isLiked
+                          ? 'Canciones que te gustan'
+                          : 'Playlist: ${playlist.name}',
+                    );
+                  }
+                },
+              ),
+              _ContextMenuTile(
+                icon: Icons.shuffle_rounded,
+                label: 'Reproducir en aleatorio',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (playlistTracks.isNotEmpty) {
+                    _shufflePlayTracks(
+                      playlistTracks,
+                      contextName: isLiked
+                          ? 'Canciones que te gustan'
+                          : 'Playlist: ${playlist.name}',
+                    );
+                  }
+                },
+              ),
+              _ContextMenuTile(
+                icon: Icons.add_to_queue_rounded,
+                label: 'Agregar todas a la cola',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  for (final t in playlistTracks) {
+                    OrpheusAudioHandler.instance.addToQueue(t);
+                  }
+                  AppToast.showText(context,
+                      '${playlistTracks.length} canciones añadidas a la cola');
+                },
+              ),
+              if (!isLiked) ...[
+                _ContextMenuTile(
+                  icon: Icons.edit_rounded,
+                  label: 'Editar playlist',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _openPlaylist(playlist, _currentBottomPad);
+                  },
+                ),
+                _ContextMenuTile(
+                  icon: Icons.delete_outline_rounded,
+                  label: 'Eliminar playlist',
+                  color: Colors.redAccent,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _deletePlaylist(playlist);
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showTrackOptionsModal(
     BuildContext context,
     Track track, {
@@ -2950,91 +3349,11 @@ class _LibraryViewState extends State<LibraryView> {
     String? collectionTitle,
   }) {
     if (tracks.isEmpty) return;
-    showModalBottomSheet(
-      context: context,
-      useRootNavigator: true,
-      backgroundColor: AppTheme.bgSurface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        final availablePlaylists = _playlists.where((p) => p.playlistId != '__liked__').toList();
-
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        collectionTitle != null
-                            ? 'Añadir "$collectionTitle" a playlist'
-                            : (tracks.length == 1 ? 'Añadir a playlist' : 'Añadir ${tracks.length} canciones a playlist'),
-                        style: const TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded, color: AppTheme.textSecondary, size: 20),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: AppTheme.accent.withAlpha(40),
-                    child: const Icon(Icons.add_rounded, color: AppTheme.accent),
-                  ),
-                  title: const Text(
-                    'Nueva playlist',
-                    style: TextStyle(color: AppTheme.accent, fontWeight: FontWeight.w600),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _createAndAddTracksToPlaylist(tracks, collectionTitle: collectionTitle);
-                  },
-                ),
-                const Divider(color: AppTheme.divider),
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: availablePlaylists.length,
-                    itemBuilder: (context, idx) {
-                      final p = availablePlaylists[idx];
-                      return ListTile(
-                        leading: const Icon(Icons.playlist_add_check_rounded, color: AppTheme.textSecondary),
-                        title: Text(
-                          p.name,
-                          style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
-                        ),
-                        subtitle: Text(
-                          '${p.trackIds.length} canciones',
-                          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
-                        ),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _addTracksToPlaylist(tracks, p, collectionTitle: collectionTitle);
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+    AddToPlaylistSheet.show(
+      context,
+      tracks: tracks,
+      collectionTitle: collectionTitle,
+      onPlaylistUpdated: _refreshData,
     );
   }
 
@@ -3095,6 +3414,7 @@ class _LibraryViewState extends State<LibraryView> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   onTap: () => _playTracks(tracks, idx),
+                  onLongPress: () => _showTrackOptionsModal(context, track),
                 leading: ClipRRect(
                   borderRadius: BorderRadius.circular(6),
                   child: SizedBox(
@@ -3264,6 +3584,12 @@ class _LibraryViewState extends State<LibraryView> {
         onDelete: () => _deleteTrack(track),
         onEditMetadata: () => _editTrackMetadata(track),
         onStartRadio: () => RadioLaunchSheet.show(context, track),
+        onLongPress: () => _showTrackOptionsModal(
+          context,
+          track,
+          playlistSource: playlistSource,
+          trackIndexInPlaylist: index,
+        ),
       );
     }
 
@@ -3380,6 +3706,7 @@ class _TrackRow extends StatefulWidget {
     required this.onDelete,
     required this.onEditMetadata,
     required this.onStartRadio,
+    this.onLongPress,
   });
 
   final Track track;
@@ -3404,6 +3731,7 @@ class _TrackRow extends StatefulWidget {
   final VoidCallback onDelete;
   final VoidCallback onEditMetadata;
   final VoidCallback onStartRadio;
+  final VoidCallback? onLongPress;
 
   @override
   State<_TrackRow> createState() => _TrackRowState();
@@ -3438,6 +3766,7 @@ class _TrackRowState extends State<_TrackRow> {
           onExit: (_) => setState(() => _hovered = false),
           child: GestureDetector(
             onDoubleTap: widget.onPlay,
+            onLongPress: widget.onLongPress,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
@@ -3819,159 +4148,53 @@ class _TrackRowState extends State<_TrackRow> {
   }
 }
 
-class PlaylistCover extends StatelessWidget {
-  final Playlist playlist;
-  final List<Track> allTracks;
-  final Map<int, Track>? tracksById;
-  final double size;
-  final int? coverVersion;
-
-  const PlaylistCover({
-    super.key,
-    required this.playlist,
-    required this.allTracks,
-    this.tracksById,
-    required this.size,
-    this.coverVersion,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isLiked = playlist.playlistId == '__liked__';
-
-    // 1. Custom playlist cover (priority 1) with cache breaker
-    final customPath = playlist.customCoverPath;
-    if (customPath != null && customPath.isNotEmpty) {
-      final version = coverVersion ?? 0;
-      return Image.file(
-        File(customPath),
-        key: ValueKey('${customPath}_$version'),
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        cacheWidth: 320,
-        errorBuilder: (_, __, ___) => _buildVinylPlaceholder(isLiked),
-      );
-    }
-
-    // 2. "Liked Tracks" special playlist — always uses the heart placeholder
-    //    regardless of whether it contains songs, so its identity is consistent.
-    if (isLiked) {
-      return _buildVinylPlaceholder(true);
-    }
-
-    // Resolve tracks in order using the database int ID with O(1) dictionary
-    final playlistTracks = playlist.trackIds
-        .map((id) => tracksById?[id] ?? allTracks.firstWhere((t) => t.id == id, orElse: () => Track()))
-        .where((t) => t.trackId.isNotEmpty)
-        .toList();
-
-    if (playlistTracks.isEmpty) {
-      // 0 songs: a minimalist dark vinyl/disc placeholder with music icon or heart
-      return _buildVinylPlaceholder(isLiked);
-    } else if (playlistTracks.length < 4) {
-      // 1 to 3 songs: first song cover with cache breaker
-      final firstTrack = playlistTracks.first;
-      final coverPath = firstTrack.customMetadata.customCoverPath;
-      if (coverPath != null && coverPath.isNotEmpty) {
-        return Image.file(
-          File(coverPath),
-          key: ValueKey('${coverPath}_$coverVersion'),
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          cacheWidth: 320,
-          errorBuilder: (_, __, ___) => _buildTrackPlaceholder(isLiked),
-        );
-      } else {
-        return _buildTrackPlaceholder(isLiked);
-      }
-    } else {
-      // 4 or more songs: 2x2 grid collage of the first 4 tracks.
-      // Use indexed keys so duplicate tracks in the list get unique widget slots.
-      final first4 = playlistTracks.take(4).toList();
-      return SizedBox(
-        width: size,
-        height: size,
-        child: GridView.count(
-          crossAxisCount: 2,
-          padding: EdgeInsets.zero,
-          physics: const NeverScrollableScrollPhysics(),
-          children: first4.asMap().entries.map((entry) {
-            final cellIdx = entry.key;
-            final track = entry.value;
-            final coverPath = track.customMetadata.customCoverPath;
-            if (coverPath != null && coverPath.isNotEmpty) {
-              return Image.file(
-                File(coverPath),
-                key: ValueKey('collage_${cellIdx}_${track.id}_$coverVersion'),
-                fit: BoxFit.cover,
-                cacheWidth: 160,
-                errorBuilder: (_, __, ___) => _buildTrackPlaceholder(false, iconSize: size / 6),
-              );
-            } else {
-              return _buildTrackPlaceholder(false, iconSize: size / 6);
-            }
-          }).toList(),
-        ),
-      );
-    }
-  }
-
-  Widget _buildVinylPlaceholder(bool isLiked) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F0F0F),
-        gradient: RadialGradient(
-          colors: [
-            Color(0xFF222222),
-            Color(0xFF0C0C0C),
-          ],
-        ),
-      ),
-      child: Center(
-        child: Container(
-          width: size * 0.8,
-          height: size * 0.8,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.transparent,
-            border: Border.all(color: Colors.white10, width: 1),
-          ),
-          child: Center(
-            child: Icon(
-              isLiked ? Icons.favorite : Icons.music_note_rounded,
-              color: isLiked ? Colors.redAccent.withAlpha(180) : AppTheme.accent.withAlpha(160),
-              size: size * 0.3,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTrackPlaceholder(bool isLiked, {double? iconSize}) {
-    return Container(
-      color: AppTheme.bgHover,
-      child: Center(
-        child: Icon(
-          isLiked ? Icons.favorite : Icons.music_note_rounded,
-          color: isLiked ? Colors.redAccent.withAlpha(140) : AppTheme.textHint,
-          size: iconSize ?? (size * 0.3),
-        ),
-      ),
-    );
-  }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // TIDAL-STYLE BLURRED IMAGE BACKGROUND
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Fills its parent with a massively blurred version of [imagePath], overlaid
 /// with a dark vignette gradient to ensure foreground text legibility.
+/// Reusable tile row used inside collection-level context menus.
+class _ContextMenuTile extends StatelessWidget {
+  const _ContextMenuTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveColor = color ?? AppTheme.textPrimary;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: effectiveColor),
+            const SizedBox(width: 16),
+            Text(
+              label,
+              style: TextStyle(
+                color: effectiveColor,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _BlurredImageBackground extends StatelessWidget {
   const _BlurredImageBackground({required this.imagePath});
   final String imagePath;

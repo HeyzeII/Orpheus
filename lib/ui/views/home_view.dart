@@ -7,6 +7,7 @@ import '../../core/models/models.dart';
 import '../../core/services/audio_handler.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_equalizer.dart';
+import '../widgets/track_options_sheet.dart';
 import '../widgets/video_badge.dart';
 
 /// Dynamic Home View — Displays user greeting, quick picks, recently played tracks,
@@ -358,6 +359,7 @@ class _DesktopGrid extends StatelessWidget {
       itemBuilder: (context, idx) => _TrackCard(
         track: tracks[idx],
         onTap: () => onTap(tracks[idx]),
+        onLongPress: () => TrackOptionsSheet.show(context, track: tracks[idx]),
       ),
     );
   }
@@ -390,7 +392,9 @@ class _MobileTopGrid extends StatelessWidget {
             coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
 
         return GestureDetector(
+          behavior: HitTestBehavior.opaque,
           onTap: () => onTap(track),
+          onLongPress: () => TrackOptionsSheet.show(context, track: track),
           child: Container(
             decoration: BoxDecoration(
               color: AppTheme.bgSurface,
@@ -484,7 +488,9 @@ class _HorizontalCarousel extends StatelessWidget {
               final isCurrent = snap.data?.trackId == track.trackId;
 
               return GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () => onTap(track),
+                onLongPress: () => TrackOptionsSheet.show(context, track: track),
                 child: SizedBox(
                   width: 130,
                   child: Column(
@@ -588,9 +594,10 @@ class _HorizontalCarousel extends StatelessWidget {
 // ── Desktop track card (original) ─────────────────────────────────────────
 
 class _TrackCard extends StatefulWidget {
-  const _TrackCard({required this.track, required this.onTap});
+  const _TrackCard({required this.track, required this.onTap, this.onLongPress});
   final Track track;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   State<_TrackCard> createState() => _TrackCardState();
@@ -609,6 +616,7 @@ class _TrackCardState extends State<_TrackCard> {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           transform: _hovered

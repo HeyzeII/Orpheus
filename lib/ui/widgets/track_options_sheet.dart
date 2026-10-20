@@ -9,6 +9,7 @@ import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
 import '../dialogs/edit_metadata_dialog.dart';
 import '../theme/app_theme.dart';
+import 'add_to_playlist_sheet.dart';
 import 'app_toast.dart';
 import 'radio_launch_sheet.dart';
 
@@ -209,7 +210,8 @@ class TrackOptionsSheet extends StatelessWidget {
                             color: AppTheme.textPrimary, fontSize: 14)),
                     onTap: () {
                       Navigator.pop(context);
-                      _showAddToPlaylistModal(context, track);
+                      _showAddToPlaylistModal(context, track,
+                          onPlaylistUpdated: onRefreshData);
                     },
                   ),
                   ListTile(
@@ -392,219 +394,13 @@ class TrackOptionsSheet extends StatelessWidget {
   }
 
   static Future<void> _showAddToPlaylistModal(
-      BuildContext context, Track track) async {
-    final db = LocalDatabase.instance;
-    final playlists = await db.getAllPlaylists();
-    final available =
-        playlists.where((p) => p.playlistId != '__liked__').toList();
-
-    if (!context.mounted) return;
-
-    showModalBottomSheet(
-      context: context,
-      useRootNavigator: true,
-      backgroundColor: AppTheme.bgSurface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Añadir "${track.displayTitle}" a playlist',
-                        style: const TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded,
-                          color: AppTheme.textSecondary, size: 20),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: AppTheme.accent.withAlpha(40),
-                    child:
-                        const Icon(Icons.add_rounded, color: AppTheme.accent),
-                  ),
-                  title: const Text(
-                    'Nueva playlist',
-                    style: TextStyle(
-                        color: AppTheme.accent, fontWeight: FontWeight.w600),
-                  ),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    final nameCtrl = TextEditingController();
-                    final created = await showDialog<String>(
-                      context: context,
-                      builder: (dialogCtx) => AlertDialog(
-                        backgroundColor: AppTheme.bgSurface,
-                        title: const Text('Nueva Playlist',
-                            style: TextStyle(color: AppTheme.textPrimary)),
-                        content: TextField(
-                          controller: nameCtrl,
-                          autofocus: true,
-                          style: const TextStyle(color: AppTheme.textPrimary),
-                          decoration: const InputDecoration(
-                            hintText: 'Nombre de la playlist',
-                            hintStyle: TextStyle(color: AppTheme.textHint),
-                          ),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(dialogCtx),
-                            child: const Text('Cancelar',
-                                style:
-                                    TextStyle(color: AppTheme.textSecondary)),
-                          ),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.accent,
-                              foregroundColor: AppTheme.bgDeep,
-                            ),
-                            onPressed: () {
-                              final name = nameCtrl.text.trim();
-                              if (name.isNotEmpty) {
-                                Navigator.pop(dialogCtx, name);
-                              }
-                            },
-                            child: const Text('Crear',
-                                style: TextStyle(fontWeight: FontWeight.bold)),
-                          ),
-                        ],
-                      ),
-                    );
-
-                    if (created != null && created.isNotEmpty) {
-                      final newPl = Playlist()
-                        ..playlistId =
-                            'playlist_${DateTime.now().millisecondsSinceEpoch}'
-                        ..name = created
-                        ..isDefault = false;
-                      await db.savePlaylist(newPl);
-                      await db.addTrackToPlaylist(
-                        playlist: newPl,
-                        trackId: track.trackId,
-                      );
-                      if (context.mounted) {
-                        AppToast.showAddedToPlaylist(
-                          context,
-                          track: track,
-                          playlist: newPl,
-                        );
-                      }
-                    }
-                  },
-                ),
-                const Divider(color: AppTheme.divider),
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: available.length,
-                    itemBuilder: (context, idx) {
-                      final p = available[idx];
-                      return ListTile(
-                        leading: const Icon(Icons.playlist_add_check_rounded,
-                            color: AppTheme.textSecondary),
-                        title: Text(
-                          p.name,
-                          style: const TextStyle(
-                              color: AppTheme.textPrimary, fontSize: 14),
-                        ),
-                        subtitle: Text(
-                          '${p.trackIds.length} canciones',
-                          style: const TextStyle(
-                              color: AppTheme.textSecondary, fontSize: 11),
-                        ),
-                        onTap: () async {
-                          Navigator.pop(ctx);
-                          final isDuplicate =
-                              p.trackIds.contains(track.id);
-                          if (isDuplicate) {
-                            final confirm = await showDialog<bool>(
-                              context: context,
-                              builder: (alertCtx) => AlertDialog(
-                                backgroundColor: AppTheme.bgSurface,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  side: const BorderSide(
-                                      color: AppTheme.divider),
-                                ),
-                                title: const Text(
-                                  'Canción duplicada',
-                                  style: TextStyle(
-                                    color: AppTheme.textPrimary,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                content: Text(
-                                  '"${track.displayTitle}" ya está en "${p.name}". ¿Deseas agregarla de todos modos?',
-                                  style: const TextStyle(
-                                      color: AppTheme.textSecondary),
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(alertCtx, false),
-                                    child: const Text('Cancelar',
-                                        style: TextStyle(
-                                            color: AppTheme.textSecondary)),
-                                  ),
-                                  ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.accent,
-                                      foregroundColor: AppTheme.bgDeep,
-                                    ),
-                                    onPressed: () =>
-                                        Navigator.pop(alertCtx, true),
-                                    child: const Text('Agregar de todos modos',
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.bold)),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (confirm != true) return;
-                          }
-
-                          await db.addTrackToPlaylist(
-                            playlist: p,
-                            trackId: track.trackId,
-                          );
-                          if (context.mounted) {
-                            AppToast.showAddedToPlaylist(
-                              context,
-                              track: track,
-                              playlist: p,
-                            );
-                          }
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
+    BuildContext context,
+    Track track, {
+    VoidCallback? onPlaylistUpdated,
+  }) =>
+      AddToPlaylistSheet.show(
+        context,
+        tracks: [track],
+        onPlaylistUpdated: onPlaylistUpdated,
+      );
 }

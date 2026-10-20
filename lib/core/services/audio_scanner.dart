@@ -132,6 +132,7 @@ class AudioScannerService {
             'name': pl['name'] as String? ?? 'Playlist',
             'description': pl['description'] as String?,
             'customCoverPath': pl['customCoverPath'] as String?,
+            'updatedAt': pl['updatedAt'] is int ? pl['updatedAt'] as int : null,
             'fingerprints': fps,
           };
         }
@@ -635,7 +636,10 @@ class AudioScannerService {
           ..name = plData['name'] as String
           ..description = plData['description'] as String?
           ..customCoverPath = plData['customCoverPath'] as String?
-          ..isDefault = false;
+          ..isDefault = false
+          ..updatedAt = plData['updatedAt'] != null
+              ? DateTime.fromMillisecondsSinceEpoch(plData['updatedAt'] as int)
+              : null;
 
         final targetIntIds = <int>[];
         for (final fp in fps) {
