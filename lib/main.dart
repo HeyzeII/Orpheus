@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:metadata_god/metadata_god.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'core/database/local_database.dart';
 import 'core/services/album_art_fetcher_service.dart';
@@ -86,8 +87,26 @@ Future<void> runOrpheusStartupSequence() async {
 }
 
 /// Entry point for Orpheus.
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  if (Platform.isLinux || Platform.isMacOS || Platform.isWindows) {
+    try {
+      await windowManager.ensureInitialized();
+      const windowOptions = WindowOptions(
+        minimumSize: Size(850, 600),
+        center: true,
+        backgroundColor: Colors.transparent,
+        skipTaskbar: false,
+      );
+      await windowManager.waitUntilReadyToShow(windowOptions, () async {
+        await windowManager.show();
+        await windowManager.focus();
+      });
+    } catch (e) {
+      DebugLogger.log('WindowManager initialization notice: $e');
+    }
+  }
 
   // Global error handlers
   ErrorWidget.builder = (FlutterErrorDetails details) {

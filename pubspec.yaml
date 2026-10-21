@@ -34,6 +34,9 @@ dependencies:
   http: ^1.2.2
   connectivity_plus: ^6.1.1
 
+  # ── Desktop Window Management ─────────────────────────────
+  window_manager: ^0.4.3
+
   # ── UI ────────────────────────────────────────────────────
   cupertino_icons: ^1.0.8
   file_picker: ^8.0.0
