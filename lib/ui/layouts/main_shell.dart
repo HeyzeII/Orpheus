@@ -19,6 +19,7 @@ import '../views/library_view.dart';
 import '../views/lyrics_view.dart';
 import '../views/settings_view.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/desktop_title_bar.dart';
 import '../widgets/marquee_text.dart';
 import '../widgets/player_bar.dart';
 import '../widgets/sidebar.dart';
@@ -130,6 +131,8 @@ class _DesktopNavigationShellState extends State<DesktopNavigationShell> with Wi
           backgroundColor: AppTheme.bgDeep,
           body: Column(
             children: [
+              if (Platform.isLinux || Platform.isMacOS || Platform.isWindows)
+                const DesktopTitleBar(),
               // ── Top row: Sidebar + Main content ──────────────────────────────
               Expanded(
                 child: Row(
