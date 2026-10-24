@@ -1,0 +1,58 @@
+app-id: org.heyzell.Orpheus
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+command: orpheus
+
+finish-args:
+  # Inter-Process Communication & Display Sockets
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+
+  # Sound System (PipeWire / PulseAudio)
+  - --socket=pulseaudio
+
+  # Hardware Acceleration (OpenGL / Vulkan)
+  - --device=dri
+
+  # Network access for streaming, lyrics & album art fetching
+  - --share=network
+
+  # Media & File System access (Music collection)
+  - --filesystem=xdg-music:ro
+  - --filesystem=home:ro
+
+  # MPRIS D-Bus Service Integration
+  - --own-name=org.mpris.MediaPlayer2.orpheus
+  - --own-name=org.mpris.MediaPlayer2.com.heyzell.orpheus.*
+
+modules:
+  - name: orpheus
+    buildsystem: simple
+    build-commands:
+      # 1. Create target system directories inside sandbox
+      - install -d /app/bin
+      - install -d /app/orpheus
+      - install -d /app/share/applications
+      - install -d /app/share/metainfo
+      - install -d /app/share/icons/hicolor/128x128/apps
+      - install -d /app/share/icons/hicolor/512x512/apps
+
+      # 2. Install pre-compiled Linux release bundle
+      - cp -r build/linux/x64/release/bundle/* /app/orpheus/
+
+      # 3. Install executable launcher wrapper
+      - install -m 755 packaging/linux/orpheus-launcher.sh /app/bin/orpheus
+
+      # 4. Install Desktop Entry and AppStream Metainfo
+      - install -m 644 packaging/linux/org.heyzell.Orpheus.desktop /app/share/applications/org.heyzell.Orpheus.desktop
+      - install -m 644 packaging/linux/org.heyzell.Orpheus.metainfo.xml /app/share/metainfo/org.heyzell.Orpheus.metainfo.xml
+
+      # 5. Install Application Icons
+      - install -m 644 packaging/linux/icons/128x128.png /app/share/icons/hicolor/128x128/apps/org.heyzell.Orpheus.png
+      - install -m 644 packaging/linux/icons/512x512.png /app/share/icons/hicolor/512x512/apps/org.heyzell.Orpheus.png
+
+    sources:
+      - type: dir
+        path: ..

@@ -1,0 +1,53 @@
+name: Build Linux Release Bundle
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config \
+            libgtk-3-dev \
+            liblzma-dev \
+            libmpv-dev \
+            mpv \
+            libasound2-dev
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install Flutter Dependencies
+        run: flutter pub get
+
+      - name: Build Linux x64 Release
+        run: flutter build linux --release
+
+      - name: Package Release Bundle into tar.gz
+        run: |
+          BUNDLE_DIR="build/linux/x64/release/bundle"
+          cp packaging/linux/org.heyzell.Orpheus.desktop "$BUNDLE_DIR/"
+          cp packaging/linux/org.heyzell.Orpheus.png "$BUNDLE_DIR/"
+          tar -czvf orpheus-linux-x64.tar.gz -C "$BUNDLE_DIR" .
+
+      - name: Upload Linux Release Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: orpheus-linux-x64
+          path: orpheus-linux-x64.tar.gz

@@ -1,0 +1,32 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Orpheus
+GenericName=Music Player
+GenericName[es]=Reproductor de Música
+Comment=Modern local and streaming music player with synchronized lyrics and dynamic recommendations
+Comment[es]=Reproductor de música local y streaming con letras sincronizadas y recomendaciones dinámicas
+Icon=org.heyzell.Orpheus
+Exec=orpheus %U
+Terminal=false
+Categories=AudioVideo;Audio;Player;Music;
+Keywords=music;player;audio;lyrics;radio;flac;mp3;offline;
+MimeType=audio/mpeg;audio/x-mpeg;audio/mp3;audio/x-mp3;audio/flac;audio/x-flac;audio/ogg;audio/x-vorbis+ogg;audio/aac;audio/mp4;audio/wav;audio/x-wav;
+StartupWMClass=orpheus
+StartupNotify=true
+Actions=PlayPause;Next;Previous;
+
+[Desktop Action PlayPause]
+Name=Play/Pause
+Name[es]=Reproducir/Pausar
+Exec=orpheus --action=play-pause
+
+[Desktop Action Next]
+Name=Next Track
+Name[es]=Siguiente Pista
+Exec=orpheus --action=next
+
+[Desktop Action Previous]
+Name=Previous Track
+Name[es]=Pista Anterior
+Exec=orpheus --action=previous

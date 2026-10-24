@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.heyzell.Orpheus</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Orpheus</name>
+  <summary>Modern, fluid music player with synced lyrics and acoustic intelligence</summary>
+  <summary xml:lang="es">Reproductor de música moderno con letras sincronizadas e inteligencia acústica</summary>
+
+  <description>
+    <p>
+      Orpheus is an elegant, high-performance music player engineered for audiophiles and music lovers.
+      Built with Flutter and a native LibVLC / MediaKit audio engine, Orpheus delivers bit-perfect
+      local playback alongside dynamic metadata enrichment and synchronized lyrics.
+    </p>
+    <p>Key Features:</p>
+    <ul>
+      <li>High-fidelity playback of FLAC, ALAC, MP3, AAC, OGG, and WAV.</li>
+      <li>Automatic synchronized and static lyrics fetching with interactive karaoke-style scrolling.</li>
+      <li>Acoustic scanning and intelligent mood-based recommendation engine.</li>
+      <li>Full Linux desktop integration with MPRIS D-Bus controls, media keys, and system sound applets.</li>
+      <li>Custom glassmorphic Client-Side Decorations (CSD) tailored for GNOME and modern desktop environments.</li>
+      <li>Smart offline library indexing with fast fuzzy search and playlist management.</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">org.heyzell.Orpheus.desktop</launchable>
+
+  <developer_name>Aldo &amp; Heyzell</developer_name>
+
+  <url type="homepage">https://github.com/HeyzeII/Orpheus</url>
+  <url type="bugtracker">https://github.com/HeyzeII/Orpheus/issues</url>
+  <url type="vcs-browser">https://github.com/HeyzeII/Orpheus</url>
+
+  <provides>
+    <binary>orpheus</binary>
+    <mediatype>audio/mpeg</mediatype>
+    <mediatype>audio/mp3</mediatype>
+    <mediatype>audio/flac</mediatype>
+    <mediatype>audio/ogg</mediatype>
+    <mediatype>audio/aac</mediatype>
+    <mediatype>audio/wav</mediatype>
+  </provides>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="1.0.0" date="2026-10-24">
+      <description>
+        <p>Initial release of Orpheus for Linux with Flatpak packaging, MPRIS support, and glassmorphic desktop interface.</p>
+      </description>
+    </release>
+  </releases>
+
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Player</category>
+    <category>Music</category>
+  </categories>
+</component>
