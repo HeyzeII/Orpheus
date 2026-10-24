@@ -25,7 +25,14 @@ jobs:
             liblzma-dev \
             libmpv-dev \
             mpv \
-            libasound2-dev
+            libasound2-dev \
+            libsecret-1-dev \
+            libjsoncpp-dev \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            libunwind-dev
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -35,6 +42,12 @@ jobs:
 
       - name: Install Flutter Dependencies
         run: flutter pub get
+
+      - name: Run Static Analysis
+        run: flutter analyze --no-pub
+
+      - name: Run Unit & Widget Tests
+        run: flutter test --no-pub
 
       - name: Build Linux x64 Release
         run: flutter build linux --release

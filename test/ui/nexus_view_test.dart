@@ -11,6 +11,19 @@ import 'package:orpheus/core/network/orpheus_beacon_service.dart';
 import 'package:orpheus/core/services/sync_download_manager.dart';
 import 'package:orpheus/ui/views/nexus_view.dart';
 
+// ---------------------------------------------------------------------------
+// Helper: Advances the Flutter clock enough for async I/O and a single
+// animation frame to complete, WITHOUT blocking on infinite repeat animations.
+// ---------------------------------------------------------------------------
+Future<void> _settle(WidgetTester tester) async {
+  // Pump microtasks (completes Futures, streams, timers < 1 frame)
+  await tester.pump();
+  // Advance by 500 ms — enough for HTTP mock + setState + first animation tick
+  await tester.pump(const Duration(milliseconds: 500));
+  // One more frame for layout and paint
+  await tester.pump();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -120,7 +133,9 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      // Use _settle instead of pumpAndSettle — avoids timeout from infinite
+      // repeat AnimationControllers (_pulseCtrl, _SkeletonTile._ctrl).
+      await _settle(tester);
 
       expect(find.text('MODO NEXUS'), findsOneWidget);
       expect(find.text('RED LOCAL'), findsOneWidget);
@@ -143,7 +158,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await _settle(tester);
 
       expect(find.text('MODO NEXUS'), findsOneWidget);
       expect(find.text('MacBook-Air-de-Bertha'), findsOneWidget);
@@ -183,7 +198,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await _settle(tester);
 
       // Check all 3 tracks are shown
       expect(find.text('Remote Song One'), findsOneWidget);
@@ -212,7 +227,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await _settle(tester);
 
       expect(find.text('Remote Song One'), findsOneWidget);
       expect(find.text('Downloaded Local Song'), findsOneWidget);
@@ -222,7 +237,7 @@ void main() {
       expect(searchInput, findsOneWidget);
 
       await tester.enterText(searchInput, 'Downloaded');
-      await tester.pumpAndSettle();
+      await _settle(tester);
 
       expect(find.text('Downloaded Local Song'), findsOneWidget);
       expect(find.text('Remote Song One'), findsNothing);
@@ -242,23 +257,23 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await _settle(tester);
 
       // Tap Álbumes subtab
       await tester.tap(find.text('Álbumes'));
-      await tester.pumpAndSettle();
+      await _settle(tester);
 
       expect(find.text('Album One'), findsOneWidget);
 
       // Tap Artistas subtab
       await tester.tap(find.text('Artistas'));
-      await tester.pumpAndSettle();
+      await _settle(tester);
 
       expect(find.text('Artist Alpha'), findsOneWidget);
 
       // Tap Videos subtab
       await tester.tap(find.text('Videos'));
-      await tester.pumpAndSettle();
+      await _settle(tester);
 
       expect(find.text('Music Video Clip'), findsOneWidget);
       expect(find.text('VIDEO'), findsOneWidget);
@@ -278,13 +293,13 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await _settle(tester);
 
       expect(find.textContaining('Nodo desconectado'), findsNothing);
 
       // Node drops offline: beacon removes it
       beaconService.removeNode(testNode.deviceId);
-      await tester.pumpAndSettle();
+      await _settle(tester);
 
       // Disconnect banner is now visible
       expect(find.textContaining('Nodo desconectado'), findsOneWidget);
