@@ -23,6 +23,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/playlist_cover.dart';
 import '../widgets/radio_launch_sheet.dart';
 import '../widgets/sync_progress_panel.dart';
+import '../widgets/track_cover_art.dart';
 import '../widgets/track_options_sheet.dart';
 import '../widgets/video_badge.dart';
 
@@ -1073,22 +1074,13 @@ class _LibraryViewState extends State<LibraryView> {
                               borderRadius: BorderRadius.circular(6),
                               child: AspectRatio(
                                 aspectRatio: 1,
-                                child: coverPath != null && coverPath.isNotEmpty
-                                    ? Image.file(
-                                        File(coverPath),
-                                        fit: BoxFit.cover,
-                                        cacheWidth: 320,
-                                        errorBuilder: (_, __, ___) => Container(
-                                          color: AppTheme.bgHover,
-                                          child: const Icon(Icons.album_rounded,
-                                              color: AppTheme.textHint, size: 48),
-                                        ),
-                                      )
-                                    : Container(
-                                        color: AppTheme.bgHover,
-                                        child: const Icon(Icons.album_rounded,
-                                            color: AppTheme.textHint, size: 48),
-                                      ),
+                                child: TrackCoverArt(
+                                  coverPath: coverPath,
+                                  borderRadius: BorderRadius.circular(6),
+                                  cacheWidth: 320,
+                                  fallbackIcon: Icons.album_rounded,
+                                  fallbackIconSize: 48,
+                                ),
                               ),
                             ),
                           ),
@@ -1374,18 +1366,13 @@ class _LibraryViewState extends State<LibraryView> {
                       ),
                     ],
                   ),
-                  child: ClipRRect(
+                  child: TrackCoverArt(
+                    coverPath: coverPath,
+                    width: 230,
+                    height: 230,
                     borderRadius: BorderRadius.circular(12),
-                    child: SizedBox(
-                      width: 230,
-                      height: 230,
-                      child: coverPath != null
-                          ? Image.file(File(coverPath), fit: BoxFit.cover)
-                          : Container(
-                              color: AppTheme.bgSurface,
-                              child: const Icon(Icons.album_rounded, color: AppTheme.textHint, size: 72),
-                            ),
-                    ),
+                    fallbackIcon: Icons.album_rounded,
+                    fallbackIconSize: 72,
                   ),
                 ),
                 const SizedBox(width: 28),
@@ -1771,18 +1758,14 @@ class _LibraryViewState extends State<LibraryView> {
                             ),
                           ],
                         ),
-                        child: ClipRRect(
+                        child: TrackCoverArt(
+                          coverPath: coverPath,
+                          width: heroSize,
+                          height: heroSize,
                           borderRadius: BorderRadius.circular(16),
-                          child: SizedBox(
-                            width: heroSize,
-                            height: heroSize,
-                            child: coverPath != null
-                                ? Image.file(File(coverPath), fit: BoxFit.cover, cacheWidth: 460)
-                                : Container(
-                                    color: AppTheme.bgSurface,
-                                    child: const Icon(Icons.album_rounded, color: AppTheme.textHint, size: 64),
-                                  ),
-                          ),
+                          cacheWidth: 460,
+                          fallbackIcon: Icons.album_rounded,
+                          fallbackIconSize: 64,
                         ),
                       ),
                       const SizedBox(height: 18),
@@ -1871,7 +1854,6 @@ class _LibraryViewState extends State<LibraryView> {
                     (context, idx) {
                       final track = albumTracks[idx];
                       final coverPt = track.customMetadata.customCoverPath;
-                      final hasArt = coverPt != null && coverPt.isNotEmpty && File(coverPt).existsSync();
                       final durationStr = _formatDuration(track.duration);
 
                       return StreamBuilder<Track?>(
@@ -1919,13 +1901,14 @@ class _LibraryViewState extends State<LibraryView> {
                                     child: Stack(
                                       fit: StackFit.expand,
                                       children: [
-                                        hasArt
-                                            ? Image.file(File(coverPt), fit: BoxFit.cover, cacheWidth: 88)
-                                            : const ColoredBox(
-                                                color: AppTheme.bgHover,
-                                                child: Icon(Icons.music_note_rounded,
-                                                    color: AppTheme.textHint, size: 20),
-                                              ),
+                                        TrackCoverArt(
+                                          coverPath: coverPt,
+                                          width: 44,
+                                          height: 44,
+                                          borderRadius: BorderRadius.circular(6),
+                                          cacheWidth: 88,
+                                          fallbackIconSize: 20,
+                                        ),
                                         if (isCurrent)
                                           Container(
                                             color: Colors.black54,
@@ -2147,7 +2130,6 @@ class _LibraryViewState extends State<LibraryView> {
                     (context, idx) {
                       final track = artistTracks[idx];
                       final coverPt = track.customMetadata.customCoverPath;
-                      final hasArt = coverPt != null && coverPt.isNotEmpty && File(coverPt).existsSync();
                       final durationStr = _formatDuration(track.duration);
 
                       return StreamBuilder<Track?>(
@@ -2195,13 +2177,14 @@ class _LibraryViewState extends State<LibraryView> {
                                     child: Stack(
                                       fit: StackFit.expand,
                                       children: [
-                                        hasArt
-                                            ? Image.file(File(coverPt), fit: BoxFit.cover, cacheWidth: 88)
-                                            : const ColoredBox(
-                                                color: AppTheme.bgHover,
-                                                child: Icon(Icons.music_note_rounded,
-                                                    color: AppTheme.textHint, size: 20),
-                                              ),
+                                        TrackCoverArt(
+                                          coverPath: coverPt,
+                                          width: 44,
+                                          height: 44,
+                                          borderRadius: BorderRadius.circular(6),
+                                          cacheWidth: 88,
+                                          fallbackIconSize: 20,
+                                        ),
                                         if (isCurrent)
                                           Container(
                                             color: Colors.black54,
@@ -2292,10 +2275,21 @@ class _LibraryViewState extends State<LibraryView> {
           // Determine the background image path for the blurred Tidal atmosphere:
           // priority: playlist customCoverPath > first track with cover
           String? bgImagePath = playlist.customCoverPath;
-          if (bgImagePath == null || bgImagePath.isEmpty || !File(bgImagePath).existsSync()) {
+          bool isValidCover(String? p) {
+            if (p == null || p.isEmpty) return false;
+            if (AudioPlayerService.isRemoteUri(p)) return true;
+            try {
+              return File(p).existsSync();
+            } catch (_) {
+              return false;
+            }
+          }
+
+          if (!isValidCover(bgImagePath)) {
+            bgImagePath = null;
             for (final t in playlistTracks) {
               final cp = t.customMetadata.customCoverPath;
-              if (cp != null && cp.isNotEmpty && File(cp).existsSync()) {
+              if (isValidCover(cp)) {
                 bgImagePath = cp;
                 break;
               }
@@ -2665,9 +2659,6 @@ class _LibraryViewState extends State<LibraryView> {
                       (context, idx) {
                         final track = playlistTracks[idx];
                         final coverPath = track.customMetadata.customCoverPath;
-                        final hasArt = coverPath != null &&
-                            coverPath.isNotEmpty &&
-                            File(coverPath).existsSync();
 
                         final effectiveContextName = playlist.playlistId == '__liked__'
                             ? 'Canciones que te gustan'
@@ -2732,13 +2723,14 @@ class _LibraryViewState extends State<LibraryView> {
                                     child: Stack(
                                       fit: StackFit.expand,
                                       children: [
-                                        hasArt
-                                            ? Image.file(File(coverPath), fit: BoxFit.cover, cacheWidth: 88)
-                                            : const ColoredBox(
-                                                color: AppTheme.bgHover,
-                                                child: Icon(Icons.music_note_rounded,
-                                                    color: AppTheme.textHint, size: 20),
-                                              ),
+                                        TrackCoverArt(
+                                          coverPath: coverPath,
+                                          width: 44,
+                                          height: 44,
+                                          borderRadius: BorderRadius.circular(6),
+                                          cacheWidth: 88,
+                                          fallbackIconSize: 20,
+                                        ),
                                         if (isCurrent)
                                           Container(
                                             color: Colors.black54,
@@ -3014,9 +3006,6 @@ class _LibraryViewState extends State<LibraryView> {
       ),
       builder: (ctx) {
         final coverPath = representativeTrack.customMetadata.customCoverPath;
-        final hasArt = coverPath != null &&
-            coverPath.isNotEmpty &&
-            File(coverPath).existsSync();
 
         return SafeArea(
           child: Padding(
@@ -3030,18 +3019,14 @@ class _LibraryViewState extends State<LibraryView> {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: SizedBox(
+                      child: TrackCoverArt(
+                        coverPath: coverPath,
                         width: 52,
                         height: 52,
-                        child: hasArt
-                            ? Image.file(File(coverPath), fit: BoxFit.cover, cacheWidth: 104)
-                            : const ColoredBox(
-                                color: AppTheme.bgHover,
-                                child: Center(
-                                  child: Icon(Icons.album_rounded,
-                                      color: AppTheme.textHint, size: 28),
-                                ),
-                              ),
+                        borderRadius: BorderRadius.circular(8),
+                        cacheWidth: 104,
+                        fallbackIcon: Icons.album_rounded,
+                        fallbackIconSize: 28,
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -3420,9 +3405,6 @@ class _LibraryViewState extends State<LibraryView> {
       itemBuilder: (context, idx) {
         final track = tracks[idx];
         final coverPath = track.customMetadata.customCoverPath;
-        final hasArt = coverPath != null &&
-            coverPath.isNotEmpty &&
-            File(coverPath).existsSync();
 
         return StreamBuilder<Track?>(
           stream: OrpheusAudioHandler.instance.currentTrackStream,
@@ -3472,13 +3454,14 @@ class _LibraryViewState extends State<LibraryView> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        hasArt
-                            ? Image.file(File(coverPath), fit: BoxFit.cover, cacheWidth: 92)
-                            : const ColoredBox(
-                                color: AppTheme.bgHover,
-                                child: Icon(Icons.music_note_rounded,
-                                    color: AppTheme.textHint, size: 20),
-                              ),
+                        TrackCoverArt(
+                          coverPath: coverPath,
+                          width: 46,
+                          height: 46,
+                          borderRadius: BorderRadius.circular(6),
+                          cacheWidth: 92,
+                          fallbackIconSize: 20,
+                        ),
                         if (isCurrent)
                           Container(
                             color: Colors.black54,
@@ -3872,14 +3855,13 @@ class _TrackRowState extends State<_TrackRow> {
                     child: Row(
                       children: [
                         if (widget.track.customMetadata.customCoverPath != null) ...[
-                          ClipRRect(
+                          TrackCoverArt(
+                            coverPath: widget.track.customMetadata.customCoverPath,
+                            width: 24,
+                            height: 24,
                             borderRadius: BorderRadius.circular(3),
-                            child: Image.file(
-                              File(widget.track.customMetadata.customCoverPath!),
-                              width: 24,
-                              height: 24,
-                              fit: BoxFit.cover,
-                            ),
+                            cacheWidth: 48,
+                            fallbackIconSize: 12,
                           ),
                           const SizedBox(width: 8),
                         ],
@@ -4257,11 +4239,19 @@ class _BlurredImageBackground extends StatelessWidget {
         Positioned.fill(
           child: Transform.scale(
             scale: 1.15, // slight scale-up so blur edges stay outside bounds
-            child: Image.file(
-              File(imagePath),
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
-            ),
+            child: AudioPlayerService.isRemoteUri(imagePath)
+                ? Image.network(
+                    imagePath,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  )
+                : Image.file(
+                    File(imagePath),
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
           ),
         ),
         // 2. Gaussian blur filter

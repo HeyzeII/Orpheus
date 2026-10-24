@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../core/database/local_database.dart';
@@ -7,6 +6,7 @@ import '../../core/models/models.dart';
 import '../../core/services/audio_handler.dart';
 import '../theme/app_theme.dart';
 import '../widgets/animated_equalizer.dart';
+import '../widgets/track_cover_art.dart';
 import '../widgets/track_options_sheet.dart';
 import '../widgets/video_badge.dart';
 
@@ -387,10 +387,6 @@ class _MobileTopGrid extends StatelessWidget {
       ),
       itemBuilder: (context, idx) {
         final track = tracks[idx];
-        final coverPath = track.customMetadata.customCoverPath;
-        final hasArt =
-            coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
-
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => onTap(track),
@@ -403,24 +399,15 @@ class _MobileTopGrid extends StatelessWidget {
             child: Row(
               children: [
                 // Cover
-                ClipRRect(
+                TrackCoverArt(
+                  coverPath: track.customMetadata.customCoverPath,
+                  width: 48,
+                  height: double.infinity,
                   borderRadius: const BorderRadius.horizontal(
                     left: Radius.circular(8),
                   ),
-                  child: SizedBox(
-                    width: 48,
-                    height: double.infinity,
-                    child: hasArt
-                        ? Image.file(File(coverPath), fit: BoxFit.cover, cacheWidth: 96)
-                        : const ColoredBox(
-                            color: AppTheme.bgHover,
-                            child: Icon(
-                              Icons.music_note_rounded,
-                              color: AppTheme.textHint,
-                              size: 18,
-                            ),
-                          ),
-                  ),
+                  cacheWidth: 96,
+                  fallbackIconSize: 18,
                 ),
                 // Title
                 Expanded(
@@ -476,10 +463,6 @@ class _HorizontalCarousel extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, idx) {
           final track = tracks[idx];
-          final coverPath = track.customMetadata.customCoverPath;
-          final hasArt = coverPath != null &&
-              coverPath.isNotEmpty &&
-              File(coverPath).existsSync();
 
           return StreamBuilder<Track?>(
             stream: OrpheusAudioHandler.instance.currentTrackStream,
@@ -523,16 +506,15 @@ class _HorizontalCarousel extends StatelessWidget {
                             child: Stack(
                               fit: StackFit.expand,
                               children: [
-                                hasArt
-                                    ? Image.file(File(coverPath),
-                                        fit: BoxFit.cover, cacheWidth: 260)
-                                    : const ColoredBox(
-                                        color: AppTheme.bgHover,
-                                        child: Center(
-                                          child: Icon(Icons.album_rounded,
-                                              color: AppTheme.textHint, size: 42),
-                                        ),
-                                      ),
+                                TrackCoverArt(
+                                  coverPath: track.customMetadata.customCoverPath,
+                                  width: 130,
+                                  height: 130,
+                                  borderRadius: BorderRadius.circular(8),
+                                  cacheWidth: 260,
+                                  fallbackIcon: Icons.album_rounded,
+                                  fallbackIconSize: 42,
+                                ),
                                 if (isCurrent)
                                   Container(
                                     color: Colors.black54,
@@ -649,11 +631,13 @@ class _TrackCardState extends State<_TrackCard> {
                     child: Stack(
                       children: [
                         Positioned.fill(
-                          child: coverPath != null
-                              ? Image.file(File(coverPath), fit: BoxFit.cover)
-                              : const Center(
-                                  child: Icon(Icons.album_rounded,
-                                      color: AppTheme.textHint, size: 40)),
+                          child: TrackCoverArt(
+                            coverPath: coverPath,
+                            borderRadius:
+                                const BorderRadius.vertical(top: Radius.circular(8)),
+                            fallbackIcon: Icons.album_rounded,
+                            fallbackIconSize: 40,
+                          ),
                         ),
                         if (widget.track.isVideo)
                           const Positioned(

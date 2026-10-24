@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
@@ -67,10 +68,37 @@ class LocalSyncServer {
   /// Protocol version.
   String get version => '1.0.0';
 
+  /// Reactive notifier for server running state changes.
+  final ValueNotifier<bool> isRunningNotifier = ValueNotifier<bool>(false);
+
+  /// Returns non-loopback IPv4 addresses assigned to active network interfaces.
+  static Future<List<String>> getLocalIpAddresses() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLoopback: false,
+      );
+      final ips = <String>[];
+      for (final interface in interfaces) {
+        for (final addr in interface.addresses) {
+          if (!addr.isLoopback && addr.address.isNotEmpty) {
+            ips.add(addr.address);
+          }
+        }
+      }
+      return ips;
+    } catch (_) {
+      return [];
+    }
+  }
+
   /// Starts the HTTP server on [port]. If port is 0, an ephemeral port is assigned.
+  /// Binds by default to `InternetAddress.anyIPv4` (0.0.0.0) to accept incoming connections
+  /// from any device on the local network.
   Future<void> start({
     int port = kDefaultPort,
-    InternetAddress? bindAddress,
+    dynamic bindAddress,
+    bool shared = true,
   }) async {
     if (_server != null) return;
 
@@ -79,15 +107,34 @@ class LocalSyncServer {
           .addMiddleware(_corsMiddleware())
           .addHandler(router.call);
 
+      InternetAddress resolvedAddress;
+      if (bindAddress == null) {
+        resolvedAddress = InternetAddress.anyIPv4;
+      } else if (bindAddress is InternetAddress) {
+        resolvedAddress = bindAddress;
+      } else if (bindAddress is String) {
+        resolvedAddress = InternetAddress(bindAddress);
+      } else {
+        resolvedAddress = InternetAddress.anyIPv4;
+      }
+
       _server = await shelf_io.serve(
         pipeline,
-        bindAddress ?? InternetAddress.anyIPv4,
+        resolvedAddress,
         port,
+        shared: shared,
       );
 
       _actualPort = _server!.port;
+      isRunningNotifier.value = true;
+
+      final localIps = await getLocalIpAddresses();
+      final reachableUrls = localIps.isNotEmpty
+          ? localIps.map((ip) => 'http://$ip:$_actualPort').join(', ')
+          : 'http://${resolvedAddress.address}:$_actualPort';
+
       DebugLogger.log(
-        'LocalSyncServer: Listening on http://${_server!.address.address}:$_actualPort ($deviceName)',
+        'LocalSyncServer: Listening on $reachableUrls ($deviceName)',
       );
     } catch (e, stack) {
       DebugLogger.log('LocalSyncServer: Failed to start on port $port: $e\n$stack');
@@ -103,6 +150,7 @@ class LocalSyncServer {
       _server = null;
       _actualPort = null;
       _sha256Cache.clear();
+      isRunningNotifier.value = false;
       DebugLogger.log('LocalSyncServer: Stopped on port $oldPort');
     }
   }

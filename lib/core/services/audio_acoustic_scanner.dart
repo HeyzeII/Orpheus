@@ -213,6 +213,24 @@ class AudioAcousticScanner {
   }
 
   Future<ScanResult> _scanTrackInWorker(Track track) async {
+    if (AudioPlayerService.isRemoteUri(track.filePath)) {
+      return ScanResult(
+        trackId: track.trackId,
+        rmsEnergy: 0.1,
+        peakDensity: 0.5,
+        spectralBalance: 0.5,
+        success: true,
+      );
+    }
+
+    try {
+      if (!File(track.filePath).existsSync()) {
+        return ScanResult.failure(track.trackId, 'File not found on disk');
+      }
+    } catch (e) {
+      return ScanResult.failure(track.trackId, 'File check error: $e');
+    }
+
     if (_workerSendPort == null) {
       return ScanResult.failure(track.trackId, 'Worker isolate not initialized');
     }

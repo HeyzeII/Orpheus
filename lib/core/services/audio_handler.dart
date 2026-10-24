@@ -175,10 +175,14 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
 
     try {
       final file = File(coverPath);
-      if (file.existsSync() && file.lengthSync() > 0) {
-        final uri = Uri.file(file.absolute.path);
-        _artUriCache[coverPath] = uri;
-        return uri;
+      if (file.existsSync()) {
+        try {
+          if (file.lengthSync() > 0) {
+            final uri = Uri.file(file.absolute.path);
+            _artUriCache[coverPath] = uri;
+            return uri;
+          }
+        } catch (_) {}
       }
     } catch (_) {
       // Catch file-system or path resolution errors cleanly

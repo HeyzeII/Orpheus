@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/models/track.dart';
 import '../../core/network/local_sync_client.dart';
@@ -32,6 +33,8 @@ class _NearbyDevicesViewState extends State<NearbyDevicesView> {
   StreamSubscription<List<DiscoveredNode>>? _nodesSub;
   List<DiscoveredNode> _nodes = [];
   bool _isScanning = false;
+  List<String> _localIps = [];
+  bool _isServerToggling = false;
 
   final TextEditingController _ipController = TextEditingController(text: '192.168.1.');
   final TextEditingController _portController = TextEditingController(text: '50505');
@@ -42,6 +45,9 @@ class _NearbyDevicesViewState extends State<NearbyDevicesView> {
     super.initState();
     _beacon = widget.beaconService ?? OrpheusBeaconService.instance;
     _nodes = _beacon.activeNodes;
+    LocalSyncServer.instance.isRunningNotifier.addListener(_onServerStateChanged);
+    _initLocalServicesAndIps();
+
     if (widget.autoStartScan) {
       _startScan();
     } else {
@@ -55,8 +61,89 @@ class _NearbyDevicesViewState extends State<NearbyDevicesView> {
     }
   }
 
+  void _onServerStateChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  Future<void> _initLocalServicesAndIps() async {
+    final ips = await LocalSyncServer.getLocalIpAddresses();
+    if (!LocalSyncServer.instance.isRunning) {
+      try {
+        await LocalSyncServer.instance.start();
+        if (!_beacon.isAnnouncing) {
+          await _beacon.startAnnouncing();
+        }
+      } catch (_) {}
+    }
+    if (mounted) {
+      setState(() {
+        _localIps = ips;
+      });
+    }
+  }
+
+  Future<void> _toggleLocalServer() async {
+    setState(() => _isServerToggling = true);
+    try {
+      if (LocalSyncServer.instance.isRunning) {
+        await LocalSyncServer.instance.stop();
+        _beacon.stopAnnouncing();
+        if (mounted) {
+          AppToast.showText(context, 'Servidor local pausado');
+        }
+      } else {
+        await LocalSyncServer.instance.start();
+        await _beacon.startAnnouncing();
+        final ips = await LocalSyncServer.getLocalIpAddresses();
+        if (mounted) {
+          setState(() => _localIps = ips);
+          AppToast.showText(
+            context,
+            'Servidor activo en el puerto ${LocalSyncServer.instance.port}',
+            icon: Icons.check_circle_rounded,
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        AppToast.showText(
+          context,
+          'Error al alternar servidor: $e',
+          icon: Icons.error_outline_rounded,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isServerToggling = false);
+      }
+    }
+  }
+
+  Future<void> _refreshAll() async {
+    final ips = await LocalSyncServer.getLocalIpAddresses();
+    if (!LocalSyncServer.instance.isRunning) {
+      try {
+        await LocalSyncServer.instance.start();
+      } catch (_) {}
+    }
+    if (!_beacon.isAnnouncing) {
+      try {
+        await _beacon.startAnnouncing();
+      } catch (_) {}
+    }
+    if (mounted) {
+      setState(() {
+        _localIps = ips;
+      });
+    }
+    await _startScan();
+  }
+
   @override
   void dispose() {
+    LocalSyncServer.instance.isRunningNotifier.removeListener(_onServerStateChanged);
     if (_isScanning) {
       _beacon.stopListening();
     }
@@ -187,6 +274,11 @@ class _NearbyDevicesViewState extends State<NearbyDevicesView> {
             onPressed: () => SyncProgressPanel.showModal(context),
           ),
           IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: AppTheme.textSecondary),
+            tooltip: 'Refrescar red y servidor',
+            onPressed: _refreshAll,
+          ),
+          IconButton(
             icon: Icon(
               _isScanning ? Icons.sync_rounded : Icons.sync_disabled_rounded,
               color: _isScanning ? AppTheme.accent : AppTheme.textHint,
@@ -259,84 +351,168 @@ class _NearbyDevicesViewState extends State<NearbyDevicesView> {
   Widget _buildLocalNodeCard() {
     final server = LocalSyncServer.instance;
     final isRunning = server.isRunning;
+    final primaryIp = _localIps.isNotEmpty ? _localIps.first : '0.0.0.0';
+    final serverUrl = 'http://$primaryIp:${server.port}';
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppTheme.bgSurface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.divider),
+        border: Border.all(
+          color: isRunning
+              ? AppTheme.accent.withValues(alpha: 0.3)
+              : AppTheme.divider,
+        ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: AppTheme.accent.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(
-              Icons.computer_rounded,
-              color: AppTheme.accent,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: isRunning
+                      ? AppTheme.accent.withValues(alpha: 0.15)
+                      : AppTheme.textHint.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.computer_rounded,
+                  color: isRunning ? AppTheme.accent : AppTheme.textHint,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Flexible(
-                      child: Text(
-                        server.deviceName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.textPrimary,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            server.deviceName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isRunning
+                                ? Colors.greenAccent.withValues(alpha: 0.15)
+                                : Colors.orangeAccent.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            isRunning ? 'SERVIDOR ACTIVO' : 'APAGADO',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: isRunning ? Colors.greenAccent : Colors.orangeAccent,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: isRunning
-                            ? Colors.greenAccent.withValues(alpha: 0.15)
-                            : Colors.orangeAccent.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        isRunning ? 'SERVIDOR ACTIVO' : 'LOCAL',
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          color: isRunning ? Colors.greenAccent : Colors.orangeAccent,
-                        ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isRunning
+                          ? 'Enlazado a 0.0.0.0:${server.port} (Accesible en LAN)'
+                          : 'Listo para compartir música en tu red local',
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  isRunning
-                      ? 'Puerto ${server.port} • Transmitiendo biblioteca local'
-                      : 'Listo para recibir y emitir música en red local',
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 12,
-                    color: AppTheme.textSecondary,
-                  ),
+              ),
+              const SizedBox(width: 8),
+              if (_isServerToggling)
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent),
+                )
+              else
+                Switch.adaptive(
+                  value: isRunning,
+                  activeColor: AppTheme.accent,
+                  onChanged: (_) => _toggleLocalServer(),
                 ),
-              ],
-            ),
+            ],
           ),
+          if (isRunning) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.bgDeep,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.divider.withValues(alpha: 0.5)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.link_rounded,
+                    size: 16,
+                    color: AppTheme.accent,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      serverUrl,
+                      style: const TextStyle(
+                        fontFamily: 'JetBrainsMono',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  ),
+                  if (_localIps.length > 1) ...[
+                    Text(
+                      '+${_localIps.length - 1}',
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 11,
+                        color: AppTheme.textHint,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  IconButton(
+                    icon: const Icon(Icons.copy_rounded, size: 16, color: AppTheme.textSecondary),
+                    tooltip: 'Copiar URL del servidor',
+                    splashRadius: 18,
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.all(4),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: serverUrl));
+                      AppToast.showText(
+                        context,
+                        'URL copiada: $serverUrl',
+                        icon: Icons.check_circle_rounded,
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

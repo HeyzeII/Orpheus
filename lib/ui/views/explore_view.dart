@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:isar/isar.dart';
@@ -12,6 +11,7 @@ import '../../core/services/recommendation_engine_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/mood_picker_widget.dart';
 import '../widgets/radio_launch_sheet.dart';
+import '../widgets/track_cover_art.dart';
 
 /// Dynamic "Explorar" discovery view for Orpheus.
 ///
@@ -410,9 +410,6 @@ class _ExploreCoverMarqueeState extends State<_ExploreCoverMarquee> {
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (context, idx) {
               final track = displayList[idx];
-              final coverPath = track.customMetadata.customCoverPath;
-              final file = coverPath != null && coverPath.isNotEmpty ? File(coverPath) : null;
-              final hasCover = file != null && file.existsSync() && file.lengthSync() > 0;
 
               return Tooltip(
                 message: 'Iniciar radio de "${track.displayTitle}"',
@@ -438,16 +435,14 @@ class _ExploreCoverMarqueeState extends State<_ExploreCoverMarquee> {
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
-                          if (hasCover)
-                            Image.file(
-                              file,
-                              fit: BoxFit.cover,
-                              cacheWidth: 160,
-                              cacheHeight: 160,
-                              errorBuilder: (_, __, ___) => const _MarqueeFallbackCover(),
-                            )
-                          else
-                            const _MarqueeFallbackCover(),
+                          TrackCoverArt(
+                            coverPath: track.customMetadata.customCoverPath,
+                            width: 110,
+                            height: 110,
+                            borderRadius: BorderRadius.circular(12),
+                            cacheWidth: 160,
+                            fallback: const _MarqueeFallbackCover(),
+                          ),
                           // Subtle bottom vignette with radio badge
                           Positioned(
                             bottom: 6,
@@ -627,9 +622,6 @@ class _HeroForYouCard extends StatelessWidget {
   Widget build(BuildContext context) {
     if (seedTrack == null) return const SizedBox.shrink();
     final track = seedTrack!;
-    final coverPath = track.customMetadata.customCoverPath;
-    final file = coverPath != null && coverPath.isNotEmpty ? File(coverPath) : null;
-    final hasCover = file != null && file.existsSync() && file.lengthSync() > 0;
 
     return Container(
       padding: const EdgeInsets.all(22),
@@ -701,24 +693,13 @@ class _HeroForYouCard extends StatelessWidget {
           Row(
             children: [
               // Large Cover
-              ClipRRect(
+              TrackCoverArt(
+                coverPath: track.customMetadata.customCoverPath,
+                width: 110,
+                height: 110,
                 borderRadius: BorderRadius.circular(14),
-                child: SizedBox(
-                  width: 110,
-                  height: 110,
-                  child: hasCover
-                      ? Image.file(
-                          file,
-                          fit: BoxFit.cover,
-                          cacheWidth: 220,
-                          cacheHeight: 220,
-                        )
-                      : Container(
-                          color: const Color(0xFF282828),
-                          child: const Icon(Icons.music_note_rounded,
-                              color: Colors.white24, size: 40),
-                        ),
-                ),
+                cacheWidth: 220,
+                fallbackIconSize: 40,
               ),
               const SizedBox(width: 18),
 
@@ -1049,19 +1030,13 @@ class _MiniCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final file = path != null && path!.isNotEmpty ? File(path!) : null;
-    final hasCover = file != null && file.existsSync() && file.lengthSync() > 0;
-
-    if (hasCover) {
-      return Image.file(
-        file,
-        fit: BoxFit.cover,
-        cacheWidth: 72,
-        cacheHeight: 72,
-        errorBuilder: (_, __, ___) => _fallback(),
-      );
-    }
-    return _fallback();
+    return TrackCoverArt(
+      coverPath: path,
+      fit: BoxFit.cover,
+      cacheWidth: 72,
+      borderRadius: BorderRadius.zero,
+      fallback: _fallback(),
+    );
   }
 
   Widget _fallback() {

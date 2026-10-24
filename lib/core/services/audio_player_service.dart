@@ -1110,11 +1110,24 @@ class AudioPlayerService {
 
   // ── Engine Opener & Persistence ────────────────────────────────────────────
 
-  /// Returns `true` if [pathOrUri] represents a remote network resource (HTTP or HTTPS).
+  /// Returns `true` if [pathOrUri] represents a remote network resource (HTTP, HTTPS, or any network URI scheme).
   static bool isRemoteUri(String? pathOrUri) {
     if (pathOrUri == null) return false;
-    final lower = pathOrUri.trim().toLowerCase();
-    return lower.startsWith('http://') || lower.startsWith('https://');
+    final trimmed = pathOrUri.trim();
+    if (trimmed.isEmpty) return false;
+    if (RegExp(r'^[a-zA-Z]:[/\\]').hasMatch(trimmed)) {
+      return false;
+    }
+    final lower = trimmed.toLowerCase();
+    if (lower.startsWith('http://') || lower.startsWith('https://')) return true;
+    final parsed = Uri.tryParse(trimmed);
+    if (parsed != null &&
+        parsed.hasScheme &&
+        parsed.scheme != 'file' &&
+        parsed.scheme.length > 1) {
+      return true;
+    }
+    return false;
   }
 
   /// Converts a local file path or remote HTTP URI into an acceptable URI string for [Media].
@@ -1151,14 +1164,22 @@ class AudioPlayerService {
 
     final isRemote = isRemoteUri(track.filePath);
     if (!isRemote) {
-      final file = File(track.filePath);
-      if (!file.existsSync()) {
-        _consecutiveErrors++;
-        if (_consecutiveErrors >= _activeContext.length + _userQueue.length + 1) {
-          _consecutiveErrors = 0;
-          await stop();
+      try {
+        final file = File(track.filePath);
+        if (!file.existsSync()) {
+          _consecutiveErrors++;
+          if (_consecutiveErrors >= _activeContext.length + _userQueue.length + 1) {
+            _consecutiveErrors = 0;
+            await stop();
+            return;
+          }
+          _currentTrackController.add(null);
+          Future.delayed(const Duration(milliseconds: 100), () {
+            next();
+          });
           return;
         }
+      } catch (_) {
         _currentTrackController.add(null);
         Future.delayed(const Duration(milliseconds: 100), () {
           next();
@@ -1260,8 +1281,12 @@ class AudioPlayerService {
 
       final isRemote = isRemoteUri(_currentTrack!.filePath);
       if (!isRemote) {
-        final file = File(_currentTrack!.filePath);
-        if (!file.existsSync()) return;
+        try {
+          final file = File(_currentTrack!.filePath);
+          if (!file.existsSync()) return;
+        } catch (_) {
+          return;
+        }
       }
 
       _hydrating = true;

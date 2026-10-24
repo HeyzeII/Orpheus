@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../database/local_database.dart';
 import '../models/track.dart';
 import '../utils/string_sanitizer.dart';
+import 'audio_player_service.dart';
 import 'media_cache_service.dart';
 import 'network_guard_service.dart';
 
@@ -93,7 +94,10 @@ class LyricsService {
 
     final artist = track.displayArtist;
     final title = track.displayTitle;
-    final musicDir = track.filePath.isNotEmpty ? File(track.filePath).parent.path : null;
+    final isRemote = AudioPlayerService.isRemoteUri(track.filePath);
+    final musicDir = (!isRemote && track.filePath.isNotEmpty)
+        ? File(track.filePath).parent.path
+        : null;
 
     // ── 2. Check persistent hash cache before network request ─────────────
     final cachedLyrics =
@@ -106,7 +110,7 @@ class LyricsService {
     }
 
     // ── 3. Check local .lrc file in the same physical directory ───────────
-    if (track.filePath.isNotEmpty) {
+    if (!isRemote && track.filePath.isNotEmpty) {
       final localLrc =
           await MediaCacheService.instance.findLocalLrcFile(track.filePath);
       if (localLrc != null) {

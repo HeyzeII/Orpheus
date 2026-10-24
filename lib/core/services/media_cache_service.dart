@@ -11,6 +11,7 @@ import '../database/local_database.dart';
 import '../models/playlist.dart';
 import '../models/track.dart';
 import '../utils/string_sanitizer.dart';
+import 'audio_player_service.dart';
 
 /// Singleton service responsible for managing persistent media cache (covers, lyrics,
 /// and metadata index) stored in a hidden `.orpheus_cache/` directory inside the user's
@@ -513,7 +514,7 @@ class MediaCacheService {
   /// Finds a matching `.lrc` file in the same physical directory as [audioFilePath].
   /// Matches `{stem}.lrc` (case-insensitive extension).
   Future<File?> findLocalLrcFile(String audioFilePath) async {
-    if (audioFilePath.isEmpty) return null;
+    if (audioFilePath.isEmpty || AudioPlayerService.isRemoteUri(audioFilePath)) return null;
     try {
       final audioFile = File(audioFilePath);
       final parentDir = audioFile.parent;
@@ -545,7 +546,7 @@ class MediaCacheService {
   /// 3. `folder.jpg`, `folder.png`, `folder.jpeg`, `folder.webp`
   /// 4. `album.jpg`, `album.png`, `front.jpg`
   Future<File?> findLocalCoverFile(String audioFilePath) async {
-    if (audioFilePath.isEmpty) return null;
+    if (audioFilePath.isEmpty || AudioPlayerService.isRemoteUri(audioFilePath)) return null;
     try {
       final audioFile = File(audioFilePath);
       final parentDir = audioFile.parent;

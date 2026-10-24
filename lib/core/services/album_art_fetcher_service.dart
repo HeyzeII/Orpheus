@@ -9,6 +9,7 @@ import '../database/local_database.dart';
 import '../models/track.dart';
 import '../utils/fuzzy_matcher.dart';
 import '../utils/string_sanitizer.dart';
+import 'audio_player_service.dart';
 import 'media_cache_service.dart';
 import 'network_guard_service.dart';
 
@@ -124,11 +125,15 @@ class AlbumArtFetcherService {
   /// If [deleteCachedFile] is true, deletes the cached cover file from disk
   /// and clears [customCoverPath].
   Future<void> resetTrackArtStatus(Track track, {bool deleteCachedFile = false}) async {
-    final musicDir = track.filePath.isNotEmpty ? File(track.filePath).parent.path : null;
+    final isRemote = AudioPlayerService.isRemoteUri(track.filePath);
+    final musicDir = (!isRemote && track.filePath.isNotEmpty)
+        ? File(track.filePath).parent.path
+        : null;
 
     if (deleteCachedFile) {
       if (track.customMetadata.customCoverPath != null &&
-          track.customMetadata.customCoverPath!.isNotEmpty) {
+          track.customMetadata.customCoverPath!.isNotEmpty &&
+          !AudioPlayerService.isRemoteUri(track.customMetadata.customCoverPath!)) {
         try {
           final file = File(track.customMetadata.customCoverPath!);
           if (await file.exists()) {
@@ -188,7 +193,10 @@ class AlbumArtFetcherService {
 
     final displayArtist = track.displayArtist;
     final displayTitle = track.displayTitle;
-    final musicDir = track.filePath.isNotEmpty ? File(track.filePath).parent.path : null;
+    final isRemote = AudioPlayerService.isRemoteUri(track.filePath);
+    final musicDir = (!isRemote && track.filePath.isNotEmpty)
+        ? File(track.filePath).parent.path
+        : null;
 
     // 1. Check persistent hash cache in .orpheus_cache/
     final cachedCover = await MediaCacheService.instance.getCachedCover(displayArtist, displayTitle, musicDir);
@@ -201,7 +209,7 @@ class AlbumArtFetcherService {
     }
 
     // 2. Check local cover image in the same directory as the audio file
-    if (track.filePath.isNotEmpty) {
+    if (!isRemote && track.filePath.isNotEmpty) {
       final localCover = await MediaCacheService.instance.findLocalCoverFile(track.filePath);
       if (localCover != null) {
         try {

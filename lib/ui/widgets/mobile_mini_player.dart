@@ -1,13 +1,12 @@
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 
 import '../../core/models/track.dart';
 import '../../core/services/audio_handler.dart';
-import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/network_indicator_badge.dart';
 import '../widgets/radio_indicator_badge.dart';
+import '../widgets/track_cover_art.dart';
 import '../views/expanded_player_view.dart';
 
 /// Floating mini-player card for mobile (Android) that sits above
@@ -48,45 +47,13 @@ class MobileMiniPlayer extends StatelessWidget {
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   Widget _coverArt(Track track) {
-    final path = track.customMetadata.customCoverPath;
-    const fallback = ColoredBox(
-      color: AppTheme.bgHover,
-      child: Icon(
-        Icons.music_note_rounded,
-        color: AppTheme.textHint,
-        size: 20,
-      ),
-    );
-
-    Widget imageWidget = fallback;
-    if (path != null && path.isNotEmpty) {
-      if (AudioPlayerService.isRemoteUri(path)) {
-        imageWidget = Image.network(
-          path,
-          fit: BoxFit.cover,
-          cacheWidth: 88,
-          errorBuilder: (_, __, ___) => fallback,
-        );
-      } else {
-        final file = File(path);
-        if (file.existsSync() && file.lengthSync() > 0) {
-          imageWidget = Image.file(
-            file,
-            fit: BoxFit.cover,
-            cacheWidth: 88,
-            errorBuilder: (_, __, ___) => fallback,
-          );
-        }
-      }
-    }
-
-    return ClipRRect(
+    return TrackCoverArt(
+      coverPath: track.customMetadata.customCoverPath,
+      width: 44,
+      height: 44,
       borderRadius: BorderRadius.circular(6),
-      child: SizedBox(
-        width: 44,
-        height: 44,
-        child: imageWidget,
-      ),
+      cacheWidth: 88,
+      fallbackIconSize: 20,
     );
   }
 

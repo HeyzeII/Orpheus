@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 
@@ -16,6 +15,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/network_indicator_badge.dart';
 import '../widgets/radio_indicator_badge.dart';
 import '../widgets/sync_progress_panel.dart';
+import '../widgets/track_cover_art.dart';
 
 /// Fixed bottom player bar — 90px tall, three-section layout.
 ///
@@ -171,42 +171,18 @@ class _CoverArt extends StatelessWidget {
             },
           );
         },
-        child: ClipRRect(
+        child: TrackCoverArt(
+          coverPath: coverPath,
+          width: 55,
+          height: 55,
           borderRadius: BorderRadius.circular(6),
-          child: SizedBox(
-            width: 55,
-            height: 55,
-            child: coverPath != null
-                ? (AudioPlayerService.isRemoteUri(coverPath!)
-                    ? Image.network(
-                        coverPath!,
-                        fit: BoxFit.cover,
-                        cacheWidth: 110,
-                        errorBuilder: (context, error, stackTrace) =>
-                            _placeholder(),
-                      )
-                    : Image.file(
-                        File(coverPath!),
-                        fit: BoxFit.cover,
-                        cacheWidth: 110,
-                        errorBuilder: (context, error, stackTrace) =>
-                            _placeholder(),
-                      ))
-                : _placeholder(),
-          ),
+          cacheWidth: 110,
+          fallbackIcon: Icons.music_note_rounded,
+          fallbackIconSize: 24,
         ),
       ),
     );
   }
-
-  Widget _placeholder() => Container(
-        color: AppTheme.bgHover,
-        child: const Icon(
-          Icons.music_note_rounded,
-          color: AppTheme.textHint,
-          size: 22,
-        ),
-      );
 }
 
 class _TrackActions extends StatefulWidget {

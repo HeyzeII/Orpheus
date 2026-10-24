@@ -18,6 +18,7 @@ import '../widgets/app_toast.dart';
 import '../widgets/marquee_text.dart';
 import '../widgets/radio_launch_sheet.dart';
 import '../widgets/similar_tracks_panel.dart';
+import '../widgets/track_cover_art.dart';
 import '../widgets/track_options_sheet.dart';
 import '../widgets/video_canvas.dart';
 import 'lyrics_view.dart';
@@ -111,19 +112,15 @@ class _BlurredImageBackground extends StatelessWidget {
       children: [
         // Solid opaque base layer prevents BackdropFilter from bleeding into underlying routes
         const ColoredBox(color: Color(0xFF0F0F0F)),
-        if (coverPath != null && File(coverPath).existsSync())
-          Transform.scale(
-            scale: 1.15,
-            child: Image.file(
-              File(coverPath),
-              fit: BoxFit.cover,
-              cacheWidth: 600,
-              errorBuilder: (context, error, stackTrace) =>
-                  const ColoredBox(color: Color(0xFF141414)),
-            ),
-          )
-        else
-          const ColoredBox(color: Color(0xFF141414)),
+        Transform.scale(
+          scale: 1.15,
+          child: TrackCoverArt(
+            coverPath: coverPath,
+            cacheWidth: 600,
+            borderRadius: BorderRadius.zero,
+            fallback: const ColoredBox(color: Color(0xFF141414)),
+          ),
+        ),
         BackdropFilter(
           filter: ui.ImageFilter.blur(sigmaX: 50.0, sigmaY: 50.0),
           child: Container(
@@ -594,8 +591,10 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
   Widget build(BuildContext context) {
     final track = widget.track;
     final coverPath = track.customMetadata.customCoverPath;
-    final hasArt =
-        coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
+    final isRemote = AudioPlayerService.isRemoteUri(coverPath);
+    final hasArt = coverPath != null &&
+        coverPath.isNotEmpty &&
+        (isRemote || File(coverPath).existsSync());
     final topPad = MediaQuery.of(context).padding.top;
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
@@ -815,9 +814,6 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                                               : widget.track;
                                           final pageCover = pageTrack
                                               .customMetadata.customCoverPath;
-                                          final hasPageArt = pageCover != null &&
-                                              pageCover.isNotEmpty &&
-                                              File(pageCover).existsSync();
                                           final isActivePage = index == currentIdx;
 
                                           // Perspective scale + opacity
@@ -865,24 +861,23 @@ class _MobileVerticalLayoutState extends State<_MobileVerticalLayout> {
                                                   child: ClipRRect(
                                                     borderRadius:
                                                         BorderRadius.circular(18),
-                                                    child: hasPageArt
-                                                        ? Image.file(
-                                                            File(pageCover),
-                                                            key: ValueKey(
-                                                                'cover_${pageTrack.trackId}_${index}_$pageCover'),
-                                                            fit: BoxFit.cover,
-                                                            cacheWidth: 600,
-                                                            width: double.infinity,
-                                                            height: double.infinity,
-                                                          )
-                                                        : const Center(
-                                                            child: Icon(
-                                                              Icons
-                                                                  .music_note_rounded,
-                                                              size: 72,
-                                                              color: Colors.white24,
-                                                            ),
-                                                          ),
+                                                    child: TrackCoverArt(
+                                                      key: ValueKey(
+                                                          'cover_${pageTrack.trackId}_${index}_$pageCover'),
+                                                      coverPath: pageCover,
+                                                      width: double.infinity,
+                                                      height: double.infinity,
+                                                      borderRadius:
+                                                          BorderRadius.circular(18),
+                                                      cacheWidth: 600,
+                                                      fallback: const Center(
+                                                        child: Icon(
+                                                          Icons.music_note_rounded,
+                                                          size: 72,
+                                                          color: Colors.white24,
+                                                        ),
+                                                      ),
+                                                    ),
                                                   ),
                                                 ),
                                               ),
@@ -1277,21 +1272,15 @@ class _ExpandedArtisticCore extends StatelessWidget {
                                 offset: const Offset(0, 20),
                               ),
                             ],
-                            image: coverPath != null &&
-                                    File(coverPath).existsSync()
-                                ? DecorationImage(
-                                    image: FileImage(File(coverPath)),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
                           ),
-                          child: coverPath == null ||
-                                  !File(coverPath).existsSync()
-                              ? const Center(
-                                  child: Icon(Icons.music_note_rounded,
-                                      size: 80, color: Colors.white24),
-                                )
-                              : null,
+                          child: TrackCoverArt(
+                            coverPath: coverPath,
+                            width: double.infinity,
+                            height: double.infinity,
+                            borderRadius: BorderRadius.circular(16),
+                            cacheWidth: 800,
+                            fallbackIconSize: 80,
+                          ),
                         ),
                       ),
               ),
@@ -1660,25 +1649,15 @@ class _QueueTabState extends State<_QueueTab> {
   }
 
   Widget _buildCover(Track track, {double size = 40, bool dimmed = false}) {
-    final coverPath = track.customMetadata.customCoverPath;
-    final hasArt =
-        coverPath != null && coverPath.isNotEmpty && File(coverPath).existsSync();
     return Opacity(
       opacity: dimmed ? 0.5 : 1.0,
-      child: ClipRRect(
+      child: TrackCoverArt(
+        coverPath: track.customMetadata.customCoverPath,
+        width: size,
+        height: size,
         borderRadius: BorderRadius.circular(6),
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: hasArt
-              ? Image.file(File(coverPath), fit: BoxFit.cover,
-                  cacheWidth: (size * 2).toInt())
-              : const ColoredBox(
-                  color: AppTheme.bgHover,
-                  child: Icon(Icons.music_note_rounded,
-                      color: AppTheme.textHint, size: 20),
-                ),
-        ),
+        cacheWidth: (size * 2).toInt(),
+        fallbackIconSize: 20,
       ),
     );
   }

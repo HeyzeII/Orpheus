@@ -24,6 +24,7 @@ import '../widgets/desktop_title_bar.dart';
 import '../widgets/marquee_text.dart';
 import '../widgets/player_bar.dart';
 import '../widgets/sidebar.dart';
+import '../widgets/track_cover_art.dart';
 
 
 /// Root layout shell for Orpheus desktop.
@@ -624,29 +625,13 @@ class _MiniPlayerStrip extends StatelessWidget {
   final VoidCallback onTap;
 
   Widget _coverArt() {
-    final path = track.customMetadata.customCoverPath;
-    final file = path != null && path.isNotEmpty ? File(path) : null;
-    final hasArt = file != null && file.existsSync() && file.lengthSync() > 0;
-    const fallback = ColoredBox(
-      color: AppTheme.bgHover,
-      child: Icon(Icons.music_note_rounded,
-          color: AppTheme.textHint, size: 18),
-    );
-
-    return ClipRRect(
+    return TrackCoverArt(
+      coverPath: track.customMetadata.customCoverPath,
+      width: 40,
+      height: 40,
       borderRadius: BorderRadius.circular(6),
-      child: SizedBox(
-        width: 40,
-        height: 40,
-        child: hasArt
-            ? Image.file(
-                file,
-                fit: BoxFit.cover,
-                cacheWidth: 80,
-                errorBuilder: (_, __, ___) => fallback,
-              )
-            : fallback,
-      ),
+      cacheWidth: 80,
+      fallbackIconSize: 18,
     );
   }
 

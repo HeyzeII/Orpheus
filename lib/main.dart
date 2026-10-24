@@ -9,6 +9,8 @@ import 'package:metadata_god/metadata_god.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'core/database/local_database.dart';
+import 'core/network/local_sync_server.dart';
+import 'core/network/orpheus_beacon_service.dart';
 import 'core/services/album_art_fetcher_service.dart';
 import 'core/services/audio_acoustic_scanner.dart';
 import 'core/services/audio_handler.dart';
@@ -92,6 +94,22 @@ Future<void> runOrpheusStartupSequence() async {
     AudioPlayerService.instance.hydratePlaybackState().catchError((e, s) {
       DebugLogger.log('ERROR en AudioPlayerService hydration: $e\n$s');
     }),
+  );
+
+  // 5. Asynchronously start local network sync server and beacon announcing
+  unawaited(
+    (() async {
+      try {
+        if (!LocalSyncServer.instance.isRunning) {
+          await LocalSyncServer.instance.start();
+        }
+        if (!OrpheusBeaconService.instance.isAnnouncing) {
+          await OrpheusBeaconService.instance.startAnnouncing();
+        }
+      } catch (e) {
+        DebugLogger.log('Startup notice: LAN server auto-start failed: $e');
+      }
+    })(),
   );
 }
 
