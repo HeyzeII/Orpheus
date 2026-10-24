@@ -53,7 +53,7 @@ void main() {
       await tester.pump();
 
       // Verify logo is displayed in the sidebar on desktop
-      expect(find.text('ORPHEOUS'), findsWidgets);
+      expect(find.text('ORPHEUS'), findsWidgets);
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }
