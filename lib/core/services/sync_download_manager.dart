@@ -568,6 +568,12 @@ class SyncDownloadManager {
         'SyncDownloadManager: Successfully downloaded track $trackId -> ${targetFile.path}',
       );
     } catch (e) {
+      final sink = _activeSinks.remove(trackId);
+      if (sink != null) {
+        try {
+          await sink.close();
+        } catch (_) {}
+      }
       if (tempFile != null && tempFile.existsSync()) {
         try {
           await tempFile.delete();

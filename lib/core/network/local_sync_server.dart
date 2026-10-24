@@ -68,7 +68,10 @@ class LocalSyncServer {
   String get version => '1.0.0';
 
   /// Starts the HTTP server on [port]. If port is 0, an ephemeral port is assigned.
-  Future<void> start({int port = kDefaultPort}) async {
+  Future<void> start({
+    int port = kDefaultPort,
+    InternetAddress? bindAddress,
+  }) async {
     if (_server != null) return;
 
     try {
@@ -78,7 +81,7 @@ class LocalSyncServer {
 
       _server = await shelf_io.serve(
         pipeline,
-        InternetAddress.anyIPv4,
+        bindAddress ?? InternetAddress.anyIPv4,
         port,
       );
 

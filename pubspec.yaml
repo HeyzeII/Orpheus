@@ -54,9 +54,24 @@ dev_dependencies:
   # ── Code generation ───────────────────────────────────────
   isar_generator: ^3.1.0+1
   build_runner: ^2.4.13
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  app_name: Orpheus
+  image_path: assets/icon/app_icon.png
+  android: true
+  ios: false
+  macos:
+    generate: true
+    image_path: assets/icon/app_icon.png
+  web:
+    generate: false
 
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/icon/
 
 # ── Version overrides ──────────────────────────────────────────────────────
 # metadata_god's precompiled Rust dylib was built against flutter_rust_bridge

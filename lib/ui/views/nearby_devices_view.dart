@@ -57,6 +57,9 @@ class _NearbyDevicesViewState extends State<NearbyDevicesView> {
 
   @override
   void dispose() {
+    if (_isScanning) {
+      _beacon.stopListening();
+    }
     _nodesSub?.cancel();
     _ipController.dispose();
     _portController.dispose();

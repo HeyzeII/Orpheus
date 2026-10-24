@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/models/track.dart';
+import '../../core/network/orpheus_beacon_service.dart';
 import '../../core/services/app_navigation_coordinator.dart';
 import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_scanner.dart';
@@ -93,12 +94,14 @@ class _DesktopNavigationShellState extends State<DesktopNavigationShell> with Wi
       if (OrpheusAudioHandler.hasInstance) {
         OrpheusAudioHandler.instance.savePlaybackStateNow();
       }
+      OrpheusBeaconService.instance.pause();
     } else if (state == AppLifecycleState.resumed) {
       // P2: Reset position throttle so the first event after resume is emitted
       // immediately, preventing stale MediaSession state in audio_service.
       if (OrpheusAudioHandler.hasInstance) {
         OrpheusAudioHandler.instance.resetPositionThrottle();
       }
+      unawaited(OrpheusBeaconService.instance.resume());
     }
   }
 
@@ -361,12 +364,14 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
       if (OrpheusAudioHandler.hasInstance) {
         OrpheusAudioHandler.instance.savePlaybackStateNow();
       }
+      OrpheusBeaconService.instance.pause();
     } else if (state == AppLifecycleState.resumed) {
       // P2: Reset position throttle so the first event after resume is emitted
       // immediately, preventing stale MediaSession state in audio_service.
       if (OrpheusAudioHandler.hasInstance) {
         OrpheusAudioHandler.instance.resetPositionThrottle();
       }
+      unawaited(OrpheusBeaconService.instance.resume());
     }
   }
 
