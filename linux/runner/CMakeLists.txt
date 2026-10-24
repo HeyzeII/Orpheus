@@ -25,7 +25,3 @@ target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::GTK)
 
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
-# Install the application icon so it is bundled with the release binary.
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon.png"
-        DESTINATION "${INSTALL_BUNDLE_LIB_DIR}/../data"
-        RENAME "app_icon.png")
