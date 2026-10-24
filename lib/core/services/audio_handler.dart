@@ -8,6 +8,7 @@ import '../database/local_database.dart';
 import '../models/track.dart';
 import '../utils/debug_logger.dart';
 import 'audio_player_service.dart';
+import 'linux_mpris_service.dart';
 
 export 'audio_player_service.dart' show PlayerRepeatMode;
 
@@ -77,6 +78,14 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
       LocalDatabase.instance.likedTrackIdsNotifier.addListener(_emitAtomicState);
     } catch (e) {
       DebugLogger.log('Error attaching likedTrackIds listener: $e');
+    }
+
+    if (Platform.isLinux) {
+      try {
+        LinuxMprisService.instance.attachAudioHandler(this);
+      } catch (e) {
+        DebugLogger.log('Error attaching LinuxMprisService: $e');
+      }
     }
 
     _emitAtomicState();
@@ -570,6 +579,15 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
         DebugLogger.log('OrpheusAudioHandler: toggle_shuffle -> shuffleEnabled=${AudioPlayerService.instance.shuffleEnabled}');
       } catch (e, s) {
         debugPrint('Error toggling shuffle from customAction: $e\n$s');
+      }
+    } else if (name == 'dbusVolume') {
+      try {
+        final val = extras?['value'];
+        if (val is num) {
+          AudioPlayerService.instance.setVolume(val.toDouble());
+        }
+      } catch (e) {
+        DebugLogger.log('Error handling dbusVolume: $e');
       }
     }
     return super.customAction(name, extras);

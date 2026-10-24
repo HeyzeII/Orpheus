@@ -13,6 +13,7 @@ import 'core/services/album_art_fetcher_service.dart';
 import 'core/services/audio_acoustic_scanner.dart';
 import 'core/services/audio_handler.dart';
 import 'core/services/audio_player_service.dart';
+import 'core/services/linux_mpris_service.dart';
 import 'core/services/permission_service.dart';
 import 'core/utils/debug_logger.dart';
 import 'ui/layouts/main_shell.dart';
@@ -40,6 +41,14 @@ Future<void> runOrpheusStartupSequence() async {
   }
 
   // 2. AudioService and LocalDatabase in parallel to eliminate sequential timeout sum
+  if (Platform.isLinux) {
+    try {
+      await LinuxMprisService.instance.initialize();
+    } catch (e) {
+      DebugLogger.log('LinuxMprisService startup notice: $e');
+    }
+  }
+
   await Future.wait([
     // AudioService init
     (() async {
