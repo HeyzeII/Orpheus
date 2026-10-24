@@ -33,6 +33,8 @@ dependencies:
   # ── Network ───────────────────────────────────────────────
   http: ^1.2.2
   connectivity_plus: ^6.1.1
+  shelf: ^1.4.2
+  shelf_router: ^1.1.4
 
   # ── Desktop Window Management ─────────────────────────────
   window_manager: ^0.4.3

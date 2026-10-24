@@ -161,6 +161,12 @@ class OrpheusAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandle
     if (cached != null) return cached;
     if (_artUriCache.containsKey(coverPath)) return null;
 
+    if (AudioPlayerService.isRemoteUri(coverPath)) {
+      final uri = Uri.tryParse(coverPath);
+      _artUriCache[coverPath] = uri;
+      return uri;
+    }
+
     if (!verifyOnDisk) {
       final uri = Uri.file(coverPath);
       _artUriCache[coverPath] = uri;

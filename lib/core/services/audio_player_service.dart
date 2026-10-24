@@ -1110,6 +1110,30 @@ class AudioPlayerService {
 
   // ── Engine Opener & Persistence ────────────────────────────────────────────
 
+  /// Returns `true` if [pathOrUri] represents a remote network resource (HTTP or HTTPS).
+  static bool isRemoteUri(String? pathOrUri) {
+    if (pathOrUri == null) return false;
+    final lower = pathOrUri.trim().toLowerCase();
+    return lower.startsWith('http://') || lower.startsWith('https://');
+  }
+
+  /// Converts a local file path or remote HTTP URI into an acceptable URI string for [Media].
+  static String formatMediaUri(String pathOrUri) {
+    if (isRemoteUri(pathOrUri)) {
+      return pathOrUri.trim();
+    }
+    return Uri.file(pathOrUri).toString();
+  }
+
+  /// Resolves cover art paths or URLs to a valid URI string for platform media controls.
+  static String? formatArtUri(String? artPathOrUri) {
+    if (artPathOrUri == null || artPathOrUri.trim().isEmpty) return null;
+    if (isRemoteUri(artPathOrUri)) {
+      return artPathOrUri.trim();
+    }
+    return Uri.file(artPathOrUri).toString();
+  }
+
   Future<void> _openTrack(Track track) async {
     if (_currentTrack != null && _currentTrack!.trackId != track.trackId) {
       _checkAndRecordPrematureSkip(_currentTrack, position, duration);
@@ -1125,34 +1149,38 @@ class AudioPlayerService {
       return;
     }
 
-    final file = File(track.filePath);
-    if (!file.existsSync()) {
-      _consecutiveErrors++;
-      if (_consecutiveErrors >= _activeContext.length + _userQueue.length + 1) {
-        _consecutiveErrors = 0;
-        await stop();
+    final isRemote = isRemoteUri(track.filePath);
+    if (!isRemote) {
+      final file = File(track.filePath);
+      if (!file.existsSync()) {
+        _consecutiveErrors++;
+        if (_consecutiveErrors >= _activeContext.length + _userQueue.length + 1) {
+          _consecutiveErrors = 0;
+          await stop();
+          return;
+        }
+        _currentTrackController.add(null);
+        Future.delayed(const Duration(milliseconds: 100), () {
+          next();
+        });
         return;
       }
-      _currentTrackController.add(null);
-      Future.delayed(const Duration(milliseconds: 100), () {
-        next();
-      });
-      return;
     }
 
     _consecutiveErrors = 0;
     try {
       await _safeSetActive(true);
+      final mediaUri = formatMediaUri(track.filePath);
+      final artUri = formatArtUri(track.customMetadata.customCoverPath);
+
       await _player.open(
         Media(
-          Uri.file(track.filePath).toString(),
+          mediaUri,
           extras: {
             'title': track.displayTitle,
             'artist': track.displayArtist,
             'album': track.displayAlbum,
-            if (track.customMetadata.customCoverPath != null &&
-                track.customMetadata.customCoverPath!.isNotEmpty)
-              'artUri': Uri.file(track.customMetadata.customCoverPath!).toString(),
+            'artUri': ?artUri,
           },
         ),
         play: true,
@@ -1230,12 +1258,15 @@ class AudioPlayerService {
 
       if (_currentTrack == null) return;
 
-      final file = File(_currentTrack!.filePath);
-      if (!file.existsSync()) return;
+      final isRemote = isRemoteUri(_currentTrack!.filePath);
+      if (!isRemote) {
+        final file = File(_currentTrack!.filePath);
+        if (!file.existsSync()) return;
+      }
 
       _hydrating = true;
       await _player.open(
-        Media(Uri.file(_currentTrack!.filePath).toString()),
+        Media(formatMediaUri(_currentTrack!.filePath)),
         play: false,
       );
       await Future.delayed(const Duration(milliseconds: 300));
