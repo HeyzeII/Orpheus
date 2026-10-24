@@ -13,10 +13,13 @@ import '../../core/services/album_art_fetcher_service.dart';
 import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_scanner.dart';
 import '../../core/services/network_guard_service.dart';
+import '../../core/services/offline_reconciliation_service.dart';
 import '../../core/services/permission_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_toast.dart';
+import '../widgets/sync_progress_panel.dart';
 import 'debug_log_view.dart';
+import 'nearby_devices_view.dart';
 
 /// Settings View — Configuration panel for managing scan directories,
 /// running library scans, and resolving artist duplicate conflicts.
@@ -829,7 +832,292 @@ class _SettingsViewState extends State<SettingsView> {
 
             const Divider(height: 1, color: AppTheme.divider),
 
-            // 3. Status indicator footer
+            // 3. Dispositivos Cercanos & Sincronización Red Local
+            ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.wifi_tethering_rounded,
+                  color: Color(0xFF00E5FF),
+                  size: 20,
+                ),
+              ),
+              title: const Text(
+                'Dispositivos Cercanos (Red Local)',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+              subtitle: const Text(
+                'Descubre y conéctate con otros reproductores Orpheus en tu red Wi-Fi para streaming y sincronización de música.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary,
+                  height: 1.3,
+                ),
+              ),
+              trailing: const Icon(
+                Icons.chevron_right_rounded,
+                color: AppTheme.textSecondary,
+                size: 20,
+              ),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const NearbyDevicesView()),
+                );
+              },
+            ),
+
+            const Divider(height: 1, color: AppTheme.divider),
+
+            // 4. Panel de Descargas y Sincronización Offline
+            ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppTheme.accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.downloading_rounded,
+                  color: AppTheme.accent,
+                  size: 20,
+                ),
+              ),
+              title: const Text(
+                'Cola de Descargas Offline',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+              subtitle: const Text(
+                'Ver el progreso de descarga de pistas remotas y velocidad de transferencia.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary,
+                  height: 1.3,
+                ),
+              ),
+              trailing: const Icon(
+                Icons.chevron_right_rounded,
+                color: AppTheme.textSecondary,
+                size: 20,
+              ),
+              onTap: () {
+                SyncProgressPanel.showModal(context);
+              },
+            ),
+
+            const Divider(height: 1, color: AppTheme.divider),
+
+            // 5. Cuota de Almacenamiento Offline (LRU)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: AppTheme.bgDeep,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.pie_chart_outline_rounded,
+                          color: AppTheme.accent,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Límite de almacenamiento offline',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Aplica política LRU a canciones descargadas fuera de playlists activas.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.textSecondary,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  ValueListenableBuilder<SyncStorageQuota>(
+                    valueListenable:
+                        OfflineReconciliationService.instance.quotaNotifier,
+                    builder: (_, currentQuota, __) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.bgDeep,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.divider),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<SyncStorageQuota>(
+                            value: currentQuota,
+                            isExpanded: true,
+                            dropdownColor: AppTheme.bgSurface,
+                            items: SyncStorageQuota.values.map((quota) {
+                              return DropdownMenuItem(
+                                value: quota,
+                                child: Text(quota.label,
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        color: AppTheme.textPrimary)),
+                              );
+                            }).toList(),
+                            onChanged: (newQuota) async {
+                              if (newQuota == null) return;
+                              OfflineReconciliationService.instance
+                                  .setQuota(newQuota);
+                              final result = await OfflineReconciliationService
+                                  .instance
+                                  .enforceStorageQuota();
+                              if (mounted && result.prunedTrackCount > 0) {
+                                AppToast.showText(
+                                  context,
+                                  'Cuota ajustada: se liberaron ${result.formattedBytesFreed}',
+                                  icon: Icons.cleaning_services_rounded,
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+
+            const Divider(height: 1, color: AppTheme.divider),
+
+            // 6. Limpieza manual de canciones huérfanas
+            ListTile(
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              leading: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.redAccent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.delete_sweep_rounded,
+                  color: Colors.redAccent,
+                  size: 20,
+                ),
+              ),
+              title: const Text(
+                'Limpiar espacio de descargas huérfanas',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+              subtitle: const Text(
+                'Elimina archivos de canciones descargadas que ya no están en ninguna playlist ni en favoritos.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary,
+                  height: 1.3,
+                ),
+              ),
+              trailing: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.bgDeep,
+                  foregroundColor: Colors.redAccent,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: const BorderSide(color: AppTheme.divider),
+                  ),
+                ),
+                onPressed: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      backgroundColor: AppTheme.bgSurface,
+                      title: const Text('Limpiar descargas huérfanas',
+                          style: TextStyle(color: AppTheme.textPrimary)),
+                      content: const Text(
+                        'Esta acción buscará canciones descargadas en el almacenamiento que no pertenezcan a ninguna playlist activa ni a tus favoritos y liberará espacio en disco. ¿Deseas continuar?',
+                        style: TextStyle(color: AppTheme.textSecondary),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Cancelar'),
+                        ),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Limpiar'),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (confirm == true && mounted) {
+                    final res = await OfflineReconciliationService.instance
+                        .pruneOrphanDownloads();
+                    if (mounted) {
+                      AppToast.showText(
+                        context,
+                        res.prunedTrackCount > 0
+                            ? 'Limpieza completada: ${res.formattedBytesFreed} liberados (${res.prunedTrackCount} pistas)'
+                            : 'No se encontraron pistas huérfanas para limpiar',
+                        icon: Icons.cleaning_services_rounded,
+                      );
+                    }
+                  }
+                },
+                child: const Text('Limpiar',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+            ),
+
+            const Divider(height: 1, color: AppTheme.divider),
+
+            // 7. Status indicator footer
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(

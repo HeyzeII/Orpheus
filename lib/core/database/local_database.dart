@@ -282,6 +282,7 @@ class LocalDatabase {
 
   /// Persists a new [track] or updates an existing one (matched by Isar id).
   Future<void> saveTrack(Track track) async {
+    if (_isTestUninitialized) return;
     await _isar.writeTxn(() async {
       await _isar.tracks.put(track);
     });
@@ -289,6 +290,7 @@ class LocalDatabase {
 
   /// Persists a batch of tracks in a single transaction (preferred for imports).
   Future<void> saveTracks(List<Track> tracks) async {
+    if (_isTestUninitialized) return;
     await _isar.writeTxn(() async {
       await _isar.tracks.putAll(tracks);
     });

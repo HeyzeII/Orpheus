@@ -7,11 +7,13 @@ import '../../core/models/models.dart';
 import '../../core/services/app_navigation_coordinator.dart';
 import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
+import '../../core/services/sync_download_manager.dart';
 import '../dialogs/edit_metadata_dialog.dart';
 import '../theme/app_theme.dart';
 import 'add_to_playlist_sheet.dart';
 import 'app_toast.dart';
 import 'radio_launch_sheet.dart';
+import 'sync_progress_panel.dart';
 
 /// Modal bottom sheet displaying contextual options for a [Track].
 ///
@@ -72,9 +74,12 @@ class TrackOptionsSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final coverPath = track.customMetadata.customCoverPath;
+    final isRemoteCover =
+        coverPath != null && AudioPlayerService.isRemoteUri(coverPath);
     final hasArt = coverPath != null &&
         coverPath.isNotEmpty &&
-        File(coverPath).existsSync();
+        (isRemoteCover || File(coverPath).existsSync());
+    final isRemoteTrack = AudioPlayerService.isRemoteUri(track.filePath);
     final db = LocalDatabase.instance;
 
     return SafeArea(
@@ -103,11 +108,23 @@ class TrackOptionsSheet extends StatelessWidget {
                             width: 48,
                             height: 48,
                             child: hasArt
-                                ? Image.file(
-                                    File(coverPath),
-                                    fit: BoxFit.cover,
-                                    cacheWidth: 96,
-                                  )
+                                ? (isRemoteCover
+                                    ? Image.network(
+                                        coverPath,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) =>
+                                            const ColoredBox(
+                                          color: AppTheme.bgHover,
+                                          child: Icon(Icons.music_note_rounded,
+                                              color: AppTheme.textHint,
+                                              size: 24),
+                                        ),
+                                      )
+                                    : Image.file(
+                                        File(coverPath),
+                                        fit: BoxFit.cover,
+                                        cacheWidth: 96,
+                                      ))
                                 : const ColoredBox(
                                     color: AppTheme.bgHover,
                                     child: Icon(
@@ -261,6 +278,38 @@ class TrackOptionsSheet extends StatelessWidget {
                       }
                     },
                   ),
+                  if (isRemoteTrack)
+                    ListTile(
+                      leading: const Icon(
+                        Icons.download_for_offline_rounded,
+                        color: AppTheme.accent,
+                      ),
+                      title: const Text(
+                        'Descargar para uso sin conexión',
+                        style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        'Guarda esta pista en el almacenamiento local',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        SyncDownloadManager.instance.enqueueTrack(track);
+                        AppToast.showText(
+                          context,
+                          'Descarga añadida a la cola',
+                          icon: Icons.downloading_rounded,
+                        );
+                        SyncProgressPanel.showModal(context);
+                      },
+                    ),
                   ListTile(
                     leading: const Icon(Icons.info_outline_rounded,
                         color: AppTheme.textPrimary),

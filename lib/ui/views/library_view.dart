@@ -14,6 +14,7 @@ import '../../core/services/app_navigation_coordinator.dart';
 import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/permission_service.dart';
+import '../../core/services/sync_download_manager.dart';
 import '../dialogs/edit_metadata_dialog.dart';
 import '../theme/app_theme.dart';
 import '../widgets/add_to_playlist_sheet.dart';
@@ -21,6 +22,7 @@ import '../widgets/animated_equalizer.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/playlist_cover.dart';
 import '../widgets/radio_launch_sheet.dart';
+import '../widgets/sync_progress_panel.dart';
 import '../widgets/track_options_sheet.dart';
 import '../widgets/video_badge.dart';
 
@@ -1463,6 +1465,8 @@ class _LibraryViewState extends State<LibraryView> {
                             onSelected: (value) {
                               if (value == 'add_to_playlist') {
                                 _showAddTracksToPlaylistModal(context, albumTracks, collectionTitle: 'Álbum: $albumName');
+                              } else if (value == 'download_offline') {
+                                _downloadTracksOffline(albumTracks, title: albumName);
                               }
                             },
                             itemBuilder: (ctx) => [
@@ -1473,6 +1477,16 @@ class _LibraryViewState extends State<LibraryView> {
                                     Icon(Icons.playlist_add_rounded, size: 18, color: AppTheme.textPrimary),
                                     SizedBox(width: 12),
                                     Text('Añadir a playlist', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem<String>(
+                                value: 'download_offline',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.download_for_offline_rounded, size: 18, color: AppTheme.accent),
+                                    SizedBox(width: 12),
+                                    Text('Descargar sin conexión', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
                                   ],
                                 ),
                               ),
@@ -2890,6 +2904,8 @@ class _LibraryViewState extends State<LibraryView> {
               onSelected: (value) {
                 if (value == 'add_to_playlist') {
                   _showAddTracksToPlaylistModal(context, playlistTracks, collectionTitle: playlist.name);
+                } else if (value == 'download_offline') {
+                  _downloadTracksOffline(playlistTracks, title: playlist.name, playlist: playlist);
                 }
               },
               itemBuilder: (ctx) => [
@@ -2903,12 +2919,45 @@ class _LibraryViewState extends State<LibraryView> {
                     ],
                   ),
                 ),
+                const PopupMenuItem<String>(
+                  value: 'download_offline',
+                  child: Row(
+                    children: [
+                      Icon(Icons.download_for_offline_rounded, size: 18, color: AppTheme.accent),
+                      SizedBox(width: 12),
+                      Text('Descargar sin conexión', style: TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+                    ],
+                  ),
+                ),
               ],
             ),
           ],
         ),
       ],
     );
+  }
+
+  void _downloadTracksOffline(List<Track> tracks, {required String title, Playlist? playlist}) {
+    final remoteTracks = tracks.where((t) => AudioPlayerService.isRemoteUri(t.filePath)).toList();
+    if (remoteTracks.isEmpty) {
+      AppToast.showText(
+        context,
+        'Todas las pistas ya están disponibles localmente',
+        icon: Icons.check_circle_outline_rounded,
+      );
+      return;
+    }
+    if (playlist != null) {
+      SyncDownloadManager.instance.enqueuePlaylist(playlist, remoteTracks);
+    } else {
+      SyncDownloadManager.instance.enqueueTracks(remoteTracks);
+    }
+    AppToast.showText(
+      context,
+      'Descargando ${remoteTracks.length} pista(s) de "$title"',
+      icon: Icons.downloading_rounded,
+    );
+    SyncProgressPanel.showModal(context);
   }
 
   // ══════════════════════════════════════════════════════════════════════════

@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/track.dart';
 import '../../core/services/audio_handler.dart';
+import '../../core/services/audio_player_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/network_indicator_badge.dart';
 import '../widgets/radio_indicator_badge.dart';
 import '../views/expanded_player_view.dart';
 
@@ -47,8 +49,6 @@ class MobileMiniPlayer extends StatelessWidget {
 
   Widget _coverArt(Track track) {
     final path = track.customMetadata.customCoverPath;
-    final file = path != null && path.isNotEmpty ? File(path) : null;
-    final hasArt = file != null && file.existsSync() && file.lengthSync() > 0;
     const fallback = ColoredBox(
       color: AppTheme.bgHover,
       child: Icon(
@@ -58,19 +58,34 @@ class MobileMiniPlayer extends StatelessWidget {
       ),
     );
 
+    Widget imageWidget = fallback;
+    if (path != null && path.isNotEmpty) {
+      if (AudioPlayerService.isRemoteUri(path)) {
+        imageWidget = Image.network(
+          path,
+          fit: BoxFit.cover,
+          cacheWidth: 88,
+          errorBuilder: (_, __, ___) => fallback,
+        );
+      } else {
+        final file = File(path);
+        if (file.existsSync() && file.lengthSync() > 0) {
+          imageWidget = Image.file(
+            file,
+            fit: BoxFit.cover,
+            cacheWidth: 88,
+            errorBuilder: (_, __, ___) => fallback,
+          );
+        }
+      }
+    }
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
       child: SizedBox(
         width: 44,
         height: 44,
-        child: hasArt
-            ? Image.file(
-                file,
-                fit: BoxFit.cover,
-                cacheWidth: 88,
-                errorBuilder: (_, __, ___) => fallback,
-              )
-            : fallback,
+        child: imageWidget,
       ),
     );
   }
@@ -140,6 +155,7 @@ class MobileMiniPlayer extends StatelessWidget {
                                     ),
                                   ),
                                   const RadioIndicatorBadge(),
+                                  const NetworkIndicatorBadge(),
                                 ],
                               ),
                               const SizedBox(height: 2),

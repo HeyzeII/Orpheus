@@ -162,6 +162,8 @@ class OrpheusBeaconService {
   final StreamController<List<DiscoveredNode>> _nodesChangedController =
       StreamController<List<DiscoveredNode>>.broadcast();
 
+  static final OrpheusBeaconService instance = OrpheusBeaconService();
+
   OrpheusBeaconService({
     String? deviceId,
     String? deviceName,
@@ -421,6 +423,18 @@ class OrpheusBeaconService {
     if (!_nodesChangedController.isClosed) {
       _nodesChangedController.add(activeNodes);
     }
+  }
+
+  /// Manually registers or updates a [DiscoveredNode] (useful for manual addition or tests).
+  void addOrUpdateNode(DiscoveredNode node) {
+    _activeNodes[node.deviceId] = node;
+    _notifyNodesChanged();
+  }
+
+  /// Clears all discovered nodes.
+  void clearNodes() {
+    _activeNodes.clear();
+    _notifyNodesChanged();
   }
 
   // ── Lifecycle & Power Management ──────────────────────────────────────────

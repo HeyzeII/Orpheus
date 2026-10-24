@@ -277,6 +277,20 @@ class LocalSyncClient {
     }
   }
 
+  /// Exposes the underlying HTTP client (useful for custom streaming, connection reuse, or tests).
+  http.Client get httpClient => _client;
+
+  /// Opens an HTTP streaming download response for [trackId], ideal for chunked downloads
+  /// with real-time progress, speed tracking, and lower memory footprint.
+  Future<http.StreamedResponse> openDownloadStream(
+    String trackId, {
+    String? baseUrl,
+  }) async {
+    final downloadUrl = getDownloadUrl(trackId, baseUrl);
+    final request = http.Request('GET', Uri.parse(downloadUrl));
+    return _client.send(request);
+  }
+
   /// Downloads the complete media file for [trackId].
   ///
   /// If the server supplies an `X-Orpheus-SHA256` header, the file's hash

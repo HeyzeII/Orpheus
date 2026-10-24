@@ -5,11 +5,17 @@ import 'package:flutter/material.dart';
 
 import '../../core/database/local_database.dart';
 import '../../core/models/models.dart';
+import '../../core/network/local_sync_client.dart';
 import '../../core/services/audio_handler.dart';
+import '../../core/services/audio_player_service.dart';
+import '../../core/services/sync_download_manager.dart';
 import '../theme/app_theme.dart';
-import '../widgets/app_toast.dart';
-import '../widgets/radio_indicator_badge.dart';
 import '../views/expanded_player_view.dart';
+import '../views/nearby_devices_view.dart';
+import '../widgets/app_toast.dart';
+import '../widgets/network_indicator_badge.dart';
+import '../widgets/radio_indicator_badge.dart';
+import '../widgets/sync_progress_panel.dart';
 
 /// Fixed bottom player bar — 90px tall, three-section layout.
 ///
@@ -103,6 +109,7 @@ class _TrackInfo extends StatelessWidget {
                         ),
                       ),
                       const RadioIndicatorBadge(),
+                      const NetworkIndicatorBadge(),
                     ],
                   ),
                   const SizedBox(height: 2),
@@ -170,12 +177,21 @@ class _CoverArt extends StatelessWidget {
             width: 55,
             height: 55,
             child: coverPath != null
-                ? Image.file(
-                    File(coverPath!),
-                    fit: BoxFit.cover,
-                    cacheWidth: 110,
-                    errorBuilder: (context, error, stackTrace) => _placeholder(),
-                  )
+                ? (AudioPlayerService.isRemoteUri(coverPath!)
+                    ? Image.network(
+                        coverPath!,
+                        fit: BoxFit.cover,
+                        cacheWidth: 110,
+                        errorBuilder: (context, error, stackTrace) =>
+                            _placeholder(),
+                      )
+                    : Image.file(
+                        File(coverPath!),
+                        fit: BoxFit.cover,
+                        cacheWidth: 110,
+                        errorBuilder: (context, error, stackTrace) =>
+                            _placeholder(),
+                      ))
                 : _placeholder(),
           ),
         ),
@@ -246,6 +262,27 @@ class _TrackActionsState extends State<_TrackActions> {
             );
           },
         ),
+        if (AudioPlayerService.isRemoteUri(widget.track.filePath))
+          IconButton(
+            icon: const Icon(
+              Icons.download_for_offline_rounded,
+              size: 19,
+              color: Colors.cyanAccent,
+            ),
+            tooltip: 'Descargar para escuchar offline',
+            onPressed: () {
+              final client = LocalSyncClient();
+              SyncDownloadManager.instance.enqueueTrack(
+                widget.track,
+                client: client,
+              );
+              AppToast.showText(
+                context,
+                'Descargando "${widget.track.displayTitle}"...',
+                icon: Icons.downloading_rounded,
+              );
+            },
+          ),
         PopupMenuButton<dynamic>(
               icon: const Icon(Icons.more_vert_rounded, size: 18, color: AppTheme.textSecondary),
               color: AppTheme.bgSurface,
@@ -680,6 +717,55 @@ class _VolumeControl extends StatelessWidget {
         return Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
+            // Sync progress modal button
+            ValueListenableBuilder<SyncProgressSummary>(
+              valueListenable: SyncDownloadManager.instance.summaryNotifier,
+              builder: (ctx, summary, _) {
+                if (summary.isIdle && summary.totalTasks == 0) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: IconButton(
+                    icon: summary.activeTasks > 0
+                        ? const SizedBox(
+                            width: 15,
+                            height: 15,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.cyanAccent,
+                              ),
+                            ),
+                          )
+                        : const Icon(
+                            Icons.cloud_done_rounded,
+                            size: 18,
+                            color: Colors.greenAccent,
+                          ),
+                    tooltip: 'Ver descargas offline (${summary.completedTasks}/${summary.totalTasks})',
+                    onPressed: () => SyncProgressPanel.showModal(context),
+                  ),
+                );
+              },
+            ),
+            // Nearby devices button
+            IconButton(
+              icon: const Icon(
+                Icons.lan_rounded,
+                size: 18,
+                color: AppTheme.textSecondary,
+              ),
+              tooltip: 'Red local y sincronización',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const NearbyDevicesView(),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(width: 4),
             // Lyrics toggle button
             if (onToggleLyrics != null)
               Tooltip(
