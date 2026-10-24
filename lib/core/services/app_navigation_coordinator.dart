@@ -49,6 +49,16 @@ class AppNavigationCoordinator {
     currentDestination.value = NavDestination.settings;
   }
 
+  /// Navigates cleanly to [NavDestination.nexus] from any context.
+  void navigateToNexus(BuildContext context) {
+    final rootNav = Navigator.of(context, rootNavigator: true);
+    if (rootNav.canPop()) {
+      rootNav.pop();
+    }
+    desktopLyricsOpen.value = false;
+    currentDestination.value = NavDestination.nexus;
+  }
+
   /// Callbacks registered by LibraryView for navigating directly to album or artist.
   void Function(String albumName)? onOpenAlbum;
   void Function(String artistName)? onOpenArtist;

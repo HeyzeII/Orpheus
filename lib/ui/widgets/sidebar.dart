@@ -7,6 +7,7 @@ enum NavDestination {
   home,
   explore,
   library,
+  nexus,
   settings,
 }
 
@@ -16,6 +17,7 @@ extension NavDestinationLabel on NavDestination {
         NavDestination.home => 'Inicio',
         NavDestination.explore => 'Explorar',
         NavDestination.library => 'Tu Biblioteca',
+        NavDestination.nexus => 'Modo Nexus',
         NavDestination.settings => 'Ajustes',
       };
 
@@ -23,6 +25,7 @@ extension NavDestinationLabel on NavDestination {
         NavDestination.home => Icons.home_rounded,
         NavDestination.explore => Icons.explore_rounded,
         NavDestination.library => Icons.library_music_rounded,
+        NavDestination.nexus => Icons.hub_rounded,
         NavDestination.settings => Icons.settings_rounded,
       };
 }

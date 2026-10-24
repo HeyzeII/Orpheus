@@ -437,6 +437,13 @@ class OrpheusBeaconService {
     _notifyNodesChanged();
   }
 
+  /// Removes a single [DiscoveredNode] by its [deviceId] (useful for test simulations or unpairing).
+  void removeNode(String deviceId) {
+    if (_activeNodes.remove(deviceId) != null) {
+      _notifyNodesChanged();
+    }
+  }
+
   // ── Lifecycle & Power Management ──────────────────────────────────────────
 
   /// Pauses advertising and discovery to conserve battery on mobile devices.

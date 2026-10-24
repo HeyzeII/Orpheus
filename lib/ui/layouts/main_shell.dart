@@ -18,6 +18,7 @@ import '../views/explore_view.dart';
 import '../views/home_view.dart';
 import '../views/library_view.dart';
 import '../views/lyrics_view.dart';
+import '../views/nexus_view.dart';
 import '../views/settings_view.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/desktop_title_bar.dart';
@@ -241,6 +242,7 @@ class _ContentArea extends StatelessWidget {
         HomeView(),
         ExploreView(),
         LibraryView(),
+        NexusView(),
         SettingsView(),
       ],
     );
@@ -482,6 +484,7 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
                     HomeView(),
                     ExploreView(),
                     LibraryView(),
+                    NexusView(),
                     SettingsView(),
                   ],
                 ),
@@ -595,7 +598,8 @@ class _UnifiedBottomPanel extends StatelessWidget {
                         _NavBtn(icon: Icons.home_rounded,           label: 'Inicio',       index: 0, current: currentIndex, onTap: onNavTap),
                         _NavBtn(icon: Icons.explore_rounded,        label: 'Explorar',     index: 1, current: currentIndex, onTap: onNavTap),
                         _NavBtn(icon: Icons.library_music_rounded,  label: 'Biblioteca',   index: 2, current: currentIndex, onTap: onNavTap),
-                        _NavBtn(icon: Icons.settings_rounded,       label: 'Ajustes',      index: 3, current: currentIndex, onTap: onNavTap),
+                        _NavBtn(icon: Icons.hub_rounded,            label: 'Nexus',        index: 3, current: currentIndex, onTap: onNavTap),
+                        _NavBtn(icon: Icons.settings_rounded,       label: 'Ajustes',      index: 4, current: currentIndex, onTap: onNavTap),
                       ],
                     ),
                   ),
@@ -786,20 +790,21 @@ class _NavBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = index == current;
-    return GestureDetector(
-      onTap: () => onTap(index),
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        width: 72,
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => onTap(index),
+        behavior: HitTestBehavior.opaque,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon,
                 color: active ? AppTheme.accent : AppTheme.textSecondary,
-                size: 24),
+                size: 23),
             const SizedBox(height: 3),
             Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: active ? FontWeight.bold : FontWeight.normal,
