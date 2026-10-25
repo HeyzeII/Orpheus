@@ -434,15 +434,19 @@ class LocalSyncServer {
     final fileName = p.basename(track.filePath);
     final mimeType = _mimeTypeForAudio(track.filePath, track.fileType);
 
+    final headers = <String, String>{
+      'Content-Type': mimeType,
+      'Content-Length': length.toString(),
+      'Content-Disposition': 'attachment; filename="$fileName"',
+      'Cache-Control': 'no-cache',
+    };
+    if (checksum.isNotEmpty) {
+      headers['X-Orpheus-SHA256'] = checksum;
+    }
+
     return Response.ok(
       file.openRead(),
-      headers: {
-        'Content-Type': mimeType,
-        'Content-Length': length.toString(),
-        'Content-Disposition': 'attachment; filename="$fileName"',
-        'X-Orpheus-SHA256': checksum,
-        'Cache-Control': 'no-cache',
-      },
+      headers: headers,
     );
   }
 
@@ -474,12 +478,35 @@ class LocalSyncServer {
         return _sha256Cache[cacheKey]!;
       }
 
-      final digest = await sha256.bind(file.openRead()).first;
-      final hex = digest.toString();
-      _sha256Cache[cacheKey] = hex;
-      return hex;
+      // If the file is large (> 25 MB), schedule background hashing and do not block headers.
+      if (stat.size > 25 * 1024 * 1024) {
+        unawaited(
+          sha256.bind(file.openRead()).first.then((d) {
+            _sha256Cache[cacheKey] = d.toString();
+          }).catchError((_) {}),
+        );
+        return '';
+      }
+
+      // For files <= 25 MB, compute with a strict timeout to ensure initial headers dispatch immediately.
+      try {
+        final digest = await sha256.bind(file.openRead()).first.timeout(
+          const Duration(milliseconds: 500),
+        );
+        final hex = digest.toString();
+        _sha256Cache[cacheKey] = hex;
+        return hex;
+      } on TimeoutException {
+        // If taking longer than 500ms, compute in background for subsequent requests and return empty to not block
+        unawaited(
+          sha256.bind(file.openRead()).first.then((d) {
+            _sha256Cache[cacheKey] = d.toString();
+          }).catchError((_) {}),
+        );
+        return '';
+      }
     } catch (e) {
-      // Fallback: Return empty or compute basic hash
+      // Fallback: Return empty and allow immediate streaming
       return '';
     }
   }

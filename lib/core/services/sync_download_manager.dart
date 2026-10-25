@@ -137,6 +137,7 @@ class SyncDownloadManager {
     LocalDatabase? db,
     this.customDownloadDirectory,
     this.maxConcurrentDownloads = 2,
+    this.chunkTimeout = const Duration(seconds: 12),
   }) : _db = db ?? LocalDatabase.instance;
 
   static final SyncDownloadManager instance = SyncDownloadManager._internal();
@@ -145,12 +146,16 @@ class SyncDownloadManager {
     LocalDatabase? db,
     Directory? customDownloadDirectory,
     int maxConcurrentDownloads = 2,
+    Duration chunkTimeout = const Duration(seconds: 12),
   }) {
-    if (db != null || customDownloadDirectory != null) {
+    if (db != null ||
+        customDownloadDirectory != null ||
+        chunkTimeout != const Duration(seconds: 12)) {
       return SyncDownloadManager._internal(
         db: db,
         customDownloadDirectory: customDownloadDirectory,
         maxConcurrentDownloads: maxConcurrentDownloads,
+        chunkTimeout: chunkTimeout,
       );
     }
     return instance;
@@ -165,6 +170,9 @@ class SyncDownloadManager {
 
   /// Maximum number of simultaneous downloads.
   int maxConcurrentDownloads;
+
+  /// Inactivity timeout between streaming data chunks (defaults to 12 seconds).
+  Duration chunkTimeout;
 
   final Map<String, SyncDownloadTask> _tasks = {};
   final List<String> _queue = [];
@@ -458,7 +466,16 @@ class SyncDownloadManager {
       final stopwatch = Stopwatch()..start();
       DateTime lastEmitTime = DateTime.now();
 
-      await for (final chunk in streamedResponse.stream) {
+      final timedStream = streamedResponse.stream.timeout(
+        chunkTimeout,
+        onTimeout: (EventSink<List<int>> eventSink) {
+          eventSink.addError(
+            TimeoutException('Descarga interrumpida: sin datos por más de ${chunkTimeout.inSeconds}s'),
+          );
+        },
+      );
+
+      await for (final chunk in timedStream) {
         if (_cancellationFlags[trackId] == true) {
           await sink.close();
           _activeSinks.remove(trackId);
@@ -579,9 +596,17 @@ class SyncDownloadManager {
           await tempFile.delete();
         } catch (_) {}
       }
-      task.status = SyncDownloadStatus.failed;
-      task.error = e.toString();
-      _emitTaskUpdate(task);
+      if (_cancellationFlags[trackId] != true && task.status != SyncDownloadStatus.cancelled) {
+        task.status = SyncDownloadStatus.failed;
+        if (e is TimeoutException) {
+          task.error = e.message ?? 'Descarga interrumpida: tiempo de espera agotado';
+        } else if (e is LocalSyncClientException) {
+          task.error = e.message;
+        } else {
+          task.error = e.toString();
+        }
+        _emitTaskUpdate(task);
+      }
       DebugLogger.log('SyncDownloadManager: Download error for $trackId: $e');
     } finally {
       _activeTrackIds.remove(trackId);

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -200,6 +201,67 @@ void main() {
 
       expect(task.status, SyncDownloadStatus.failed);
       expect(task.error, contains('SocketException'));
+    });
+
+    test('fails cleanly and removes .part file on connection timeout waiting for headers', () async {
+      final mockClient = MockClient((request) async {
+        await Future.delayed(const Duration(milliseconds: 300));
+        return http.Response('ok', 200);
+      });
+
+      final syncClient = LocalSyncClient(baseUrl: baseUrl, client: mockClient);
+
+      // Verify openDownloadStream times out directly
+      expect(
+        () => syncClient.openDownloadStream('timeout_direct', timeout: const Duration(milliseconds: 50)),
+        throwsA(isA<LocalSyncClientException>().having(
+          (e) => e.message,
+          'message',
+          contains('timed out'),
+        )),
+      );
+    });
+
+    test('fails cleanly and recovers queue on chunk stream inactivity timeout', () async {
+      final controller = StreamController<List<int>>();
+      addTearDown(() => controller.close());
+
+      final mockClient = MockClient.streaming((request, bodyStream) async {
+        controller.add([1, 2, 3, 4]);
+        return http.StreamedResponse(
+          controller.stream,
+          200,
+          contentLength: 1000,
+        );
+      });
+
+      final syncClient = LocalSyncClient(baseUrl: baseUrl, client: mockClient);
+      final manager = SyncDownloadManager(
+        customDownloadDirectory: downloadDir,
+        maxConcurrentDownloads: 1,
+        chunkTimeout: const Duration(milliseconds: 100),
+      );
+
+      final track = createMockRemoteTrack(trackId: 'track_stalled');
+      final task = await manager.enqueueTrack(track, client: syncClient);
+
+      await manager.onTaskUpdated
+          .firstWhere((t) => t.trackId == track.trackId && t.isFinished);
+
+      expect(task.status, SyncDownloadStatus.failed);
+      expect(task.error, contains('Descarga interrumpida'));
+      expect(task.bytesDownloaded, 4);
+
+      // Verify temp part file was deleted
+      final partFiles = downloadDir
+          .listSync()
+          .where((f) => f.path.endsWith('.part'))
+          .toList();
+      expect(partFiles, isEmpty);
+
+      // Concurrency lane must be cleared and manager must not be deadlocked
+      expect(manager.activeTasks, isEmpty);
+      expect(manager.currentSummary.activeTasks, 0);
     });
   });
 

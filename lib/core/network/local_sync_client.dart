@@ -285,10 +285,21 @@ class LocalSyncClient {
   Future<http.StreamedResponse> openDownloadStream(
     String trackId, {
     String? baseUrl,
+    Duration timeout = const Duration(seconds: 15),
   }) async {
     final downloadUrl = getDownloadUrl(trackId, baseUrl);
     final request = http.Request('GET', Uri.parse(downloadUrl));
-    return _client.send(request);
+    try {
+      return await _client.send(request).timeout(timeout);
+    } on TimeoutException catch (e) {
+      throw LocalSyncClientException(
+        'Download connection timed out after ${timeout.inSeconds}s waiting for headers',
+        cause: e,
+      );
+    } catch (e) {
+      if (e is LocalSyncClientException) rethrow;
+      throw LocalSyncClientException('Failed to open download stream: $e', cause: e);
+    }
   }
 
   /// Downloads the complete media file for [trackId].
