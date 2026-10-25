@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:orpheus/core/models/custom_metadata.dart';
+import 'package:orpheus/core/models/playlist.dart';
 import 'package:orpheus/core/models/track.dart';
 import 'package:orpheus/core/network/local_sync_server.dart';
 import 'package:shelf/shelf.dart';
@@ -32,6 +33,7 @@ void main() {
     await sampleArtFile.writeAsBytes(artData);
 
     mockTrackWithArt = Track()
+      ..id = 1
       ..trackId = 'track_12345'
       ..filePath = sampleAudioFile.path
       ..title = 'Orpheus Symphony'
@@ -45,6 +47,7 @@ void main() {
       ..customMetadata = (CustomMetadata()..customCoverPath = sampleArtFile.path);
 
     mockTrackWithoutArt = Track()
+      ..id = 2
       ..trackId = 'track_67890'
       ..filePath = sampleAudioFile.path
       ..title = 'Raw Track'
@@ -64,6 +67,13 @@ void main() {
     return LocalSyncServer(
       deviceName: 'Test-Orpheus-Machine',
       tracksProvider: () async => [mockTrackWithArt, mockTrackWithoutArt],
+      playlistsProvider: () async => [
+        Playlist()
+          ..playlistId = 'pl_rock_01'
+          ..name = 'Rock Clásico'
+          ..description = 'Grandes éxitos'
+          ..trackIds = [1, 2],
+      ],
       trackByIdProvider: (trackId) async {
         if (trackId == mockTrackWithArt.trackId) return mockTrackWithArt;
         if (trackId == mockTrackWithoutArt.trackId) return mockTrackWithoutArt;
@@ -115,6 +125,14 @@ void main() {
       final t2 = tracks.firstWhere((t) => t['trackId'] == 'track_67890');
       expect(t2['hasCover'], false);
       expect(t2['artUrl'], isNull);
+
+      final playlists = json['playlists'] as List;
+      expect(playlists.length, 1);
+      final p1 = playlists.first;
+      expect(p1['playlistId'], 'pl_rock_01');
+      expect(p1['name'], 'Rock Clásico');
+      expect(p1['trackCount'], 2);
+      expect(p1['trackIds'], ['track_12345', 'track_67890']);
     });
 
     test('GET /api/v1/stream/<trackId> without Range serves full content (200 OK)', () async {

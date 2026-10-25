@@ -639,6 +639,7 @@ class LocalDatabase {
 
   /// Persists a new [playlist] or updates an existing one.
   Future<void> savePlaylist(Playlist playlist) async {
+    if (_isTestUninitialized) return;
     playlist.updatedAt ??= DateTime.now();
     await _isar.writeTxn(() async {
       await _isar.playlists.put(playlist);

@@ -74,6 +74,15 @@ void main() {
         'downloadUrl': '/api/v1/download/t3-video',
       },
     ],
+    'playlists': [
+      {
+        'id': 'pl-rock',
+        'name': 'Classic Rock',
+        'description': 'Best rock anthems',
+        'trackCount': 2,
+        'trackIds': ['t1', 't2-downloaded'],
+      },
+    ],
   };
 
   setUp(() {
@@ -243,7 +252,7 @@ void main() {
       expect(find.text('Remote Song One'), findsNothing);
     });
 
-    testWidgets('Subtab switching displays Álbumes, Artistas, and Videos',
+    testWidgets('Subtab switching displays Álbumes, Artistas, Playlists, and Videos',
         (tester) async {
       beaconService.addOrUpdateNode(testNode);
       final client = createMockClient(sampleTracksJson);
@@ -270,6 +279,12 @@ void main() {
       await _settle(tester);
 
       expect(find.text('Artist Alpha'), findsOneWidget);
+
+      // Tap Playlists subtab
+      await tester.tap(find.text('Playlists'));
+      await _settle(tester);
+
+      expect(find.text('Classic Rock'), findsOneWidget);
 
       // Tap Videos subtab
       await tester.tap(find.text('Videos'));

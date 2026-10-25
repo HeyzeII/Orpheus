@@ -10,6 +10,7 @@ import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
 
 import '../database/local_database.dart';
+import '../models/playlist.dart';
 import '../models/track.dart';
 import '../utils/debug_logger.dart';
 
@@ -26,6 +27,7 @@ class LocalSyncServer {
   final LocalDatabase? db;
   final Future<List<Track>> Function()? tracksProvider;
   final Future<Track?> Function(String trackId)? trackByIdProvider;
+  final Future<List<Playlist>> Function()? playlistsProvider;
   final String? _customDeviceName;
 
   /// Default port for the Orpheus sync server.
@@ -44,6 +46,7 @@ class LocalSyncServer {
     this.db,
     this.tracksProvider,
     this.trackByIdProvider,
+    this.playlistsProvider,
     String? deviceName,
   }) : _customDeviceName = deviceName;
 
@@ -199,6 +202,11 @@ class LocalSyncServer {
   Future<Response> _handleLibrary(Request request) async {
     try {
       final tracks = await _getAllTracks();
+      final trackIdMap = <int, String>{};
+      for (final t in tracks) {
+        trackIdMap[t.id] = t.trackId;
+      }
+
       final items = tracks.map((t) {
         final hasCover = t.customMetadata.customCoverPath != null &&
             t.customMetadata.customCoverPath!.trim().isNotEmpty;
@@ -218,10 +226,28 @@ class LocalSyncServer {
         };
       }).toList();
 
+      final playlists = await _getAllPlaylists();
+      final playlistItems = playlists.map((p) {
+        final trackUuids = p.trackIds
+            .map((id) => trackIdMap[id])
+            .whereType<String>()
+            .toList();
+        return {
+          'playlistId': p.playlistId,
+          'name': p.name,
+          'description': p.description,
+          'isDefault': p.isDefault,
+          'trackCount': trackUuids.length,
+          'trackIds': trackUuids,
+          'updatedAt': p.updatedAt?.toUtc().toIso8601String(),
+        };
+      }).toList();
+
       final payload = {
         'status': 'ok',
         'count': items.length,
         'tracks': items,
+        'playlists': playlistItems,
       };
 
       return Response.ok(
@@ -459,6 +485,15 @@ class LocalSyncServer {
     }
     final database = db ?? LocalDatabase.instance;
     return database.getAllTracks();
+  }
+
+  Future<List<Playlist>> _getAllPlaylists() async {
+    final provider = playlistsProvider;
+    if (provider != null) {
+      return provider();
+    }
+    final database = db ?? LocalDatabase.instance;
+    return database.getAllPlaylists();
   }
 
   Future<Track?> _getTrackById(String trackId) async {

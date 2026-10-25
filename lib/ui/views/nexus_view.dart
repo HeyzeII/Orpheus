@@ -8,6 +8,7 @@ import '../../core/network/orpheus_beacon_service.dart';
 import '../../core/services/audio_player_service.dart';
 import '../../core/services/sync_download_manager.dart';
 import '../theme/app_theme.dart';
+import '../widgets/add_to_playlist_sheet.dart';
 import '../widgets/app_toast.dart';
 import '../widgets/track_cover_art.dart';
 import '../widgets/video_badge.dart';
@@ -79,14 +80,16 @@ class _NexusViewState extends State<NexusView> with SingleTickerProviderStateMix
   bool _isLoadingCatalog = false;
   String? _catalogError;
   List<Track> _catalogTracks = [];
+  List<RemotePlaylist> _catalogPlaylists = [];
   Set<String> _localDownloadedTrackIds = {};
 
   // Per-node catalog cache: avoids re-fetching when switching back to a node.
   final Map<String, List<Track>> _catalogCache = {};
+  final Map<String, List<RemotePlaylist>> _playlistCache = {};
 
   final TextEditingController _searchCtrl = TextEditingController();
   String _searchQuery = '';
-  int _selectedSubTab = 0; // 0: Canciones, 1: Álbumes, 2: Artistas, 3: Videos
+  int _selectedSubTab = 0; // 0: Canciones, 1: Álbumes, 2: Artistas, 3: Playlists, 4: Videos
 
   _NexusSortMode _sortMode = _NexusSortMode.title;
 
@@ -199,6 +202,7 @@ class _NexusViewState extends State<NexusView> with SingleTickerProviderStateMix
       if (mounted) {
         setState(() {
           _catalogTracks = _catalogCache[cacheKey]!;
+          _catalogPlaylists = _playlistCache[cacheKey] ?? [];
           _isLoadingCatalog = false;
           _catalogError = null;
         });
@@ -213,13 +217,15 @@ class _NexusViewState extends State<NexusView> with SingleTickerProviderStateMix
 
     try {
       final client = widget.syncClient ?? LocalSyncClient.fromNode(_selectedNode!);
-      final tracks = await client.fetchLibrary();
+      final catalog = await client.fetchCatalog();
 
-      _catalogCache[cacheKey] = tracks;
+      _catalogCache[cacheKey] = catalog.tracks;
+      _playlistCache[cacheKey] = catalog.playlists;
 
       if (mounted) {
         setState(() {
-          _catalogTracks = tracks;
+          _catalogTracks = catalog.tracks;
+          _catalogPlaylists = catalog.playlists;
           _isLoadingCatalog = false;
           _isNodeDisconnected = false;
         });
@@ -232,6 +238,7 @@ class _NexusViewState extends State<NexusView> with SingleTickerProviderStateMix
           // Serve stale cache if we have it so UI doesn't go blank
           if (_catalogCache.containsKey(cacheKey)) {
             _catalogTracks = _catalogCache[cacheKey]!;
+            _catalogPlaylists = _playlistCache[cacheKey] ?? [];
           }
           final stillAlive = _beacon.activeNodes.any(
             (n) => n.deviceId == _selectedNode!.deviceId || n.baseUrl == _selectedNode!.baseUrl,
@@ -846,16 +853,23 @@ class _NexusViewState extends State<NexusView> with SingleTickerProviderStateMix
           ),
           const SizedBox(height: 10),
           // Subtabs row
-          Row(
-            children: [
-              _buildSubTab(0, 'Canciones', _filteredTracks.length),
-              const SizedBox(width: 6),
-              _buildSubTab(1, 'Álbumes', _filteredAlbums.length),
-              const SizedBox(width: 6),
-              _buildSubTab(2, 'Artistas', _filteredArtists.length),
-              const SizedBox(width: 6),
-              _buildSubTab(3, 'Videos', _filteredVideos.length),
-            ],
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildSubTab(0, 'Canciones', _filteredTracks.length),
+                const SizedBox(width: 6),
+                _buildSubTab(1, 'Álbumes', _filteredAlbums.length),
+                const SizedBox(width: 6),
+                _buildSubTab(2, 'Artistas', _filteredArtists.length),
+                const SizedBox(width: 6),
+                _buildSubTab(3, 'Playlists', _filteredPlaylists.length),
+                const SizedBox(width: 6),
+                _buildSubTab(4, 'Videos', _filteredVideos.length),
+              ],
+            ),
           ),
         ],
       ),
@@ -908,7 +922,7 @@ class _NexusViewState extends State<NexusView> with SingleTickerProviderStateMix
       onTap: () => setState(() => _selectedSubTab = index),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: active ? AppTheme.accent.withOpacity(0.16) : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
@@ -917,6 +931,7 @@ class _NexusViewState extends State<NexusView> with SingleTickerProviderStateMix
               : Border.all(color: Colors.transparent, width: 1),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               title,
@@ -1009,7 +1024,8 @@ class _NexusViewState extends State<NexusView> with SingleTickerProviderStateMix
       0 => _buildSongsList(isMobile),
       1 => _buildAlbumsGrid(isMobile),
       2 => _buildArtistsList(isMobile),
-      3 => _buildVideosList(isMobile),
+      3 => _buildPlaylistsList(isMobile),
+      4 => _buildVideosList(isMobile),
       _ => _buildSongsList(isMobile),
     };
   }
@@ -1502,13 +1518,25 @@ class _NexusViewState extends State<NexusView> with SingleTickerProviderStateMix
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.download_for_offline_rounded, color: AppTheme.accent),
+                        icon: const Icon(Icons.playlist_add_rounded, color: AppTheme.accent, size: 22),
+                        tooltip: 'Agregar todo a Playlist',
+                        onPressed: () {
+                          Navigator.pop(context);
+                          AddToPlaylistSheet.show(
+                            this.context,
+                            tracks: album.tracks,
+                            collectionTitle: album.albumName,
+                          );
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.download_for_offline_rounded, color: AppTheme.accent, size: 22),
                         tooltip: 'Descargar todo el disco',
                         onPressed: () {
                           Navigator.pop(context);
                           if (_selectedNode == null) return;
                           final client = widget.syncClient ?? LocalSyncClient.fromNode(_selectedNode!);
-                          _downloadMgr.enqueueTracks(album.tracks, client: client);
+                          _downloadMgr.enqueueAlbum(album.albumName, _catalogTracks, client: client);
                           AppToast.showText(
                             this.context,
                             'Descargando "${album.albumName}"...',
@@ -1607,13 +1635,385 @@ class _NexusViewState extends State<NexusView> with SingleTickerProviderStateMix
             ),
           ),
           trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textHint),
-          onTap: () {
-            // Filter by this artist in real time
-            _searchCtrl.text = artist.artistName;
-            setState(() {
-              _searchQuery = artist.artistName.toLowerCase();
-              _selectedSubTab = 0; // jump to songs
-            });
+          onTap: () => _showArtistDetailSheet(context, artist),
+        );
+      },
+    );
+  }
+
+  void _showArtistDetailSheet(BuildContext context, _RemoteArtistGroup artist) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.72,
+          minChildSize: 0.45,
+          maxChildSize: 0.94,
+          builder: (_, scrollCtrl) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: AppTheme.bgSurface,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                border: Border(top: BorderSide(color: AppTheme.divider, width: 1.2)),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 58,
+                          height: 58,
+                          decoration: BoxDecoration(
+                            color: AppTheme.accent.withOpacity(0.18),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppTheme.accent.withOpacity(0.35)),
+                          ),
+                          child: Center(
+                            child: Text(
+                              artist.artistName.isNotEmpty ? artist.artistName[0].toUpperCase() : '?',
+                              style: const TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 22,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.accent,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                artist.artistName,
+                                style: const TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${artist.tracks.length} canciones • ${artist.albumCount} álbumes',
+                                style: const TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 12,
+                                  color: AppTheme.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.playlist_add_rounded, color: AppTheme.accent, size: 22),
+                          tooltip: 'Agregar todo a Playlist',
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            AddToPlaylistSheet.show(
+                              this.context,
+                              tracks: artist.tracks,
+                              collectionTitle: artist.artistName,
+                            );
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.download_for_offline_rounded, color: AppTheme.accent, size: 22),
+                          tooltip: 'Descargar discografía',
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            if (_selectedNode == null) return;
+                            final client = widget.syncClient ?? LocalSyncClient.fromNode(_selectedNode!);
+                            _downloadMgr.enqueueArtist(artist.artistName, _catalogTracks, client: client);
+                            AppToast.showText(
+                              this.context,
+                              'Descargando discografía de "${artist.artistName}"...',
+                              icon: Icons.download_done_rounded,
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(color: AppTheme.divider),
+                  Expanded(
+                    child: ListView.builder(
+                      controller: scrollCtrl,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      itemCount: artist.tracks.length,
+                      itemBuilder: (context, idx) {
+                        final t = artist.tracks[idx];
+                        final isDownloaded = _isTrackDownloaded(t.trackId);
+                        return _buildTrackTile(
+                          track: t,
+                          index: idx,
+                          isDownloaded: isDownloaded,
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            _playTrack(t, idx);
+                          },
+                          onDownload: () => _downloadTrack(t),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ── Subtab 3: Playlists ────────────────────────────────────────────────────
+
+  List<RemotePlaylist> get _filteredPlaylists {
+    if (_searchQuery.isEmpty) return _catalogPlaylists;
+    return _catalogPlaylists
+        .where((p) =>
+            p.name.toLowerCase().contains(_searchQuery) ||
+            (p.description?.toLowerCase().contains(_searchQuery) ?? false))
+        .toList();
+  }
+
+  Widget _buildPlaylistsList(bool isMobile) {
+    final playlists = _filteredPlaylists;
+
+    if (playlists.isEmpty) {
+      return Center(
+        child: Text(
+          _searchQuery.isNotEmpty
+              ? 'No se encontraron playlists para "$_searchQuery"'
+              : 'El nodo remoto no tiene playlists compartidas',
+          style: const TextStyle(color: AppTheme.textHint, fontSize: 13),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 12 : 24,
+        14,
+        isMobile ? 12 : 24,
+        isMobile ? 120 : 100,
+      ),
+      itemCount: playlists.length,
+      itemBuilder: (context, idx) {
+        final playlist = playlists[idx];
+
+        return ListTile(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          hoverColor: AppTheme.bgHover,
+          leading: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppTheme.accent.withOpacity(0.18),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.accent.withOpacity(0.35)),
+            ),
+            child: const Center(
+              child: Icon(Icons.queue_music_rounded, color: AppTheme.accent, size: 22),
+            ),
+          ),
+          title: Text(
+            playlist.name,
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+          subtitle: Text(
+            '${playlist.trackCount} canciones${playlist.description != null && playlist.description!.isNotEmpty ? ' • ${playlist.description}' : ''}',
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 12,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.download_for_offline_rounded, color: AppTheme.accent, size: 20),
+            tooltip: 'Descargar playlist completa',
+            onPressed: () {
+              if (_selectedNode == null) return;
+              final client = widget.syncClient ?? LocalSyncClient.fromNode(_selectedNode!);
+              _downloadMgr.enqueueRemotePlaylist(playlist, _catalogTracks, client: client);
+              AppToast.showText(
+                context,
+                'Descargando playlist "${playlist.name}"...',
+                icon: Icons.download_done_rounded,
+              );
+            },
+          ),
+          onTap: () => _showPlaylistDetailSheet(context, playlist),
+        );
+      },
+    );
+  }
+
+  void _showPlaylistDetailSheet(BuildContext context, RemotePlaylist playlist) {
+    final targetIds = playlist.trackIds.toSet();
+    final playlistTracks = _catalogTracks
+        .where((t) => targetIds.contains(t.trackId))
+        .toList();
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.72,
+          minChildSize: 0.45,
+          maxChildSize: 0.94,
+          builder: (_, scrollCtrl) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: AppTheme.bgSurface,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                border: Border(top: BorderSide(color: AppTheme.divider, width: 1.2)),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 58,
+                          height: 58,
+                          decoration: BoxDecoration(
+                            color: AppTheme.accent.withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppTheme.accent.withOpacity(0.35)),
+                          ),
+                          child: const Icon(Icons.queue_music_rounded, color: AppTheme.accent, size: 28),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                playlist.name,
+                                style: const TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                playlist.description ?? 'Playlist compartida',
+                                style: const TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 13,
+                                  color: AppTheme.textSecondary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${playlistTracks.length} canciones disponibles',
+                                style: const TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 11,
+                                  color: AppTheme.textHint,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.playlist_add_rounded, color: AppTheme.accent, size: 22),
+                          tooltip: 'Agregar todo a Playlist local',
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            AddToPlaylistSheet.show(
+                              this.context,
+                              tracks: playlistTracks,
+                              collectionTitle: playlist.name,
+                            );
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.download_for_offline_rounded, color: AppTheme.accent, size: 22),
+                          tooltip: 'Descargar playlist completa',
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            if (_selectedNode == null) return;
+                            final client = widget.syncClient ?? LocalSyncClient.fromNode(_selectedNode!);
+                            _downloadMgr.enqueueRemotePlaylist(playlist, _catalogTracks, client: client);
+                            AppToast.showText(
+                              this.context,
+                              'Descargando "${playlist.name}"...',
+                              icon: Icons.download_done_rounded,
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(color: AppTheme.divider),
+                  Expanded(
+                    child: playlistTracks.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'Esta playlist no contiene pistas disponibles en el catálogo',
+                              style: TextStyle(color: AppTheme.textHint, fontSize: 13),
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: scrollCtrl,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            itemCount: playlistTracks.length,
+                            itemBuilder: (context, idx) {
+                              final t = playlistTracks[idx];
+                              final isDownloaded = _isTrackDownloaded(t.trackId);
+                              return _buildTrackTile(
+                                track: t,
+                                index: idx,
+                                isDownloaded: isDownloaded,
+                                onTap: () {
+                                  Navigator.pop(ctx);
+                                  _playTrack(t, idx);
+                                },
+                                onDownload: () => _downloadTrack(t),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
           },
         );
       },

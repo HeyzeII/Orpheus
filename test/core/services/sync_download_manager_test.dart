@@ -426,6 +426,79 @@ void main() {
       manager.clearFinishedTasks();
       expect(manager.allTasks, isEmpty);
     });
+
+    test('enqueueAlbum and enqueueArtist batch download tracks matching filter', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response.bytes([1, 2], 200);
+      });
+
+      final syncClient = LocalSyncClient(baseUrl: baseUrl, client: mockClient);
+      final manager = SyncDownloadManager(
+        customDownloadDirectory: downloadDir,
+        maxConcurrentDownloads: 2,
+      );
+
+      final catalog = [
+        Track()
+          ..trackId = 'a1'
+          ..title = 'Track 1'
+          ..artist = 'The Beatles'
+          ..album = 'Abbey Road',
+        Track()
+          ..trackId = 'a2'
+          ..title = 'Track 2'
+          ..artist = 'The Beatles'
+          ..album = 'Abbey Road',
+        Track()
+          ..trackId = 'a3'
+          ..title = 'Track 3'
+          ..artist = 'Queen'
+          ..album = 'A Night at the Opera',
+      ];
+
+      // Batch enqueue by album
+      final albumTasks = await manager.enqueueAlbum('Abbey Road', catalog, client: syncClient);
+      expect(albumTasks.length, 2);
+      expect(albumTasks.map((t) => t.trackId), containsAll(['a1', 'a2']));
+
+      // Batch enqueue by artist
+      final artistTasks = await manager.enqueueArtist('Queen', catalog, client: syncClient);
+      expect(artistTasks.length, 1);
+      expect(artistTasks.first.trackId, 'a3');
+    });
+
+    test('enqueueRemotePlaylist enqueues tracks and applies skipAlreadyDownloaded filter', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response.bytes([1, 2], 200);
+      });
+
+      final syncClient = LocalSyncClient(baseUrl: baseUrl, client: mockClient);
+      final manager = SyncDownloadManager(
+        customDownloadDirectory: downloadDir,
+        maxConcurrentDownloads: 2,
+      );
+
+      final remotePlaylist = RemotePlaylist(
+        playlistId: 'rem_pl_1',
+        name: 'Greatest Hits',
+        trackCount: 2,
+        trackIds: ['hit_1', 'hit_2'],
+      );
+
+      final tracks = [
+        createMockRemoteTrack(trackId: 'hit_1', title: 'Hit One'),
+        createMockRemoteTrack(trackId: 'hit_2', title: 'Hit Two'),
+      ];
+
+      final tasks = await manager.enqueueRemotePlaylist(
+        remotePlaylist,
+        tracks,
+        client: syncClient,
+      );
+
+      expect(tasks.length, 2);
+      expect(tasks.map((t) => t.trackId), containsAll(['hit_1', 'hit_2']));
+    });
   });
 
   group('Hermetic End-to-End: SyncDownloadManager with LocalSyncServer', () {

@@ -179,6 +179,7 @@ class SyncDownloadManager {
   final Set<String> _activeTrackIds = {};
   final Map<String, bool> _cancellationFlags = {};
   final Map<String, IOSink> _activeSinks = {};
+  final Map<String, Set<String>> _pendingPlaylistTracks = {};
 
   bool _isDisposed = false;
 
@@ -238,6 +239,28 @@ class SyncDownloadManager {
       .toList();
 
   SyncProgressSummary get currentSummary => _calculateSummary();
+
+  /// Checks whether [trackId] is already downloaded and present on the local filesystem.
+  Future<bool> isTrackDownloadedLocally(String trackId) async {
+    final task = _tasks[trackId];
+    if (task != null && task.status == SyncDownloadStatus.completed) {
+      if (task.localFilePath != null && File(task.localFilePath!).existsSync()) {
+        return true;
+      }
+    }
+    try {
+      final inDb = await _db.getTrackByTrackId(trackId);
+      if (inDb != null) {
+        final path = inDb.filePath;
+        if (!path.startsWith('http://') && !path.startsWith('https://')) {
+          if (File(path).existsSync()) {
+            return true;
+          }
+        }
+      }
+    } catch (_) {}
+    return false;
+  }
 
   /// For testing: registers a task directly in memory and emits updates.
   void registerTaskForTesting(SyncDownloadTask task) {
@@ -303,12 +326,21 @@ class SyncDownloadManager {
   }
 
   /// Enqueues a collection of [remoteTracks] for batch download.
+  ///
+  /// If [skipAlreadyDownloaded] is `true` (default), tracks that already exist
+  /// on disk are omitted to avoid duplicate network transfers.
   Future<List<SyncDownloadTask>> enqueueTracks(
     List<Track> remoteTracks, {
     LocalSyncClient? client,
+    bool skipAlreadyDownloaded = true,
   }) async {
     final List<SyncDownloadTask> enqueued = [];
     for (final track in remoteTracks) {
+      if (skipAlreadyDownloaded) {
+        final isDownloaded = await isTrackDownloadedLocally(track.trackId);
+        if (isDownloaded) continue;
+      }
+
       final task = await enqueueTrack(
         track,
         client: client,
@@ -321,17 +353,105 @@ class SyncDownloadManager {
     return enqueued;
   }
 
-  /// Enqueues all tracks in a [playlist] and associates them upon download.
+  /// Enqueues all tracks belonging to [albumName] for batch download.
+  Future<List<SyncDownloadTask>> enqueueAlbum(
+    String albumName,
+    List<Track> catalogTracks, {
+    LocalSyncClient? client,
+    bool skipAlreadyDownloaded = true,
+  }) async {
+    final albumTracks = catalogTracks
+        .where((t) => t.displayAlbum.toLowerCase() == albumName.toLowerCase())
+        .toList();
+    return enqueueTracks(
+      albumTracks,
+      client: client,
+      skipAlreadyDownloaded: skipAlreadyDownloaded,
+    );
+  }
+
+  /// Enqueues all tracks belonging to [artistName] for batch download.
+  Future<List<SyncDownloadTask>> enqueueArtist(
+    String artistName,
+    List<Track> catalogTracks, {
+    LocalSyncClient? client,
+    bool skipAlreadyDownloaded = true,
+  }) async {
+    final artistTracks = catalogTracks
+        .where((t) => t.displayArtist.toLowerCase() == artistName.toLowerCase())
+        .toList();
+    return enqueueTracks(
+      artistTracks,
+      client: client,
+      skipAlreadyDownloaded: skipAlreadyDownloaded,
+    );
+  }
+
+  /// Enqueues all tracks in a local [playlist] and associates them upon download.
   Future<List<SyncDownloadTask>> enqueuePlaylist(
     Playlist playlist,
     List<Track> playlistTracks, {
     LocalSyncClient? client,
+    bool skipAlreadyDownloaded = true,
   }) async {
-    final tasks = await enqueueTracks(playlistTracks, client: client);
+    final tasks = await enqueueTracks(
+      playlistTracks,
+      client: client,
+      skipAlreadyDownloaded: skipAlreadyDownloaded,
+    );
 
     try {
       await _db.savePlaylist(playlist);
     } catch (_) {}
+
+    return tasks;
+  }
+
+  /// Enqueues all tracks in a [RemotePlaylist] for download and safely creates or reconciles
+  /// the local [Playlist] in the Isar database, preserving referential integrity.
+  Future<List<SyncDownloadTask>> enqueueRemotePlaylist(
+    RemotePlaylist remotePlaylist,
+    List<Track> allRemoteTracks, {
+    LocalSyncClient? client,
+    bool skipAlreadyDownloaded = true,
+  }) async {
+    final targetIds = remotePlaylist.trackIds.toSet();
+    final playlistTracks = allRemoteTracks
+        .where((t) => targetIds.contains(t.trackId))
+        .toList();
+
+    final tasks = await enqueueTracks(
+      playlistTracks,
+      client: client,
+      skipAlreadyDownloaded: skipAlreadyDownloaded,
+    );
+
+    try {
+      final playlist = await _db.getPlaylistById(remotePlaylist.playlistId) ??
+          (Playlist()
+            ..playlistId = remotePlaylist.playlistId
+            ..name = remotePlaylist.name
+            ..description = remotePlaylist.description
+            ..trackIds = []);
+
+      final currentLocalIds = List<int>.from(playlist.trackIds);
+
+      for (final trackId in remotePlaylist.trackIds) {
+        final existingTrack = await _db.getTrackByTrackId(trackId);
+        if (existingTrack != null) {
+          if (!currentLocalIds.contains(existingTrack.id)) {
+            currentLocalIds.add(existingTrack.id);
+          }
+        } else {
+          _pendingPlaylistTracks.putIfAbsent(trackId, () => {}).add(remotePlaylist.playlistId);
+        }
+      }
+
+      playlist.trackIds = currentLocalIds;
+      await _db.savePlaylist(playlist);
+    } catch (e) {
+      DebugLogger.log('SyncDownloadManager: Error reconciling remote playlist: $e');
+    }
 
     return tasks;
   }
@@ -573,6 +693,11 @@ class SyncDownloadManager {
         } else {
           await _db.saveTrack(task.track);
         }
+
+        final savedTrack = existing ?? await _db.getTrackByTrackId(task.trackId);
+        if (savedTrack != null) {
+          await _reconcilePendingPlaylists(savedTrack.id, task.trackId);
+        }
       } catch (e) {
         DebugLogger.log('SyncDownloadManager: Error saving track to DB: $e');
       }
@@ -688,6 +813,22 @@ class SyncDownloadManager {
       overallProgress: progress,
       overallSpeedBytesPerSec: speedSum,
     );
+  }
+
+  /// Links a freshly downloaded and saved track into any local playlists that were downloaded from remote nodes.
+  Future<void> _reconcilePendingPlaylists(int localId, String trackId) async {
+    final pendingPlaylistIds = _pendingPlaylistTracks.remove(trackId);
+    if (pendingPlaylistIds == null || pendingPlaylistIds.isEmpty) return;
+
+    for (final playlistId in pendingPlaylistIds) {
+      try {
+        final playlist = await _db.getPlaylistById(playlistId);
+        if (playlist != null && !playlist.trackIds.contains(localId)) {
+          playlist.trackIds = List<int>.from(playlist.trackIds)..add(localId);
+          await _db.savePlaylist(playlist);
+        }
+      } catch (_) {}
+    }
   }
 
   /// Disposes active sinks and stream controllers.

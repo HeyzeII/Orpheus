@@ -78,11 +78,80 @@ class NodePingResponse {
       };
 }
 
+/// Represents a playlist shared by a remote Orpheus peer node.
+class RemotePlaylist {
+  final String playlistId;
+  final String name;
+  final String? description;
+  final bool isDefault;
+  final int trackCount;
+  final List<String> trackIds;
+  final DateTime? updatedAt;
+
+  const RemotePlaylist({
+    required this.playlistId,
+    required this.name,
+    this.description,
+    this.isDefault = false,
+    required this.trackCount,
+    required this.trackIds,
+    this.updatedAt,
+  });
+
+  factory RemotePlaylist.fromJson(Map<String, dynamic> json) {
+    final rawTrackIds = json['trackIds'];
+    final List<String> ids = [];
+    if (rawTrackIds is List) {
+      for (final id in rawTrackIds) {
+        if (id != null) ids.add(id.toString());
+      }
+    }
+
+    return RemotePlaylist(
+      playlistId: (json['playlistId'] as String?) ?? '',
+      name: (json['name'] as String?) ?? 'Sin título',
+      description: json['description'] as String?,
+      isDefault: json['isDefault'] == true,
+      trackCount: (json['trackCount'] as num?)?.toInt() ?? ids.length,
+      trackIds: ids,
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.tryParse(json['updatedAt'] as String)
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'playlistId': playlistId,
+        'name': name,
+        'description': description,
+        'isDefault': isDefault,
+        'trackCount': trackCount,
+        'trackIds': trackIds,
+        'updatedAt': updatedAt?.toUtc().toIso8601String(),
+      };
+}
+
+/// Encapsulates the entire synced catalog from a remote node (tracks and playlists).
+class RemoteCatalog {
+  final List<Track> tracks;
+  final List<RemotePlaylist> playlists;
+
+  const RemoteCatalog({
+    required this.tracks,
+    required this.playlists,
+  });
+
+  factory RemoteCatalog.empty() => const RemoteCatalog(
+        tracks: [],
+        playlists: [],
+      );
+}
+
 /// HTTP client for interacting with remote Orpheus desktop sync servers on the LAN.
 ///
 /// Handles:
 /// - Node health checks and discovery verification (`pingNode()`)
-/// - Library metadata synchronization (`fetchLibrary()`)
+/// - Library metadata synchronization (`fetchLibrary()`, `fetchCatalog()`)
 /// - URL resolution for streaming, artwork, and full-fidelity downloads
 /// - Track binary downloads with optional SHA-256 verification
 class LocalSyncClient {
@@ -222,12 +291,8 @@ class LocalSyncClient {
     }
   }
 
-  /// Fetches the remote library catalog from [nodeBaseUrl] or [baseUrl].
-  ///
-  /// Converts the remote tracks into [Track] instances configured for immediate
-  /// streaming playback via [AudioPlayerService], with [Track.filePath] set to the
-  /// full streaming URL and [Track.customMetadata.customCoverPath] set to the remote art URL.
-  Future<List<Track>> fetchLibrary([String? nodeBaseUrl]) async {
+  /// Fetches the complete remote catalog (tracks and playlists) from [nodeBaseUrl] or [baseUrl].
+  Future<RemoteCatalog> fetchCatalog([String? nodeBaseUrl]) async {
     final effectiveBase = _resolveBaseUrl(nodeBaseUrl);
     final uri = Uri.parse('$effectiveBase/api/v1/library');
 
@@ -236,7 +301,7 @@ class LocalSyncClient {
 
       if (response.statusCode != 200) {
         throw LocalSyncClientException(
-          'Failed to fetch library with HTTP status ${response.statusCode}',
+          'Failed to fetch catalog with HTTP status ${response.statusCode}',
           statusCode: response.statusCode,
         );
       }
@@ -264,17 +329,37 @@ class LocalSyncClient {
         tracks.add(track);
       }
 
+      final List<RemotePlaylist> playlists = [];
+      final rawPlaylists = decoded['playlists'];
+      if (rawPlaylists is List) {
+        for (final item in rawPlaylists) {
+          if (item is Map<String, dynamic>) {
+            playlists.add(RemotePlaylist.fromJson(item));
+          }
+        }
+      }
+
       DebugLogger.log(
-        'LocalSyncClient: Successfully fetched ${tracks.length} tracks from $effectiveBase',
+        'LocalSyncClient: Successfully fetched ${tracks.length} tracks and ${playlists.length} playlists from $effectiveBase',
       );
-      return tracks;
+      return RemoteCatalog(tracks: tracks, playlists: playlists);
     } on LocalSyncClientException {
       rethrow;
     } on TimeoutException catch (e) {
-      throw LocalSyncClientException('Library fetch timed out after ${timeout.inSeconds}s', cause: e);
+      throw LocalSyncClientException('Catalog fetch timed out after ${timeout.inSeconds}s', cause: e);
     } catch (e) {
-      throw LocalSyncClientException('Failed to retrieve remote library: $e', cause: e);
+      throw LocalSyncClientException('Failed to retrieve remote catalog: $e', cause: e);
     }
+  }
+
+  /// Fetches the remote library catalog tracks from [nodeBaseUrl] or [baseUrl].
+  ///
+  /// Converts the remote tracks into [Track] instances configured for immediate
+  /// streaming playback via [AudioPlayerService], with [Track.filePath] set to the
+  /// full streaming URL and [Track.customMetadata.customCoverPath] set to the remote art URL.
+  Future<List<Track>> fetchLibrary([String? nodeBaseUrl]) async {
+    final catalog = await fetchCatalog(nodeBaseUrl);
+    return catalog.tracks;
   }
 
   /// Exposes the underlying HTTP client (useful for custom streaming, connection reuse, or tests).
