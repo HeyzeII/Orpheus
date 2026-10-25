@@ -457,13 +457,19 @@ class LocalSyncServer {
 
     final length = await file.length();
     final checksum = await _calculateFileSha256(file, trackId);
-    final fileName = p.basename(track.filePath);
+    final rawFileName = p.basename(track.filePath);
     final mimeType = _mimeTypeForAudio(track.filePath, track.fileType);
+
+    // RFC 6266 / RFC 5987: Avoid FormatException in dart:io when track filenames contain
+    // non-ASCII characters (tildes, eñes, NFD decomposed Unicode from macOS, etc.).
+    final asciiFallback = rawFileName.replaceAll(RegExp(r'[^\x20-\x7E]'), '_');
+    final rfc5987Encoded = Uri.encodeComponent(rawFileName);
 
     final headers = <String, String>{
       'Content-Type': mimeType,
       'Content-Length': length.toString(),
-      'Content-Disposition': 'attachment; filename="$fileName"',
+      'Content-Disposition':
+          'attachment; filename="$asciiFallback"; filename*=UTF-8\'\'$rfc5987Encoded',
       'Cache-Control': 'no-cache',
     };
     if (checksum.isNotEmpty) {

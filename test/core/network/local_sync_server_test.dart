@@ -248,6 +248,37 @@ void main() {
       final bodyBytes = await response.read().expand((chunk) => chunk).toList();
       expect(bodyBytes, equals(audioData));
     });
+
+    test('GET /api/v1/download/<trackId> formats Content-Disposition with RFC 6266 / RFC 5987 for filenames with accents and special characters', () async {
+      final accentedFile = File('${tempDir.path}/01 - Zoé - Poli (Canción).flac');
+      await accentedFile.writeAsBytes(audioData);
+
+      final accentedTrack = Track()
+        ..id = 99
+        ..trackId = 'track_zoe_accent'
+        ..filePath = accentedFile.path
+        ..title = 'Poli'
+        ..artist = 'Zoé'
+        ..fileType = FileType.flac;
+
+      final server = LocalSyncServer(
+        deviceName: 'Test-Accent-Server',
+        trackByIdProvider: (id) async => id == accentedTrack.trackId ? accentedTrack : null,
+      );
+
+      final request = Request('GET', Uri.parse('http://localhost/api/v1/download/track_zoe_accent'));
+      final response = await server.handler(request);
+
+      expect(response.statusCode, 200);
+      final disposition = response.headers['content-disposition']!;
+
+      // Verify ASCII fallback does not contain characters > 127
+      expect(disposition, contains('filename="01 - Zo_ - Poli (Canci_n).flac"'));
+
+      // Verify RFC 5987 encoded UTF-8 filename is present and percent-encoded
+      expect(disposition, contains("filename*=UTF-8''"));
+      expect(disposition, contains(Uri.encodeComponent('01 - Zoé - Poli (Canción).flac')));
+    });
   });
 
   group('LocalSyncServer Live Socket Lifecycle', () {
@@ -278,6 +309,43 @@ void main() {
       // Stop server
       await server.stop();
       expect(server.isRunning, false);
+    });
+
+    test('Live server safely downloads files with special characters and NFD accents without socket hang or FormatException', () async {
+      // Create file with NFD combining acute accent (macOS standard)
+      final nfdName = '01 - Zoe\u0301 - Cancio\u0301n.flac';
+      final nfdFile = File('${tempDir.path}/$nfdName');
+      await nfdFile.writeAsBytes(audioData);
+
+      final zoeTrack = Track()
+        ..id = 101
+        ..trackId = 'track_zoe_nfd'
+        ..filePath = nfdFile.path
+        ..title = 'Poli'
+        ..artist = 'Zoé'
+        ..fileType = FileType.flac;
+
+      final server = LocalSyncServer(
+        deviceName: 'Test-Accent-Server',
+        trackByIdProvider: (id) async => id == zoeTrack.trackId ? zoeTrack : null,
+      );
+
+      await server.start(port: 0);
+      expect(server.isRunning, true);
+
+      try {
+        final downloadUri = Uri.parse('http://127.0.0.1:${server.port}/api/v1/download/track_zoe_nfd');
+        final response = await http.get(downloadUri).timeout(const Duration(seconds: 5));
+
+        expect(response.statusCode, 200);
+        expect(response.bodyBytes, equals(audioData));
+
+        final disposition = response.headers['content-disposition'];
+        expect(disposition, isNotNull);
+        expect(disposition, contains("filename*=UTF-8''"));
+      } finally {
+        await server.stop();
+      }
     });
   });
 }
