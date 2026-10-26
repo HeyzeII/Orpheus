@@ -65,7 +65,12 @@ static void my_application_activate(GApplication* application) {
   gtk_window_set_icon_name(window, "org.heyzell.Orpheus");
 
   g_autofree gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
+  g_autofree gchar* user_icon_path = g_build_filename(
+      g_get_user_data_dir(), "icons", "hicolor", "512x512", "apps",
+      "org.heyzell.Orpheus.png", nullptr);
+
   const gchar* system_icon_paths[] = {
+      user_icon_path,
       "/app/share/icons/hicolor/512x512/apps/org.heyzell.Orpheus.png",
       "/usr/share/icons/hicolor/512x512/apps/org.heyzell.Orpheus.png",
       nullptr,
@@ -77,9 +82,16 @@ static void my_application_activate(GApplication* application) {
   if (exe_path != nullptr) {
     g_autofree gchar* exe_dir = g_path_get_dirname(exe_path);
     const gchar* relative_icon_paths[] = {
+        // Release bundle layouts
         "data/app_icon.png",
         "org.heyzell.Orpheus.png",
         "data/flutter_assets/assets/icon/app_icon.png",
+        // Development mode fallbacks (running from intermediates_do_not_run/)
+        "../bundle/data/app_icon.png",
+        "../../../../assets/icon/app_icon.png",
+        "../../../../packaging/linux/org.heyzell.Orpheus.png",
+        "../../../../packaging/linux/icons/512x512.png",
+        "../../../../linux/runner/resources/app_icon.png",
         nullptr,
     };
     for (int i = 0; relative_icon_paths[i] != nullptr; i++) {
@@ -88,6 +100,9 @@ static void my_application_activate(GApplication* application) {
       if (g_file_test(full_path, G_FILE_TEST_EXISTS)) {
         if (gtk_window_set_icon_from_file(window, full_path, &icon_err)) {
           icon_loaded = TRUE;
+          g_autofree gchar* icon_dir = g_path_get_dirname(full_path);
+          GtkIconTheme* theme = gtk_icon_theme_get_default();
+          gtk_icon_theme_append_search_path(theme, icon_dir);
           break;
         }
       }
@@ -99,6 +114,9 @@ static void my_application_activate(GApplication* application) {
       if (g_file_test(system_icon_paths[i], G_FILE_TEST_EXISTS)) {
         if (gtk_window_set_icon_from_file(window, system_icon_paths[i], &icon_err)) {
           icon_loaded = TRUE;
+          g_autofree gchar* icon_dir = g_path_get_dirname(system_icon_paths[i]);
+          GtkIconTheme* theme = gtk_icon_theme_get_default();
+          gtk_icon_theme_append_search_path(theme, icon_dir);
           break;
         }
       }
