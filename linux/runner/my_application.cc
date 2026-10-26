@@ -52,16 +52,56 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_title(window, "Orpheus");
   }
 
-  gtk_window_set_default_size(window, 1280, 720);
+  gtk_window_set_default_size(window, 1280, 800);
+  gtk_widget_set_size_request(GTK_WIDGET(window), 950, 650);
+
+  GdkGeometry geometry;
+  memset(&geometry, 0, sizeof(geometry));
+  geometry.min_width = 950;
+  geometry.min_height = 650;
+  gtk_window_set_geometry_hints(window, nullptr, &geometry, GDK_HINT_MIN_SIZE);
+
+  gtk_window_set_default_icon_name("org.heyzell.Orpheus");
   gtk_window_set_icon_name(window, "org.heyzell.Orpheus");
 
-  g_autoptr(GError) icon_err = nullptr;
   g_autofree gchar* exe_path = g_file_read_link("/proc/self/exe", nullptr);
+  const gchar* system_icon_paths[] = {
+      "/app/share/icons/hicolor/512x512/apps/org.heyzell.Orpheus.png",
+      "/usr/share/icons/hicolor/512x512/apps/org.heyzell.Orpheus.png",
+      nullptr,
+  };
+
+  gboolean icon_loaded = FALSE;
+  g_autoptr(GError) icon_err = nullptr;
+
   if (exe_path != nullptr) {
     g_autofree gchar* exe_dir = g_path_get_dirname(exe_path);
-    g_autofree gchar* icon_path = g_build_filename(exe_dir, "data", "app_icon.png", nullptr);
-    if (g_file_test(icon_path, G_FILE_TEST_EXISTS)) {
-      gtk_window_set_icon_from_file(window, icon_path, &icon_err);
+    const gchar* relative_icon_paths[] = {
+        "data/app_icon.png",
+        "org.heyzell.Orpheus.png",
+        "data/flutter_assets/assets/icon/app_icon.png",
+        nullptr,
+    };
+    for (int i = 0; relative_icon_paths[i] != nullptr; i++) {
+      g_autofree gchar* full_path =
+          g_build_filename(exe_dir, relative_icon_paths[i], nullptr);
+      if (g_file_test(full_path, G_FILE_TEST_EXISTS)) {
+        if (gtk_window_set_icon_from_file(window, full_path, &icon_err)) {
+          icon_loaded = TRUE;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!icon_loaded) {
+    for (int i = 0; system_icon_paths[i] != nullptr; i++) {
+      if (g_file_test(system_icon_paths[i], G_FILE_TEST_EXISTS)) {
+        if (gtk_window_set_icon_from_file(window, system_icon_paths[i], &icon_err)) {
+          icon_loaded = TRUE;
+          break;
+        }
+      }
     }
   }
 

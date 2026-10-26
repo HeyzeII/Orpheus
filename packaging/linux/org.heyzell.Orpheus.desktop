@@ -12,7 +12,7 @@ Terminal=false
 Categories=AudioVideo;Audio;Player;Music;
 Keywords=music;player;audio;lyrics;radio;flac;mp3;offline;
 MimeType=audio/mpeg;audio/x-mpeg;audio/mp3;audio/x-mp3;audio/flac;audio/x-flac;audio/ogg;audio/x-vorbis+ogg;audio/aac;audio/mp4;audio/wav;audio/x-wav;
-StartupWMClass=orpheus
+StartupWMClass=org.heyzell.Orpheus
 StartupNotify=true
 Actions=PlayPause;Next;Previous;
 
