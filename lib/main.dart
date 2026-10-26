@@ -120,14 +120,16 @@ void main() async {
   if (Platform.isLinux || Platform.isMacOS || Platform.isWindows) {
     try {
       await windowManager.ensureInitialized();
+      const minSize = Size(950, 650);
       const windowOptions = WindowOptions(
-        minimumSize: Size(850, 600),
+        minimumSize: minSize,
         center: true,
         backgroundColor: Colors.transparent,
         skipTaskbar: false,
         titleBarStyle: TitleBarStyle.hidden,
       );
       await windowManager.waitUntilReadyToShow(windowOptions, () async {
+        await windowManager.setMinimumSize(minSize);
         await windowManager.show();
         await windowManager.focus();
       });
