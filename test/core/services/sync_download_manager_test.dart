@@ -104,14 +104,16 @@ void main() {
       expect(task.bytesDownloaded, 4096);
       expect(task.localFilePath, isNotNull);
 
-      // Verify file on disk
+      // Verify file on disk and hierarchical folder structure
       final savedFile = File(task.localFilePath!);
       expect(savedFile.existsSync(), isTrue);
       expect(await savedFile.readAsBytes(), equals(sampleAudio));
+      expect(savedFile.path, contains('Eagles'));
+      expect(savedFile.path, contains('Hotel California Album'));
 
       // Verify no temporary .part files remained
       final partFiles = downloadDir
-          .listSync()
+          .listSync(recursive: true)
           .where((f) => f.path.endsWith('.part'))
           .toList();
       expect(partFiles, isEmpty);
@@ -155,7 +157,7 @@ void main() {
       expect(task.error, contains('SHA-256 verification failed'));
 
       // Ensure no target or partial files exist
-      final allFiles = downloadDir.listSync();
+      final allFiles = downloadDir.listSync(recursive: true).whereType<File>().toList();
       expect(allFiles, isEmpty);
     });
   });
@@ -254,7 +256,7 @@ void main() {
 
       // Verify temp part file was deleted
       final partFiles = downloadDir
-          .listSync()
+          .listSync(recursive: true)
           .where((f) => f.path.endsWith('.part'))
           .toList();
       expect(partFiles, isEmpty);

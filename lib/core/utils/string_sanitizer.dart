@@ -192,4 +192,29 @@ class StringSanitizer {
     final raw = '${cleanArtist}_${cleanTitle}_$durationSec';
     return sha256.convert(utf8.encode(raw)).toString();
   }
+
+  /// Sanitizes a string for use as a safe single path segment (folder or file name)
+  /// in the filesystem, preventing directory traversal and unsupported characters.
+  ///
+  /// - Replaces illegal filesystem characters (`/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `|`,
+  ///   and control characters `\x00` through `\x1F`) with underscores (`_`).
+  /// - Strips leading/trailing whitespace and dangerous relative dots (`.` and `..`).
+  /// - Preserves legitimate international/Unicode characters (tildes, eñes, accents, etc.).
+  /// - Falls back to [fallback] if the resulting string is empty.
+  static String sanitizePathSegment(String input, {String fallback = 'Unknown'}) {
+    var cleaned = input
+        .replaceAll(RegExp(r'[/\\:*?"<>|\x00-\x1F]'), '_')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    // Prevent directory traversal or hidden files/folders by stripping leading/trailing dots
+    while (cleaned.startsWith('.') || cleaned.endsWith('.')) {
+      cleaned = cleaned.replaceAll(RegExp(r'^\.+|\.+$'), '').trim();
+    }
+
+    if (cleaned.isEmpty) {
+      return fallback;
+    }
+    return cleaned;
+  }
 }

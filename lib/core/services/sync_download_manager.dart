@@ -548,14 +548,42 @@ class SyncDownloadManager {
       final ext = task.track.fileType != FileType.unknown
           ? task.track.fileType.name
           : 'mp3';
-      final cleanTitle = StringSanitizer.sanitize(task.track.displayTitle)
-          .replaceAll(RegExp(r'[^a-zA-Z0-9_\-\. ]'), '_')
-          .replaceAll(' ', '_');
-      final fileName = '${task.trackId}_$cleanTitle.$ext';
-      final targetFile = File(p.join(downloadDir.path, fileName));
-      tempFile = File(p.join(downloadDir.path, '$fileName.part'));
+
+      final safeArtist = StringSanitizer.sanitizePathSegment(
+        task.track.displayArtist,
+        fallback: 'Unknown Artist',
+      );
+      final safeAlbum = StringSanitizer.sanitizePathSegment(
+        task.track.displayAlbum,
+        fallback: 'Unknown Album',
+      );
+      final safeTitle = StringSanitizer.sanitizePathSegment(
+        task.track.displayTitle,
+        fallback: 'Track_${task.trackId}',
+      );
+
+      final targetDir = Directory(p.join(downloadDir.path, safeArtist, safeAlbum));
+      await targetDir.create(recursive: true);
+
+      final fileName = '${task.trackId}_$safeTitle.$ext';
+      final targetFile = File(p.join(targetDir.path, fileName));
+      tempFile = File(p.join(targetDir.path, '$fileName.part'));
 
       if (_cancellationFlags[trackId] == true) {
+        if (tempFile.existsSync()) {
+          await tempFile.delete();
+        }
+        try {
+          if (targetDir.existsSync() && targetDir.listSync().isEmpty) {
+            targetDir.deleteSync();
+            final artistDir = targetDir.parent;
+            if (artistDir.existsSync() &&
+                artistDir.path != downloadDir.path &&
+                artistDir.listSync().isEmpty) {
+              artistDir.deleteSync();
+            }
+          }
+        } catch (_) {}
         task.status = SyncDownloadStatus.cancelled;
         _emitTaskUpdate(task);
         return;
@@ -602,6 +630,18 @@ class SyncDownloadManager {
           if (tempFile.existsSync()) {
             await tempFile.delete();
           }
+          try {
+            final parent = tempFile.parent;
+            if (parent.existsSync() && parent.listSync().isEmpty) {
+              parent.deleteSync();
+              final grandParent = parent.parent;
+              if (grandParent.existsSync() &&
+                  grandParent.path != downloadDir.path &&
+                  grandParent.listSync().isEmpty) {
+                grandParent.deleteSync();
+              }
+            }
+          } catch (_) {}
           task.status = SyncDownloadStatus.cancelled;
           _emitTaskUpdate(task);
           return;
@@ -719,6 +759,21 @@ class SyncDownloadManager {
       if (tempFile != null && tempFile.existsSync()) {
         try {
           await tempFile.delete();
+        } catch (_) {}
+      }
+      if (tempFile != null) {
+        try {
+          final parent = tempFile.parent;
+          final downloadDir = await resolveDownloadDirectory();
+          if (parent.existsSync() && parent.listSync().isEmpty) {
+            parent.deleteSync();
+            final grandParent = parent.parent;
+            if (grandParent.existsSync() &&
+                grandParent.path != downloadDir.path &&
+                grandParent.listSync().isEmpty) {
+              grandParent.deleteSync();
+            }
+          }
         } catch (_) {}
       }
       if (_cancellationFlags[trackId] != true && task.status != SyncDownloadStatus.cancelled) {

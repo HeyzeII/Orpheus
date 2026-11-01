@@ -207,4 +207,32 @@ void main() {
       );
     });
   });
+
+  group('StringSanitizer - sanitizePathSegment', () {
+    test('Preserves legitimate Unicode and international characters', () {
+      expect(StringSanitizer.sanitizePathSegment('Zoé'), equals('Zoé'));
+      expect(StringSanitizer.sanitizePathSegment('Café Tacvba'), equals('Café Tacvba'));
+      expect(StringSanitizer.sanitizePathSegment('Caifanes'), equals('Caifanes'));
+      expect(StringSanitizer.sanitizePathSegment('Año Cero (2024)'), equals('Año Cero (2024)'));
+    });
+
+    test('Replaces illegal filesystem characters with underscores', () {
+      expect(StringSanitizer.sanitizePathSegment('AC/DC'), equals('AC_DC'));
+      expect(StringSanitizer.sanitizePathSegment(r'Artist\Album'), equals('Artist_Album'));
+      expect(StringSanitizer.sanitizePathSegment('What: Why? *How* <Now> | "Yes"'), equals('What_ Why_ _How_ _Now_ _ _Yes_'));
+    });
+
+    test('Strips leading/trailing dots and whitespace', () {
+      expect(StringSanitizer.sanitizePathSegment('...Song Title...'), equals('Song Title'));
+      expect(StringSanitizer.sanitizePathSegment('  Folder Name  '), equals('Folder Name'));
+      expect(StringSanitizer.sanitizePathSegment('.Hidden'), equals('Hidden'));
+    });
+
+    test('Falls back to default when input is empty or only dots/spaces', () {
+      expect(StringSanitizer.sanitizePathSegment(''), equals('Unknown'));
+      expect(StringSanitizer.sanitizePathSegment('   '), equals('Unknown'));
+      expect(StringSanitizer.sanitizePathSegment('...'), equals('Unknown'));
+      expect(StringSanitizer.sanitizePathSegment('', fallback: 'CustomFallback'), equals('CustomFallback'));
+    });
+  });
 }

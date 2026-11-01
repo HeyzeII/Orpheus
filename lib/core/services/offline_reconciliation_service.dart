@@ -248,9 +248,13 @@ class OfflineReconciliationService {
     // Also scan download directory for orphaned files not matching any protected ID
     if (downloadDir.existsSync()) {
       try {
-        final files = downloadDir.listSync(recursive: false);
+        final files = downloadDir.listSync(recursive: true);
         for (final entity in files) {
           if (entity is File) {
+            // Skip files in the dedicated covers/ directory
+            final coversPath = p.join(downloadDir.path, 'covers');
+            if (p.isWithin(coversPath, entity.path)) continue;
+
             final basename = p.basenameWithoutExtension(entity.path);
 
             final isProtected = protectedIds.any(
@@ -277,6 +281,8 @@ class OfflineReconciliationService {
           }
         }
       } catch (_) {}
+
+      _cleanEmptyDirectories(downloadDir);
     }
 
     return PruneResult(
@@ -284,6 +290,29 @@ class OfflineReconciliationService {
       bytesFreed: bytesFreed,
       prunedTrackIds: prunedIds,
     );
+  }
+
+  /// Recursively removes empty directories within [downloadDir] in a bottom-up fashion,
+  /// preserving [downloadDir] and the 'covers' directory.
+  void _cleanEmptyDirectories(Directory rootDir) {
+    if (!rootDir.existsSync()) return;
+    try {
+      final entities = rootDir.listSync(recursive: true, followLinks: false);
+      final dirs = entities
+          .whereType<Directory>()
+          .where((d) => d.path != rootDir.path && p.basename(d.path) != 'covers')
+          .toList()
+        ..sort((a, b) => b.path.length.compareTo(a.path.length));
+
+      for (final dir in dirs) {
+        if (!dir.existsSync()) continue;
+        try {
+          if (dir.listSync(recursive: false).isEmpty) {
+            dir.deleteSync();
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
   }
 
   // ── Storage Quota Enforcement (LRU) ─────────────────────────────────────────
@@ -371,6 +400,10 @@ class OfflineReconciliationService {
 
       prunedCount++;
       prunedIds.add(track.trackId);
+    }
+
+    if (downloadDir.existsSync()) {
+      _cleanEmptyDirectories(downloadDir);
     }
 
     return PruneResult(

@@ -264,6 +264,26 @@ void main() {
       expect(result.bytesFreed, 1200);
       expect(untrackedFile.existsSync(), isFalse);
     });
+
+    test('deletes nested orphan files and cleans empty Artist/Album directories in cascade', () async {
+      final nestedFile = createDummyFile(
+        '${downloadDir.path}/Zoé/Memo Rex/untracked_audio.flac',
+        1500,
+      );
+      final albumDir = nestedFile.parent;
+      final artistDir = albumDir.parent;
+      expect(albumDir.existsSync(), isTrue);
+      expect(artistDir.existsSync(), isTrue);
+
+      final result = await service.pruneOrphanDownloads();
+
+      expect(result.prunedTrackCount, 1);
+      expect(result.bytesFreed, 1500);
+      expect(nestedFile.existsSync(), isFalse);
+      expect(albumDir.existsSync(), isFalse);
+      expect(artistDir.existsSync(), isFalse);
+      expect(downloadDir.existsSync(), isTrue);
+    });
   });
 
   group('enforceStorageQuota (LRU Policy)', () {
