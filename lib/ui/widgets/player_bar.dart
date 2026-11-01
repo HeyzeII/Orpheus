@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
@@ -7,6 +8,7 @@ import '../../core/models/models.dart';
 import '../../core/network/local_sync_client.dart';
 import '../../core/services/audio_handler.dart';
 import '../../core/services/audio_player_service.dart';
+import '../../core/services/desktop_window_service.dart';
 import '../../core/services/sync_download_manager.dart';
 import '../theme/app_theme.dart';
 import '../views/expanded_player_view.dart';
@@ -753,6 +755,18 @@ class _VolumeControl extends StatelessWidget {
                   tooltip: '',
                 ),
               ),
+            // Mini Player toggle button (desktop only)
+            if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) ...[
+              const SizedBox(width: 4),
+              Tooltip(
+                message: 'Modo Mini Player',
+                child: _IconBtn(
+                  icon: Icons.picture_in_picture_alt_rounded,
+                  onTap: () => DesktopWindowService.instance.enterMiniPlayer(),
+                  tooltip: '',
+                ),
+              ),
+            ],
             const SizedBox(width: 8),
             Icon(
               vol == 0
