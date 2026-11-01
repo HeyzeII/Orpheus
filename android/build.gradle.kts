@@ -33,7 +33,8 @@ subprojects {
             }
         }
 
-        // Force compileSdk to 34 for all subprojects to resolve lStar attribute conflicts
+        // Force compileSdk to 35 for all subprojects to resolve lStar attribute conflicts
+        // and provide API 35 constants (e.g. VANILLA_ICE_CREAM) required by home_widget
         extensions.findByName("android")?.let { android ->
             var success = false
             for (method in android.javaClass.methods) {
@@ -41,7 +42,7 @@ subprojects {
                     val paramType = method.parameterTypes[0]
                     if (paramType == Int::class.java || paramType == java.lang.Integer::class.java) {
                         try {
-                            method.invoke(android, 34)
+                            method.invoke(android, 35)
                             success = true
                         } catch (e: Exception) {}
                         break
@@ -54,7 +55,7 @@ subprojects {
                         val paramType = method.parameterTypes[0]
                         if (paramType == Int::class.java || paramType == java.lang.Integer::class.java) {
                             try {
-                                method.invoke(android, 34)
+                                method.invoke(android, 35)
                             } catch (e: Exception) {}
                             break
                         }

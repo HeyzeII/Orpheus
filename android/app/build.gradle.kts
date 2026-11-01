@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.heyzell.orpheus"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = maxOf(flutter.compileSdkVersion, 35)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -29,7 +29,19 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            ndk {
+                abiFilters.addAll(setOf("armeabi-v7a", "arm64-v8a", "x86_64"))
+            }
         }
+    }
+
+    packaging {
+        jniLibs {
+            // Elimina o comenta esta línea para que Gradle reduzca las .so nativas:
+            // keepDebugSymbols.add("**/*.so")
+            
+            // Si necesitas empaquetar de forma legacy por compatibilidad:
+            useLegacyPackaging = true        }
     }
 }
 
@@ -37,6 +49,10 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
+}
+
+dependencies {
+    implementation("androidx.media:media:1.7.0")
 }
 
 flutter {

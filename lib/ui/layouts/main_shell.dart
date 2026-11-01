@@ -24,7 +24,7 @@ import '../widgets/app_toast.dart';
 import '../../core/services/desktop_window_service.dart';
 import '../widgets/desktop_title_bar.dart';
 import '../widgets/marquee_text.dart';
-import '../widgets/mini_player/mini_player_view.dart';
+import '../widgets/orb_reactor/orb_reactor_view.dart';
 import '../widgets/player_bar.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/track_cover_art.dart';
@@ -293,7 +293,7 @@ class MainLayout extends StatelessWidget {
       valueListenable: DesktopWindowService.instance.isMiniPlayerNotifier,
       builder: (context, isMini, child) {
         if (isMini) {
-          return const MiniPlayerView();
+          return const OrbReactorView();
         }
         final isMobile = MediaQuery.sizeOf(context).width < 600;
         if (isMobile) {

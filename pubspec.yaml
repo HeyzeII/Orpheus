@@ -45,6 +45,7 @@ dependencies:
   permission_handler: ^11.3.1
   palette_generator: ^0.3.3+4
   audio_service_mpris: ^0.2.1
+  home_widget: ^0.10.0
 
 dev_dependencies:
   flutter_test:

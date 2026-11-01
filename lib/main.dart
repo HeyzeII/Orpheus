@@ -17,6 +17,7 @@ import 'core/services/audio_handler.dart';
 import 'core/services/audio_player_service.dart';
 import 'core/services/linux_mpris_service.dart';
 import 'core/services/permission_service.dart';
+import 'core/services/widget_sync_service.dart';
 import 'core/utils/debug_logger.dart';
 import 'ui/layouts/main_shell.dart';
 import 'ui/theme/app_theme.dart';
@@ -87,6 +88,15 @@ Future<void> runOrpheusStartupSequence() async {
   // 3. Post-DB setup: hook reactive database listeners
   if (OrpheusAudioHandler.hasInstance) {
     OrpheusAudioHandler.instance.initAfterDatabaseReady();
+  }
+
+  // Hook Android native home screen widget synchronization
+  if (Platform.isAndroid) {
+    try {
+      WidgetSyncService.instance.initialize();
+    } catch (e) {
+      DebugLogger.log('WidgetSyncService init notice: $e');
+    }
   }
 
   // 4. Asynchronously restore playback state in the background without delaying startup frame

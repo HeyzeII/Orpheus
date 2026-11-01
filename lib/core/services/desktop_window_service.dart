@@ -63,6 +63,7 @@ class DesktopWindowService {
         await windowManager.setSize(kMiniPlayerSize);
         await windowManager.setResizable(false);
         await windowManager.setAlwaysOnTop(true);
+        await windowManager.setBackgroundColor(Colors.transparent);
       } catch (e) {
         DebugLogger.log('DesktopWindowService: Error entering mini player: $e');
       }

@@ -55,6 +55,23 @@ static void my_application_activate(GApplication* application) {
   gtk_window_set_default_size(window, 1280, 800);
   gtk_widget_set_size_request(GTK_WIDGET(window), 950, 650);
 
+  // Enable RGBA visual and transparent window background on Linux (X11 & Wayland)
+  GdkScreen* gdk_screen = gtk_widget_get_screen(GTK_WIDGET(window));
+  GdkVisual* rgba_visual = gdk_screen_get_rgba_visual(gdk_screen);
+  if (rgba_visual != nullptr && gdk_screen_is_composited(gdk_screen)) {
+    gtk_widget_set_visual(GTK_WIDGET(window), rgba_visual);
+  }
+  gtk_widget_set_app_paintable(GTK_WIDGET(window), TRUE);
+
+  GtkCssProvider* transparent_css = gtk_css_provider_new();
+  gtk_css_provider_load_from_data(
+      transparent_css,
+      "window.background { background-color: transparent; }",
+      -1, nullptr);
+  gtk_style_context_add_provider_for_screen(
+      gdk_screen, GTK_STYLE_PROVIDER(transparent_css),
+      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+
   GdkGeometry geometry;
   memset(&geometry, 0, sizeof(geometry));
   geometry.min_width = 950;

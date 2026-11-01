@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_immersive_background">
+
+    <!-- CAPA 1: Carátula del Álbum a Pantalla Completa -->
+    <ImageView
+        android:id="@+id/widget_cover_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:contentDescription="@null" />
+
+    <!-- CAPA 2: Degradado de Protección de Contraste (ImageView para estricta compatibilidad con RemoteViews) -->
+    <ImageView
+        android:id="@+id/widget_scrim_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:src="@drawable/widget_immersive_scrim"
+        android:scaleType="fitXY"
+        android:contentDescription="@null" />
+
+    <!-- CAPA 3: Interfaz de Usuario y Controles Flotantes -->
+    <RelativeLayout
+        android:id="@+id/widget_ui_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="16dp">
+
+        <!-- SECCIÓN SUPERIOR DERECHA: Botón Me Gusta (Favorito) -->
+        <ImageButton
+            android:id="@+id/widget_btn_like"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_alignParentTop="true"
+            android:layout_alignParentEnd="true"
+            android:background="@android:color/transparent"
+            android:src="@drawable/ic_heart_outline"
+            android:scaleType="centerInside"
+            android:contentDescription="@null" />
+
+        <!-- SECCIÓN SUPERIOR IZQUIERDA: Metadatos (Título y Artista) -->
+        <LinearLayout
+            android:id="@+id/widget_metadata_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_alignParentTop="true"
+            android:layout_alignParentStart="true"
+            android:layout_toStartOf="@id/widget_btn_like"
+            android:layout_marginEnd="12dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_track_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Orpheus"
+                android:textColor="#FFFFFF"
+                android:textSize="25sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:shadowColor="#80000000"
+                android:shadowDx="0"
+                android:shadowDy="2"
+                android:shadowRadius="4" />
+
+            <TextView
+                android:id="@+id/widget_track_artist"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="Escucha algo grandioso"
+                android:textColor="#E0E0E0"
+                android:textSize="19sp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:shadowColor="#80000000"
+                android:shadowDx="0"
+                android:shadowDy="1"
+                android:shadowRadius="3" />
+        </LinearLayout>
+
+        <!-- SECCIÓN INFERIOR: Fila Centrada de Controles Multimedia -->
+        <LinearLayout
+            android:id="@+id/widget_playback_controls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_centerHorizontal="true"
+            android:layout_marginBottom="8dp"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <!-- Botón Pista Anterior -->
+            <ImageButton
+                android:id="@+id/widget_btn_prev"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:layout_marginEnd="16dp"
+                android:background="@android:color/transparent"
+                android:src="@drawable/ic_skip_previous"
+                android:scaleType="centerInside"
+                android:contentDescription="@null" />
+
+            <!-- Botón Reproducir / Pausa (Prominente) -->
+            <ImageButton
+                android:id="@+id/widget_btn_play_pause"
+                android:layout_width="90dp"
+                android:layout_height="90dp"
+                android:background="@android:color/transparent"
+                android:src="@drawable/ic_play"
+                android:scaleType="centerInside"
+                android:contentDescription="@null" />
+
+            <!-- Botón Pista Siguiente -->
+            <ImageButton
+                android:id="@+id/widget_btn_next"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:layout_marginStart="16dp"
+                android:background="@android:color/transparent"
+                android:src="@drawable/ic_skip_next"
+                android:scaleType="centerInside"
+                android:contentDescription="@null" />
+        </LinearLayout>
+
+    </RelativeLayout>
+</FrameLayout>
