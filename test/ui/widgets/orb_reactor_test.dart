@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:orpheus/core/models/track.dart';
 import 'package:orpheus/ui/widgets/orb_reactor/central_orb_disc.dart';
+import 'package:orpheus/ui/widgets/orb_reactor/orb_reactor_view.dart';
 import 'package:orpheus/ui/widgets/orb_reactor/orb_transport_controls.dart';
 import 'package:orpheus/ui/widgets/orb_reactor/reactor_waves_painter.dart';
 import 'package:orpheus/ui/widgets/orb_reactor/volume_energy_stack.dart';
@@ -151,6 +152,24 @@ void main() {
       expect(find.byIcon(Icons.skip_previous_rounded), findsOneWidget);
       expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
       expect(find.byIcon(Icons.skip_next_rounded), findsOneWidget);
+    });
+
+    testWidgets('OrbReactorView builds and renders within constraints', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(580, 360));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: SizedBox(
+            width: 580,
+            height: 360,
+            child: OrbReactorView(),
+          ),
+        ),
+      );
+
+      expect(find.byType(OrbReactorView), findsOneWidget);
+      expect(find.byType(LayoutBuilder), findsWidgets);
     });
   });
 }

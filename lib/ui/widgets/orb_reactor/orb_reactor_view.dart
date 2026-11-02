@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
@@ -63,16 +64,24 @@ class _OrbReactorViewState extends State<OrbReactorView>
         autofocus: true,
         child: Scaffold(
           backgroundColor: const Color(0xFF0B0C12),
-          body: Container(
-            width: double.infinity,
-            height: double.infinity,
-            decoration: const BoxDecoration(
-              color: Color(0xFF0B0C12), // Deep glassy obsidian filling the whole compact window
-            ),
-            child: ClipRect(
-              child: StreamBuilder<Track?>(
-                stream: trackStream,
-                initialData: handler?.currentTrack,
+          body: LayoutBuilder(
+            builder: (context, constraints) {
+              if (kDebugMode) {
+                debugPrint(
+                  '>>> [OrbReactorView] Constraints: ${constraints.maxWidth} x ${constraints.maxHeight}',
+                );
+              }
+
+              return Container(
+                width: double.infinity,
+                height: double.infinity,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0B0C12), // Deep glassy obsidian filling the whole compact window
+                ),
+                child: ClipRect(
+                  child: StreamBuilder<Track?>(
+                    stream: trackStream,
+                    initialData: handler?.currentTrack,
                 builder: (context, trackSnap) {
                   final track = trackSnap.data;
 
@@ -207,9 +216,11 @@ class _OrbReactorViewState extends State<OrbReactorView>
                 },
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
-    );
+    ),
+  ),
+);
   }
 }

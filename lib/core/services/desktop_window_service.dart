@@ -81,6 +81,12 @@ class DesktopWindowService {
       }
     }
 
+    if (kDebugMode) {
+      debugPrint(
+        '>>> [Orpheus MiniPlayer] ACTIVADO | Tamaño de Ventana: ${kMiniReactorSize.width}x${kMiniReactorSize.height}',
+      );
+    }
+
     isMiniPlayerNotifier.value = true;
   }
 
@@ -96,6 +102,11 @@ class DesktopWindowService {
   /// 7. Updates [isMiniPlayerNotifier].
   Future<void> exitMiniPlayer() async {
     if (!isDesktop || !isMiniPlayerActive) return;
+
+    final targetSize = (_savedWindowSize.width >= kStandardMinSize.width &&
+            _savedWindowSize.height >= kStandardMinSize.height)
+        ? _savedWindowSize
+        : const Size(1280, 800);
 
     if (_canInvokeNativeWindow) {
       try {
@@ -115,11 +126,6 @@ class DesktopWindowService {
         await windowManager.setMinimumSize(kStandardMinSize);
         await windowManager.setResizable(true);
 
-        final targetSize = (_savedWindowSize.width >= kStandardMinSize.width &&
-                _savedWindowSize.height >= kStandardMinSize.height)
-            ? _savedWindowSize
-            : const Size(1280, 800);
-
         await windowManager.setSize(targetSize);
 
         if (_savedWindowPosition != null) {
@@ -130,6 +136,12 @@ class DesktopWindowService {
       } catch (e) {
         DebugLogger.log('DesktopWindowService: Error exiting mini player: $e');
       }
+    }
+
+    if (kDebugMode) {
+      debugPrint(
+        '>>> [Orpheus MiniPlayer] DESACTIVADO | Restaurado a: ${targetSize.width}x${targetSize.height}',
+      );
     }
 
     isMiniPlayerNotifier.value = false;

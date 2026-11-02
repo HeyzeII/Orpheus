@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
@@ -50,8 +51,11 @@ class ReactorWavesPainter extends CustomPainter {
 
   static final Paint _fillPaint = Paint()..style = PaintingStyle.fill;
   static final Paint _strokePaint = Paint()..style = PaintingStyle.stroke;
-  static final Paint _waveStrokePaint = Paint()..style = PaintingStyle.stroke;
+  static final Paint _waveStrokePaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeCap = StrokeCap.round;
   static final Paint _barPaint = Paint()..style = PaintingStyle.fill;
+  static final Paint _fadeMaskPaint = Paint()..blendMode = BlendMode.dstIn;
   static final Path _wavePath = Path();
   static final Path _horizontalPath = Path();
 
@@ -69,6 +73,9 @@ class ReactorWavesPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (size.width <= 0 || size.height <= 0) return;
+
+    final bounds = Offset.zero & size;
+    canvas.saveLayer(bounds, Paint());
 
     // ── Advance the continuous elapsed-time accumulator ──────────────────────
     // Compute delta-t handling the wrap-around (1.0 -> 0.0) that AnimationController
@@ -227,6 +234,23 @@ class ReactorWavesPainter extends CustomPainter {
         ..strokeWidth = isPlaying ? (2.6 + 0.8 * beatKick) : 2.4,
       isFill: false,
     );
+
+    // ── Horizontal Lateral Fade Mask ──────────────────────────────────────
+    // Eliminates any abrupt edges, lines or cutoffs at the left and right extremities,
+    // seamlessly melting the waves into the obsidian background of the card.
+    _fadeMaskPaint.shader = ui.Gradient.linear(
+      Offset.zero,
+      Offset(size.width, 0),
+      const [
+        Color(0x00000000), // 0.0 opacity (fully transparent) at exact lateral edges
+        Color(0xFF000000), // climbs quickly to full 1.0 opacity towards center
+        Color(0xFF000000), // preserves full central core opacity
+        Color(0x00000000), // fades smoothly back to 0.0 at opposite lateral edge
+      ],
+      const [0.0, 0.16, 0.84, 1.0],
+    );
+    canvas.drawRect(bounds, _fadeMaskPaint);
+    canvas.restore();
   }
 
   /// Draws fluid horizontal harmonic waves running smoothly across the panoramic canvas.
@@ -241,12 +265,13 @@ class ReactorWavesPainter extends CustomPainter {
     const pointsCount = 42;
     final dx = width / pointsCount;
 
-    // Harmonic Wave 1: Primary Cyan -> Magenta flow
+    // Harmonic Wave 1: Primary Cyan -> Magenta flow with edge taper and fade
     _horizontalPath.reset();
     for (int i = 0; i <= pointsCount; i++) {
       final x = i * dx;
       final normX = (x - center.dx) / (width / 2);
-      final envelope = math.exp(-normX * normX * 1.5);
+      final taper = math.sin((i / pointsCount) * math.pi);
+      final envelope = math.exp(-normX * normX * 1.5) * taper;
       final y = center.dy +
           math.sin(x * 0.022 + e * 1.4) * waveAmp * envelope +
           math.cos(x * 0.045 - e * 0.8) * (waveAmp * 0.5) * envelope;
@@ -258,24 +283,29 @@ class ReactorWavesPainter extends CustomPainter {
     }
 
     _waveStrokePaint
-      ..shader = LinearGradient(
-        colors: [
+      ..shader = ui.Gradient.linear(
+        Offset(0, center.dy),
+        Offset(width, center.dy),
+        [
+          accentColor.withOpacity(0.0),
           accentColor.withOpacity(isPlaying ? 0.80 : 0.22),
           magentaColor.withOpacity(isPlaying ? 0.85 : 0.26),
           secondaryColor.withOpacity(isPlaying ? 0.75 : 0.18),
           accentColor.withOpacity(isPlaying ? 0.80 : 0.22),
+          accentColor.withOpacity(0.0),
         ],
-        stops: const [0.0, 0.35, 0.70, 1.0],
-      ).createShader(Rect.fromLTWH(0, center.dy - 35, width, 70))
+        const [0.0, 0.16, 0.40, 0.65, 0.84, 1.0],
+      )
       ..strokeWidth = isPlaying ? 2.5 : 2.0;
     canvas.drawPath(_horizontalPath, _waveStrokePaint);
 
-    // Harmonic Wave 2: Counter-undulating Magenta -> Violet ribbon
+    // Harmonic Wave 2: Counter-undulating Magenta -> Violet ribbon with edge taper and fade
     _horizontalPath.reset();
     for (int i = 0; i <= pointsCount; i++) {
       final x = i * dx;
       final normX = (x - center.dx) / (width / 2);
-      final envelope = math.exp(-normX * normX * 1.5);
+      final taper = math.sin((i / pointsCount) * math.pi);
+      final envelope = math.exp(-normX * normX * 1.5) * taper;
       final y = center.dy +
           math.sin(x * 0.028 - e * 1.7) * (waveAmp * 0.75) * envelope +
           math.cos(x * 0.015 + e * 1.1) * (waveAmp * 0.40) * envelope;
@@ -287,15 +317,19 @@ class ReactorWavesPainter extends CustomPainter {
     }
 
     _waveStrokePaint
-      ..shader = LinearGradient(
-        colors: [
+      ..shader = ui.Gradient.linear(
+        Offset(0, center.dy),
+        Offset(width, center.dy),
+        [
+          magentaColor.withOpacity(0.0),
           magentaColor.withOpacity(isPlaying ? 0.75 : 0.18),
           secondaryColor.withOpacity(isPlaying ? 0.70 : 0.15),
           accentColor.withOpacity(isPlaying ? 0.75 : 0.18),
           magentaColor.withOpacity(isPlaying ? 0.75 : 0.18),
+          magentaColor.withOpacity(0.0),
         ],
-        stops: const [0.0, 0.30, 0.65, 1.0],
-      ).createShader(Rect.fromLTWH(0, center.dy - 35, width, 70))
+        const [0.0, 0.16, 0.38, 0.62, 0.84, 1.0],
+      )
       ..strokeWidth = isPlaying ? 2.0 : 1.6;
     canvas.drawPath(_horizontalPath, _waveStrokePaint);
   }
