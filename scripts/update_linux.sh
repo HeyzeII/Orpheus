@@ -95,13 +95,20 @@ if [ ! -d "$BUNDLE_DIR" ] || [ ! -f "$BUNDLE_DIR/orpheus" ]; then
   exit 1
 fi
 
-# 4. Rutas Estándar XDG del Usuario
+# 4. Rutas Estándar XDG del Usuario y Preservación de Datos
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 APP_INSTALL_DIR="$XDG_DATA_HOME/orpheus/app"
 BIN_DIR="$HOME/.local/bin"
 DESKTOP_DIR="$XDG_DATA_HOME/applications"
 ICONS_512_DIR="$XDG_DATA_HOME/icons/hicolor/512x512/apps"
 ICONS_128_DIR="$XDG_DATA_HOME/icons/hicolor/128x128/apps"
+
+# Seguridad: Verificar que el directorio destino de la app sea estrictamente el subdirectorio 'app'
+if [[ "$APP_INSTALL_DIR" != *"/orpheus/app" ]]; then
+  echo -e "${CLR_RED}Error de seguridad:${CLR_RESET} Ruta de instalación no válida: $APP_INSTALL_DIR"
+  exit 1
+fi
 
 mkdir -p "$APP_INSTALL_DIR"
 mkdir -p "$BIN_DIR"
@@ -109,7 +116,10 @@ mkdir -p "$DESKTOP_DIR"
 mkdir -p "$ICONS_512_DIR"
 mkdir -p "$ICONS_128_DIR"
 
-# 5. Reemplazo limpio y desatendido del bundle
+# 5. Reemplazo limpio y desatendido del bundle de la aplicación
+# NOTA: Solo se actualiza el contenido de $APP_INSTALL_DIR (~/.local/share/orpheus/app).
+# Las bases de datos de usuario en ~/.local/share/orpheus y configuraciones en ~/.config
+# NUNCA son tocadas ni alteradas por este script.
 echo -e "${CLR_BOLD}[3/5]${CLR_RESET} Actualizando bundle en $APP_INSTALL_DIR..."
 if command -v rsync >/dev/null 2>&1; then
   rsync -a --delete "$BUNDLE_DIR/" "$APP_INSTALL_DIR/"
@@ -122,7 +132,9 @@ fi
 # Crear / actualizar enlace simbólico en ~/.local/bin/orpheus
 ln -sf "$APP_INSTALL_DIR/orpheus" "$BIN_DIR/orpheus"
 chmod +x "$APP_INSTALL_DIR/orpheus" "$BIN_DIR/orpheus"
-echo -e "      ${CLR_GREEN}✓ Binario actualizado en $BIN_DIR/orpheus${CLR_RESET}"
+echo -e "      ${CLR_GREEN}✓ Binario y librerías actualizados en $APP_INSTALL_DIR${CLR_RESET}"
+echo -e "      ${CLR_GREEN}✓ Enlace simbólico activo en $BIN_DIR/orpheus${CLR_RESET}"
+echo -e "      ${CLR_GREEN}✓ Datos de usuario preservados intactos (${XDG_CONFIG_HOME} y ${XDG_DATA_HOME}/orpheus)${CLR_RESET}"
 
 # 6. Registrar / Actualizar Lanzador .desktop e Iconos
 echo -e "${CLR_BOLD}[4/5]${CLR_RESET} Registrando lanzador de escritorio e iconos XDG..."
@@ -152,9 +164,10 @@ echo -e "${CLR_BOLD}[5/5]${CLR_RESET} Verificando configuración del sistema..."
 echo -e "${CLR_GREEN}==========================================================${CLR_RESET}"
 echo -e "${CLR_GREEN} ¡Actualización completada exitosamente!                  ${CLR_RESET}"
 echo -e "${CLR_GREEN}==========================================================${CLR_RESET}"
-echo -e "  • Ubicación del binario:  ${CLR_BOLD}$APP_INSTALL_DIR/orpheus${CLR_RESET}"
-echo -e "  • Enlace de ejecución:    ${CLR_BOLD}$BIN_DIR/orpheus${CLR_RESET}"
-echo -e "  • Lanzador de escritorio: ${CLR_BOLD}$TARGET_DESKTOP${CLR_RESET}"
+echo -e "  • Ubicación del binario:    ${CLR_BOLD}$APP_INSTALL_DIR/orpheus${CLR_RESET}"
+echo -e "  • Enlace de ejecución:      ${CLR_BOLD}$BIN_DIR/orpheus${CLR_RESET}"
+echo -e "  • Lanzador de escritorio:   ${CLR_BOLD}$TARGET_DESKTOP${CLR_RESET}"
+echo -e "  • Datos y configuraciones:  ${CLR_GREEN}Preservados (intactos)${CLR_RESET}"
 
 # Verificar si ~/.local/bin está en el PATH
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then

@@ -46,32 +46,24 @@ class DesktopWindowService {
   bool get _canInvokeNativeWindow =>
       isDesktop && !Platform.environment.containsKey('FLUTTER_TEST');
 
-  /// Initializes desktop window settings, removing native GNOME/Mutter title bars (frameless mode),
-  /// applying soft window shadows, setting standard minimum dimensions, and ensuring resizability.
+  /// Initializes desktop window settings for the main window, ensuring resizability
+  /// and standard minimum dimensions without forcing any mini-player geometry.
   Future<void> initialize() async {
     if (!isDesktop || !_canInvokeNativeWindow) return;
-    try {
-      await windowManager.setAsFrameless();
-    } catch (e) {
-      DebugLogger.log('DesktopWindowService: setAsFrameless error: $e');
-    }
-    try {
-      await windowManager.setHasShadow(true);
-    } catch (e) {
-      DebugLogger.log('DesktopWindowService: setHasShadow error: $e');
-    }
-    if (Platform.isLinux) {
+
+    // Apply shadow only where supported (macOS and Windows); omitted on Linux to avoid MissingPluginException.
+    if (!Platform.isLinux) {
       try {
-        await windowManager.setMaximumSize(const Size(-1, -1));
-      } catch (e) {
-        DebugLogger.log('DesktopWindowService: setMaximumSize error: $e');
-      }
+        await windowManager.setHasShadow(true);
+      } catch (_) {}
     }
+
     try {
       await windowManager.setMinimumSize(kStandardMinSize);
     } catch (e) {
       DebugLogger.log('DesktopWindowService: setMinimumSize error: $e');
     }
+
     try {
       await windowManager.setResizable(true);
     } catch (e) {
@@ -88,7 +80,11 @@ class DesktopWindowService {
 
     if (_canInvokeNativeWindow) {
       try {
-        _savedWindowSize = await windowManager.getSize();
+        final currentSize = await windowManager.getSize();
+        if (currentSize.width >= kStandardMinSize.width &&
+            currentSize.height >= kStandardMinSize.height) {
+          _savedWindowSize = currentSize;
+        }
       } catch (e) {
         DebugLogger.log('DesktopWindowService: getSize error: $e');
       }
@@ -97,7 +93,7 @@ class DesktopWindowService {
         _savedWindowPosition = await windowManager.getPosition();
       } catch (_) {}
 
-      // Critical geometry calls: enforce exact dimensions
+      // Critical geometry calls: enforce exact dimensions for Mini Player exclusively
       try {
         await windowManager.setMinimumSize(kMiniReactorSize);
       } catch (e) {
@@ -117,10 +113,10 @@ class DesktopWindowService {
         DebugLogger.log('DesktopWindowService: setAlwaysOnTop error: $e');
       }
 
-      try {
-        await windowManager.setHasShadow(false);
-      } catch (e) {
-        DebugLogger.log('DesktopWindowService: setHasShadow error: $e');
+      if (!Platform.isLinux) {
+        try {
+          await windowManager.setHasShadow(false);
+        } catch (_) {}
       }
 
       try {
@@ -142,7 +138,6 @@ class DesktopWindowService {
   /// Exits Mini Player mode and restores standard window geometry.
   ///
   /// Protected by strict desktop platform checks and individual try-catch blocks.
-  /// Preserves frameless mode without native GNOME/Mutter title bars.
   Future<void> exitMiniPlayer() async {
     if (!isDesktop || !isMiniPlayerActive) return;
 
@@ -158,36 +153,24 @@ class DesktopWindowService {
         DebugLogger.log('DesktopWindowService: setAlwaysOnTop error: $e');
       }
 
-      try {
-        await windowManager.setAsFrameless();
-      } catch (e) {
-        DebugLogger.log('DesktopWindowService: setAsFrameless error: $e');
-      }
-
-      try {
-        await windowManager.setHasShadow(true);
-      } catch (e) {
-        DebugLogger.log('DesktopWindowService: setHasShadow error: $e');
-      }
-
+      // On Linux, restore title bar style so GTK properly restores window decorations/resizing
       if (Platform.isLinux) {
         try {
-          await windowManager.setMaximumSize(const Size(-1, -1));
-        } catch (e) {
-          DebugLogger.log('DesktopWindowService: setMaximumSize error: $e');
-        }
+          await windowManager.setTitleBarStyle(TitleBarStyle.normal);
+          await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
+        } catch (_) {}
+      }
+
+      if (!Platform.isLinux) {
+        try {
+          await windowManager.setHasShadow(true);
+        } catch (_) {}
       }
 
       try {
         await windowManager.setMinimumSize(kStandardMinSize);
       } catch (e) {
         DebugLogger.log('DesktopWindowService: setMinimumSize error: $e');
-      }
-
-      try {
-        await windowManager.setResizable(true);
-      } catch (e) {
-        DebugLogger.log('DesktopWindowService: setResizable error: $e');
       }
 
       try {
@@ -199,7 +182,7 @@ class DesktopWindowService {
       try {
         await windowManager.setResizable(true);
       } catch (e) {
-        DebugLogger.log('DesktopWindowService: setResizable reassert error: $e');
+        DebugLogger.log('DesktopWindowService: setResizable error: $e');
       }
 
       if (_savedWindowPosition != null) {
