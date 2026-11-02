@@ -145,97 +145,83 @@ class _DesktopNavigationShellState extends State<DesktopNavigationShell> with Wi
             children: [
               if (Platform.isLinux || Platform.isMacOS || Platform.isWindows)
                 const DesktopTitleBar(),
-              // ── Top row: Sidebar + Main content + Focus Overlay ─────────────
+              // ── Top row: Sidebar + Main content ──────────────────────────────
               Expanded(
-                child: Stack(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Base layer: Main app content with Sidebar and PlayerBar
-                    Column(
-                      children: [
-                        Expanded(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // Sidebar (hidden behind lyrics panel but always built)
-                              ValueListenableBuilder<bool>(
-                                valueListenable: AudioScannerService.isScanningNotifier,
-                                builder: (context, isScanning, child) {
-                                  return AbsorbPointer(
-                                    absorbing: isScanning,
-                                    child: AnimatedOpacity(
-                                      duration: const Duration(milliseconds: 250),
-                                      opacity: isScanning ? 0.45 : 1.0,
-                                      child: child,
-                                    ),
-                                  );
-                                },
-                                child: Sidebar(
-                                  selected: _selected,
-                                  onSelect: (dest) {
-                                    AppNavigationCoordinator.instance.navigateTo(dest);
-                                  },
-                                ),
-                              ),
-                              // Thin divider between sidebar and content
-                              Container(width: 1, color: AppTheme.divider),
-                              // Main content + Lyrics overlay
-                              Expanded(
-                                child: Stack(
-                                  children: [
-                                    _ContentArea(destination: _selected),
-                                    // Lyrics slide-up panel
-                                    AnimatedSlide(
-                                      duration: const Duration(milliseconds: 350),
-                                      curve: Curves.easeInOutCubic,
-                                      offset: _showLyrics
-                                          ? Offset.zero
-                                          : const Offset(0, 1),
-                                      child: AnimatedOpacity(
-                                        duration: const Duration(milliseconds: 300),
-                                        opacity: _showLyrics ? 1.0 : 0.0,
-                                        child: StreamBuilder<Track?>(
-                                          stream: OrpheusAudioHandler.hasInstance
-                                              ? OrpheusAudioHandler.instance.currentTrackStream
-                                              : const Stream.empty(),
-                                          initialData: OrpheusAudioHandler.hasInstance
-                                              ? OrpheusAudioHandler.instance.currentTrack
-                                              : null,
-                                          builder: (context, snap) {
-                                            final track = snap.data;
-                                            if (track == null) {
-                                              return const _NoTrackLyricsPlaceholder();
-                                            }
-                                            return LyricsView(track: track);
-                                          },
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                    // Sidebar (hidden behind lyrics panel but always built)
+                    ValueListenableBuilder<bool>(
+                      valueListenable: AudioScannerService.isScanningNotifier,
+                      builder: (context, isScanning, child) {
+                        return AbsorbPointer(
+                          absorbing: isScanning,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 250),
+                            opacity: isScanning ? 0.45 : 1.0,
+                            child: child,
                           ),
-                        ),
-                        // ── Bottom: Player bar ──────────────────────────────────
-                        ValueListenableBuilder<bool>(
-                          valueListenable: AudioScannerService.isScanningNotifier,
-                          builder: (context, isScanning, child) {
-                            return AbsorbPointer(
-                              absorbing: isScanning,
-                              child: child,
-                            );
-                          },
-                          child: PlayerBar(
-                            lyricsActive: _showLyrics,
-                            onToggleLyrics: _toggleLyrics,
-                          ),
-                        ),
-                      ],
+                        );
+                      },
+                      child: Sidebar(
+                        selected: _selected,
+                        onSelect: (dest) {
+                          AppNavigationCoordinator.instance.navigateTo(dest);
+                        },
+                      ),
                     ),
-
-                    // ── Immersive Mini-Player Focus Overlay ─────────────────────
-                    const _DesktopMiniPlayerOverlay(),
+                    // Thin divider between sidebar and content
+                    Container(width: 1, color: AppTheme.divider),
+                    // Main content + Lyrics overlay
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          _ContentArea(destination: _selected),
+                          // Lyrics slide-up panel
+                          AnimatedSlide(
+                            duration: const Duration(milliseconds: 350),
+                            curve: Curves.easeInOutCubic,
+                            offset: _showLyrics
+                                ? Offset.zero
+                                : const Offset(0, 1),
+                            child: AnimatedOpacity(
+                              duration: const Duration(milliseconds: 300),
+                              opacity: _showLyrics ? 1.0 : 0.0,
+                              child: StreamBuilder<Track?>(
+                                stream: OrpheusAudioHandler.hasInstance
+                                    ? OrpheusAudioHandler.instance.currentTrackStream
+                                    : const Stream.empty(),
+                                initialData: OrpheusAudioHandler.hasInstance
+                                    ? OrpheusAudioHandler.instance.currentTrack
+                                    : null,
+                                builder: (context, snap) {
+                                  final track = snap.data;
+                                  if (track == null) {
+                                    return const _NoTrackLyricsPlaceholder();
+                                  }
+                                  return LyricsView(track: track);
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
+                ),
+              ),
+              // ── Bottom: Player bar ────────────────────────────────────────────
+              ValueListenableBuilder<bool>(
+                valueListenable: AudioScannerService.isScanningNotifier,
+                builder: (context, isScanning, child) {
+                  return AbsorbPointer(
+                    absorbing: isScanning,
+                    child: child,
+                  );
+                },
+                child: PlayerBar(
+                  lyricsActive: _showLyrics,
+                  onToggleLyrics: _toggleLyrics,
                 ),
               ),
             ],
@@ -311,68 +297,26 @@ class MainLayout extends StatelessWidget {
     final isMobile = MediaQuery.sizeOf(context).width < 600;
     if (isMobile) {
       return const MobileNavigationShell();
-    } else {
-      return const DesktopNavigationShell();
     }
-  }
-}
 
-/// Opaque exclusive view overlay presenting the Orb Reactor Mini Player
-/// centered over the desktop shell without resizing or unmounting the window.
-class _DesktopMiniPlayerOverlay extends StatelessWidget {
-  const _DesktopMiniPlayerOverlay();
-
-  @override
-  Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
       valueListenable: DesktopWindowService.instance.isMiniPlayerNotifier,
       builder: (context, isMini, _) {
-        return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 260),
-          reverseDuration: const Duration(milliseconds: 200),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) {
-            return FadeTransition(
-              opacity: animation,
-              child: child,
-            );
-          },
-          child: isMini
-              ? const _MiniPlayerExclusiveView(key: ValueKey('mini_player_exclusive'))
-              : const SizedBox.shrink(key: ValueKey('mini_player_inactive')),
+        return Stack(
+          children: [
+            // Keep DesktopNavigationShell alive in the tree to preserve scroll and state
+            Offstage(
+              offstage: isMini,
+              child: const DesktopNavigationShell(),
+            ),
+            // When in compact mini-player mode, render OrbReactorView filling the compact window
+            if (isMini)
+              const Positioned.fill(
+                child: OrbReactorView(),
+              ),
+          ],
         );
       },
-    );
-  }
-}
-
-/// Solid opaque exclusive view presenting the Orb Reactor Mini Player,
-/// completely concealing the background library while keeping the DesktopTitleBar accessible.
-class _MiniPlayerExclusiveView extends StatelessWidget {
-  const _MiniPlayerExclusiveView({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final bgColor = Theme.of(context).scaffoldBackgroundColor;
-
-    return Container(
-      color: bgColor, // Solid 100% opaque background matching the application theme
-      width: double.infinity,
-      height: double.infinity,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: 520,
-            maxHeight: 380,
-          ),
-          child: const SizedBox(
-            width: 490,
-            height: 350,
-            child: OrbReactorView(),
-          ),
-        ),
-      ),
     );
   }
 }

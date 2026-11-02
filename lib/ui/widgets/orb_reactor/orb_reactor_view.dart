@@ -1,9 +1,11 @@
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../../core/models/track.dart';
 import '../../../core/services/audio_handler.dart';
+import '../../../core/services/desktop_window_service.dart';
 import '../../theme/app_theme.dart';
 import 'central_orb_disc.dart';
 import 'orb_transport_controls.dart';
@@ -52,8 +54,16 @@ class _OrbReactorViewState extends State<OrbReactorView>
     final playingStream = handler?.isPlayingStream;
     final volumeStream = handler?.volumeStream;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): () {
+          DesktopWindowService.instance.exitMiniPlayer();
+        },
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
       body: Container(
         width: double.infinity,
         height: double.infinity,
@@ -218,8 +228,10 @@ class _OrbReactorViewState extends State<OrbReactorView>
             );
           },
         ),
-          ),
-        ),
+      ),
+    ),
+  ),
+),
       ),
     );
   }

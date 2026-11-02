@@ -6,11 +6,8 @@ import 'package:window_manager/window_manager.dart';
 
 import '../utils/debug_logger.dart';
 
-/// Singleton service managing the internal Mini Player view state.
-///
-/// Native window geometry manipulation and OS-level resizing locks have been
-/// removed in favor of internal Flutter layout transitions, keeping the native
-/// desktop window always resizable and preventing Wayland/Mutter compositor locks.
+/// Singleton service managing window geometry and transitions between
+/// standard desktop window mode and the compact floating Mini Player mode.
 class DesktopWindowService {
   DesktopWindowService._internal();
 
@@ -24,54 +21,118 @@ class DesktopWindowService {
   /// Current Mini Player active state.
   bool get isMiniPlayerActive => isMiniPlayerNotifier.value;
 
-  /// Target compact dimensions for the internal Mini Player view.
+  /// Target compact dimensions for the Mini Player.
   static const Size kMiniPlayerSize = Size(490, 350);
 
-  /// Minimum dimensions for the compact view.
+  /// Minimum window size allowed in Mini Player mode.
   static const Size kMiniPlayerMinSize = Size(420, 300);
 
-  /// Standard minimum window size recommendation.
+  /// Standard minimum window size restored when exiting Mini Player.
   static const Size kStandardMinSize = Size(950, 650);
 
-  /// Whether current platform supports desktop window manipulation.
+  /// Saved standard window bounds prior to entering Mini Player mode.
+  Size _savedWindowSize = const Size(1280, 800);
+  Offset? _savedWindowPosition;
+
+  /// Strict desktop platform check ensuring Android, iOS and Web are never affected.
   bool get isDesktop =>
       !kIsWeb && (Platform.isMacOS || Platform.isLinux || Platform.isWindows);
 
   /// Whether native window manager platform channels can be safely invoked
-  /// (disabled during headless flutter test execution).
+  /// (disabled during headless flutter test execution and on mobile/web).
   bool get _canInvokeNativeWindow =>
       isDesktop && !Platform.environment.containsKey('FLUTTER_TEST');
 
-  /// Ensures the native OS window remains resizable.
-  Future<void> ensureWindowResizable() async {
-    if (_canInvokeNativeWindow) {
-      try {
-        await windowManager.setResizable(true);
-      } catch (e) {
-        DebugLogger.log('DesktopWindowService: Error setting resizable: $e');
-      }
-    }
-  }
-
-  /// Enters internal Mini Player view mode.
+  /// Enters floating Mini Player mode.
   ///
-  /// Changes internal UI state without resizing or locking the native window.
+  /// Protected by strict desktop platform checks.
+  /// 1. Saves current window size and position.
+  /// 2. Sets minimum size to [kMiniPlayerMinSize].
+  /// 3. Resizes OS window to [kMiniPlayerSize].
+  /// 4. Hides window decorations (frameless).
+  /// 5. Enables "Always on Top".
+  /// 6. Updates [isMiniPlayerNotifier].
   Future<void> enterMiniPlayer() async {
     if (!isDesktop || isMiniPlayerActive) return;
+
+    if (_canInvokeNativeWindow) {
+      try {
+        _savedWindowSize = await windowManager.getSize();
+        try {
+          _savedWindowPosition = await windowManager.getPosition();
+        } catch (_) {}
+
+        // Enforce minimum size allows resizing down to compact dimensions
+        await windowManager.setMinimumSize(kMiniPlayerMinSize);
+        await windowManager.setSize(kMiniPlayerSize);
+        await windowManager.setAlwaysOnTop(true);
+        await windowManager.setHasShadow(false);
+
+        try {
+          await windowManager.setAsFrameless();
+        } catch (e) {
+          DebugLogger.log('DesktopWindowService: setAsFrameless error: $e');
+        }
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: Error entering mini player: $e');
+      }
+    }
+
     isMiniPlayerNotifier.value = true;
-    await ensureWindowResizable();
   }
 
-  /// Exits internal Mini Player view mode.
+  /// Exits Mini Player mode and restores standard window geometry.
   ///
-  /// Restores standard UI layout without touching native window bounds.
+  /// Protected by strict desktop platform checks.
+  /// 1. Deactivates "Always on Top".
+  /// 2. Restores window shadow.
+  /// 3. Restores window frame and native title bar decorations.
+  /// 4. Clears maximum size hints if on Linux.
+  /// 5. Restores standard minimum size [kStandardMinSize].
+  /// 6. Restores saved window size and position.
+  /// 7. Updates [isMiniPlayerNotifier].
   Future<void> exitMiniPlayer() async {
     if (!isDesktop || !isMiniPlayerActive) return;
+
+    if (_canInvokeNativeWindow) {
+      try {
+        await windowManager.setAlwaysOnTop(false);
+        await windowManager.setHasShadow(true);
+
+        try {
+          await windowManager.setTitleBarStyle(TitleBarStyle.normal);
+        } catch (e) {
+          DebugLogger.log('DesktopWindowService: setTitleBarStyle error: $e');
+        }
+
+        if (Platform.isLinux) {
+          await windowManager.setMaximumSize(const Size(-1, -1));
+        }
+
+        await windowManager.setMinimumSize(kStandardMinSize);
+        await windowManager.setResizable(true);
+
+        final targetSize = (_savedWindowSize.width >= kStandardMinSize.width &&
+                _savedWindowSize.height >= kStandardMinSize.height)
+            ? _savedWindowSize
+            : const Size(1280, 800);
+
+        await windowManager.setSize(targetSize);
+
+        if (_savedWindowPosition != null) {
+          try {
+            await windowManager.setPosition(_savedWindowPosition!);
+          } catch (_) {}
+        }
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: Error exiting mini player: $e');
+      }
+    }
+
     isMiniPlayerNotifier.value = false;
-    await ensureWindowResizable();
   }
 
-  /// Toggles between standard view mode and internal Mini Player mode.
+  /// Toggles between standard window mode and Mini Player mode.
   Future<void> toggleMiniPlayer() async {
     if (isMiniPlayerActive) {
       await exitMiniPlayer();
