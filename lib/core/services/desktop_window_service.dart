@@ -21,11 +21,14 @@ class DesktopWindowService {
   /// Current Mini Player active state.
   bool get isMiniPlayerActive => isMiniPlayerNotifier.value;
 
-  /// Target compact dimensions for the Mini Player.
-  static const Size kMiniPlayerSize = Size(490, 350);
+  /// Target exact dimensions for the Mini Player with full Orb Reactor and harmonic waves.
+  static const Size kMiniReactorSize = Size(580, 360);
+
+  /// Target compact dimensions for the Mini Player (alias for backwards compatibility).
+  static const Size kMiniPlayerSize = kMiniReactorSize;
 
   /// Minimum window size allowed in Mini Player mode.
-  static const Size kMiniPlayerMinSize = Size(420, 300);
+  static const Size kMiniPlayerMinSize = kMiniReactorSize;
 
   /// Standard minimum window size restored when exiting Mini Player.
   static const Size kStandardMinSize = Size(950, 650);
@@ -47,8 +50,8 @@ class DesktopWindowService {
   ///
   /// Protected by strict desktop platform checks.
   /// 1. Saves current window size and position.
-  /// 2. Sets minimum size to [kMiniPlayerMinSize].
-  /// 3. Resizes OS window to [kMiniPlayerSize].
+  /// 2. Sets minimum size to [kMiniReactorSize].
+  /// 3. Resizes OS window to [kMiniReactorSize].
   /// 4. Hides window decorations (frameless).
   /// 5. Enables "Always on Top".
   /// 6. Updates [isMiniPlayerNotifier].
@@ -62,9 +65,9 @@ class DesktopWindowService {
           _savedWindowPosition = await windowManager.getPosition();
         } catch (_) {}
 
-        // Enforce minimum size allows resizing down to compact dimensions
-        await windowManager.setMinimumSize(kMiniPlayerMinSize);
-        await windowManager.setSize(kMiniPlayerSize);
+        // Enforce exact mini reactor dimensions for both min size and active size
+        await windowManager.setMinimumSize(kMiniReactorSize);
+        await windowManager.setSize(kMiniReactorSize);
         await windowManager.setAlwaysOnTop(true);
         await windowManager.setHasShadow(false);
 
