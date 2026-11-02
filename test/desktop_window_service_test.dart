@@ -19,14 +19,18 @@ void main() {
     test('initializes with mini player inactive and correct target dimensions', () {
       expect(service.isMiniPlayerActive, isFalse);
       expect(service.isMiniPlayerNotifier.value, isFalse);
-      expect(DesktopWindowService.kMiniReactorSize.width, 690.0);
+      expect(DesktopWindowService.kMiniReactorSize.width, 730.0);
       expect(DesktopWindowService.kMiniReactorSize.height, 380.0);
-      expect(DesktopWindowService.kMiniPlayerSize.width, 690.0);
+      expect(DesktopWindowService.kMiniPlayerSize.width, 730.0);
       expect(DesktopWindowService.kMiniPlayerSize.height, 380.0);
-      expect(DesktopWindowService.kMiniPlayerMinSize.width, 690.0);
+      expect(DesktopWindowService.kMiniPlayerMinSize.width, 730.0);
       expect(DesktopWindowService.kMiniPlayerMinSize.height, 380.0);
       expect(DesktopWindowService.kStandardMinSize.width, 950.0);
       expect(DesktopWindowService.kStandardMinSize.height, 650.0);
+    });
+
+    test('initialize runs without errors', () async {
+      await expectLater(service.initialize(), completes);
     });
 
     test('setMiniPlayerActiveForTesting updates notifier and active getter', () {

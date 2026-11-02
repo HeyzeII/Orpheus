@@ -15,6 +15,7 @@ import 'core/services/album_art_fetcher_service.dart';
 import 'core/services/audio_acoustic_scanner.dart';
 import 'core/services/audio_handler.dart';
 import 'core/services/audio_player_service.dart';
+import 'core/services/desktop_window_service.dart';
 import 'core/services/linux_mpris_service.dart';
 import 'core/services/permission_service.dart';
 import 'core/services/widget_sync_service.dart';
@@ -143,6 +144,7 @@ void main() async {
       await windowManager.waitUntilReadyToShow(windowOptions, () async {
         await windowManager.setSize(initialSize);
         await windowManager.setMinimumSize(minSize);
+        await DesktopWindowService.instance.initialize();
         await windowManager.show();
         await windowManager.focus();
       });

@@ -155,13 +155,13 @@ void main() {
     });
 
     testWidgets('OrbReactorView builds and renders within constraints', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(690, 380));
+      await tester.binding.setSurfaceSize(const Size(730, 380));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       await tester.pumpWidget(
         const MaterialApp(
           home: SizedBox(
-            width: 690,
+            width: 730,
             height: 380,
             child: OrbReactorView(),
           ),

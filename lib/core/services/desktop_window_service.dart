@@ -22,7 +22,7 @@ class DesktopWindowService {
   bool get isMiniPlayerActive => isMiniPlayerNotifier.value;
 
   /// Target exact dimensions for the Mini Player with full Orb Reactor and harmonic waves.
-  static const Size kMiniReactorSize = Size(690, 380);
+  static const Size kMiniReactorSize = Size(730, 380);
 
   /// Target compact dimensions for the Mini Player (alias for backwards compatibility).
   static const Size kMiniPlayerSize = kMiniReactorSize;
@@ -45,6 +45,22 @@ class DesktopWindowService {
   /// (disabled during headless flutter test execution and on mobile/web).
   bool get _canInvokeNativeWindow =>
       isDesktop && !Platform.environment.containsKey('FLUTTER_TEST');
+
+  /// Initializes desktop window settings, removing native GNOME/Mutter title bars (frameless mode)
+  /// and applying soft window shadows.
+  Future<void> initialize() async {
+    if (!isDesktop || !_canInvokeNativeWindow) return;
+    try {
+      await windowManager.setAsFrameless();
+    } catch (e) {
+      DebugLogger.log('DesktopWindowService: setAsFrameless error: $e');
+    }
+    try {
+      await windowManager.setHasShadow(true);
+    } catch (e) {
+      DebugLogger.log('DesktopWindowService: setHasShadow error: $e');
+    }
+  }
 
   /// Enters floating Mini Player mode.
   ///
@@ -109,6 +125,7 @@ class DesktopWindowService {
   /// Exits Mini Player mode and restores standard window geometry.
   ///
   /// Protected by strict desktop platform checks and individual try-catch blocks.
+  /// Preserves frameless mode without native GNOME/Mutter title bars.
   Future<void> exitMiniPlayer() async {
     if (!isDesktop || !isMiniPlayerActive) return;
 
@@ -125,15 +142,15 @@ class DesktopWindowService {
       }
 
       try {
-        await windowManager.setHasShadow(true);
+        await windowManager.setAsFrameless();
       } catch (e) {
-        DebugLogger.log('DesktopWindowService: setHasShadow error: $e');
+        DebugLogger.log('DesktopWindowService: setAsFrameless error: $e');
       }
 
       try {
-        await windowManager.setTitleBarStyle(TitleBarStyle.normal);
+        await windowManager.setHasShadow(true);
       } catch (e) {
-        DebugLogger.log('DesktopWindowService: setTitleBarStyle error: $e');
+        DebugLogger.log('DesktopWindowService: setHasShadow error: $e');
       }
 
       if (Platform.isLinux) {
