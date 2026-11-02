@@ -22,7 +22,7 @@ class DesktopWindowService {
   bool get isMiniPlayerActive => isMiniPlayerNotifier.value;
 
   /// Target exact dimensions for the Mini Player with full Orb Reactor and harmonic waves.
-  static const Size kMiniReactorSize = Size(580, 360);
+  static const Size kMiniReactorSize = Size(690, 380);
 
   /// Target compact dimensions for the Mini Player (alias for backwards compatibility).
   static const Size kMiniPlayerSize = kMiniReactorSize;
@@ -48,36 +48,52 @@ class DesktopWindowService {
 
   /// Enters floating Mini Player mode.
   ///
-  /// Protected by strict desktop platform checks.
-  /// 1. Saves current window size and position.
-  /// 2. Sets minimum size to [kMiniReactorSize].
-  /// 3. Resizes OS window to [kMiniReactorSize].
-  /// 4. Hides window decorations (frameless).
-  /// 5. Enables "Always on Top".
-  /// 6. Updates [isMiniPlayerNotifier].
+  /// Protected by strict desktop platform checks and individual try-catch blocks
+  /// so that missing native plugins (e.g. on Linux) never halt resizing or state changes.
   Future<void> enterMiniPlayer() async {
     if (!isDesktop || isMiniPlayerActive) return;
 
     if (_canInvokeNativeWindow) {
       try {
         _savedWindowSize = await windowManager.getSize();
-        try {
-          _savedWindowPosition = await windowManager.getPosition();
-        } catch (_) {}
-
-        // Enforce exact mini reactor dimensions for both min size and active size
-        await windowManager.setMinimumSize(kMiniReactorSize);
-        await windowManager.setSize(kMiniReactorSize);
-        await windowManager.setAlwaysOnTop(true);
-        await windowManager.setHasShadow(false);
-
-        try {
-          await windowManager.setAsFrameless();
-        } catch (e) {
-          DebugLogger.log('DesktopWindowService: setAsFrameless error: $e');
-        }
       } catch (e) {
-        DebugLogger.log('DesktopWindowService: Error entering mini player: $e');
+        DebugLogger.log('DesktopWindowService: getSize error: $e');
+      }
+
+      try {
+        _savedWindowPosition = await windowManager.getPosition();
+      } catch (_) {}
+
+      // Critical geometry calls: enforce exact dimensions
+      try {
+        await windowManager.setMinimumSize(kMiniReactorSize);
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: setMinimumSize error: $e');
+      }
+
+      try {
+        await windowManager.setSize(kMiniReactorSize);
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: setSize error: $e');
+      }
+
+      // Cosmetic styling calls individually shielded against MissingPluginException on Linux
+      try {
+        await windowManager.setAlwaysOnTop(true);
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: setAlwaysOnTop error: $e');
+      }
+
+      try {
+        await windowManager.setHasShadow(false);
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: setHasShadow error: $e');
+      }
+
+      try {
+        await windowManager.setAsFrameless();
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: setAsFrameless error: $e');
       }
     }
 
@@ -92,14 +108,7 @@ class DesktopWindowService {
 
   /// Exits Mini Player mode and restores standard window geometry.
   ///
-  /// Protected by strict desktop platform checks.
-  /// 1. Deactivates "Always on Top".
-  /// 2. Restores window shadow.
-  /// 3. Restores window frame and native title bar decorations.
-  /// 4. Clears maximum size hints if on Linux.
-  /// 5. Restores standard minimum size [kStandardMinSize].
-  /// 6. Restores saved window size and position.
-  /// 7. Updates [isMiniPlayerNotifier].
+  /// Protected by strict desktop platform checks and individual try-catch blocks.
   Future<void> exitMiniPlayer() async {
     if (!isDesktop || !isMiniPlayerActive) return;
 
@@ -111,30 +120,52 @@ class DesktopWindowService {
     if (_canInvokeNativeWindow) {
       try {
         await windowManager.setAlwaysOnTop(false);
-        await windowManager.setHasShadow(true);
-
-        try {
-          await windowManager.setTitleBarStyle(TitleBarStyle.normal);
-        } catch (e) {
-          DebugLogger.log('DesktopWindowService: setTitleBarStyle error: $e');
-        }
-
-        if (Platform.isLinux) {
-          await windowManager.setMaximumSize(const Size(-1, -1));
-        }
-
-        await windowManager.setMinimumSize(kStandardMinSize);
-        await windowManager.setResizable(true);
-
-        await windowManager.setSize(targetSize);
-
-        if (_savedWindowPosition != null) {
-          try {
-            await windowManager.setPosition(_savedWindowPosition!);
-          } catch (_) {}
-        }
       } catch (e) {
-        DebugLogger.log('DesktopWindowService: Error exiting mini player: $e');
+        DebugLogger.log('DesktopWindowService: setAlwaysOnTop error: $e');
+      }
+
+      try {
+        await windowManager.setHasShadow(true);
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: setHasShadow error: $e');
+      }
+
+      try {
+        await windowManager.setTitleBarStyle(TitleBarStyle.normal);
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: setTitleBarStyle error: $e');
+      }
+
+      if (Platform.isLinux) {
+        try {
+          await windowManager.setMaximumSize(const Size(-1, -1));
+        } catch (e) {
+          DebugLogger.log('DesktopWindowService: setMaximumSize error: $e');
+        }
+      }
+
+      try {
+        await windowManager.setMinimumSize(kStandardMinSize);
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: setMinimumSize error: $e');
+      }
+
+      try {
+        await windowManager.setResizable(true);
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: setResizable error: $e');
+      }
+
+      try {
+        await windowManager.setSize(targetSize);
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: setSize error: $e');
+      }
+
+      if (_savedWindowPosition != null) {
+        try {
+          await windowManager.setPosition(_savedWindowPosition!);
+        } catch (_) {}
       }
     }
 
