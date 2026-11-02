@@ -114,6 +114,11 @@ class _DesktopNavigationShellState extends State<DesktopNavigationShell> with Wi
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.escape): () {
+          // 0. Close mini-player focus overlay if active
+          if (DesktopWindowService.instance.isMiniPlayerActive) {
+            DesktopWindowService.instance.exitMiniPlayer();
+            return;
+          }
           // 1. Close any open modal dialog or expanded player route
           final rootNav = Navigator.of(context, rootNavigator: true);
           if (rootNav.canPop()) {
@@ -140,83 +145,97 @@ class _DesktopNavigationShellState extends State<DesktopNavigationShell> with Wi
             children: [
               if (Platform.isLinux || Platform.isMacOS || Platform.isWindows)
                 const DesktopTitleBar(),
-              // ── Top row: Sidebar + Main content ──────────────────────────────
+              // ── Top row: Sidebar + Main content + Focus Overlay ─────────────
               Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                child: Stack(
                   children: [
-                    // Sidebar (hidden behind lyrics panel but always built)
-                    ValueListenableBuilder<bool>(
-                      valueListenable: AudioScannerService.isScanningNotifier,
-                      builder: (context, isScanning, child) {
-                        return AbsorbPointer(
-                          absorbing: isScanning,
-                          child: AnimatedOpacity(
-                            duration: const Duration(milliseconds: 250),
-                            opacity: isScanning ? 0.45 : 1.0,
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: Sidebar(
-                        selected: _selected,
-                        onSelect: (dest) {
-                          AppNavigationCoordinator.instance.navigateTo(dest);
-                        },
-                      ),
-                    ),
-                    // Thin divider between sidebar and content
-                    Container(width: 1, color: AppTheme.divider),
-                    // Main content + Lyrics overlay
-                    Expanded(
-                      child: Stack(
-                        children: [
-                          _ContentArea(destination: _selected),
-                          // Lyrics slide-up panel
-                          AnimatedSlide(
-                            duration: const Duration(milliseconds: 350),
-                            curve: Curves.easeInOutCubic,
-                            offset: _showLyrics
-                                ? Offset.zero
-                                : const Offset(0, 1),
-                            child: AnimatedOpacity(
-                              duration: const Duration(milliseconds: 300),
-                              opacity: _showLyrics ? 1.0 : 0.0,
-                              child: StreamBuilder<Track?>(
-                                stream: OrpheusAudioHandler.hasInstance
-                                    ? OrpheusAudioHandler.instance.currentTrackStream
-                                    : const Stream.empty(),
-                                initialData: OrpheusAudioHandler.hasInstance
-                                    ? OrpheusAudioHandler.instance.currentTrack
-                                    : null,
-                                builder: (context, snap) {
-                                  final track = snap.data;
-                                  if (track == null) {
-                                    return const _NoTrackLyricsPlaceholder();
-                                  }
-                                  return LyricsView(track: track);
+                    // Base layer: Main app content with Sidebar and PlayerBar
+                    Column(
+                      children: [
+                        Expanded(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Sidebar (hidden behind lyrics panel but always built)
+                              ValueListenableBuilder<bool>(
+                                valueListenable: AudioScannerService.isScanningNotifier,
+                                builder: (context, isScanning, child) {
+                                  return AbsorbPointer(
+                                    absorbing: isScanning,
+                                    child: AnimatedOpacity(
+                                      duration: const Duration(milliseconds: 250),
+                                      opacity: isScanning ? 0.45 : 1.0,
+                                      child: child,
+                                    ),
+                                  );
                                 },
+                                child: Sidebar(
+                                  selected: _selected,
+                                  onSelect: (dest) {
+                                    AppNavigationCoordinator.instance.navigateTo(dest);
+                                  },
+                                ),
                               ),
-                            ),
+                              // Thin divider between sidebar and content
+                              Container(width: 1, color: AppTheme.divider),
+                              // Main content + Lyrics overlay
+                              Expanded(
+                                child: Stack(
+                                  children: [
+                                    _ContentArea(destination: _selected),
+                                    // Lyrics slide-up panel
+                                    AnimatedSlide(
+                                      duration: const Duration(milliseconds: 350),
+                                      curve: Curves.easeInOutCubic,
+                                      offset: _showLyrics
+                                          ? Offset.zero
+                                          : const Offset(0, 1),
+                                      child: AnimatedOpacity(
+                                        duration: const Duration(milliseconds: 300),
+                                        opacity: _showLyrics ? 1.0 : 0.0,
+                                        child: StreamBuilder<Track?>(
+                                          stream: OrpheusAudioHandler.hasInstance
+                                              ? OrpheusAudioHandler.instance.currentTrackStream
+                                              : const Stream.empty(),
+                                          initialData: OrpheusAudioHandler.hasInstance
+                                              ? OrpheusAudioHandler.instance.currentTrack
+                                              : null,
+                                          builder: (context, snap) {
+                                            final track = snap.data;
+                                            if (track == null) {
+                                              return const _NoTrackLyricsPlaceholder();
+                                            }
+                                            return LyricsView(track: track);
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                        // ── Bottom: Player bar ──────────────────────────────────
+                        ValueListenableBuilder<bool>(
+                          valueListenable: AudioScannerService.isScanningNotifier,
+                          builder: (context, isScanning, child) {
+                            return AbsorbPointer(
+                              absorbing: isScanning,
+                              child: child,
+                            );
+                          },
+                          child: PlayerBar(
+                            lyricsActive: _showLyrics,
+                            onToggleLyrics: _toggleLyrics,
+                          ),
+                        ),
+                      ],
                     ),
+
+                    // ── Immersive Mini-Player Focus Overlay ─────────────────────
+                    const _DesktopMiniPlayerOverlay(),
                   ],
-                ),
-              ),
-              // ── Bottom: Player bar ────────────────────────────────────────────
-              ValueListenableBuilder<bool>(
-                valueListenable: AudioScannerService.isScanningNotifier,
-                builder: (context, isScanning, child) {
-                  return AbsorbPointer(
-                    absorbing: isScanning,
-                    child: child,
-                  );
-                },
-                child: PlayerBar(
-                  lyricsActive: _showLyrics,
-                  onToggleLyrics: _toggleLyrics,
                 ),
               ),
             ],
@@ -289,19 +308,91 @@ class MainLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
+    if (isMobile) {
+      return const MobileNavigationShell();
+    } else {
+      return const DesktopNavigationShell();
+    }
+  }
+}
+
+/// Immersive frosted-glass overlay presenting the Orb Reactor Mini Player
+/// centered over the desktop shell without resizing or unmounting the window.
+class _DesktopMiniPlayerOverlay extends StatelessWidget {
+  const _DesktopMiniPlayerOverlay();
+
+  @override
+  Widget build(BuildContext context) {
     return ValueListenableBuilder<bool>(
       valueListenable: DesktopWindowService.instance.isMiniPlayerNotifier,
-      builder: (context, isMini, child) {
-        if (isMini) {
-          return const OrbReactorView();
-        }
-        final isMobile = MediaQuery.sizeOf(context).width < 600;
-        if (isMobile) {
-          return const MobileNavigationShell();
-        } else {
-          return const DesktopNavigationShell();
-        }
+      builder: (context, isMini, _) {
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 280),
+          reverseDuration: const Duration(milliseconds: 220),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) {
+            return FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.92, end: 1.0).animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutBack,
+                  ),
+                ),
+                child: child,
+              ),
+            );
+          },
+          child: isMini
+              ? const _MiniPlayerBackdropAndCard(key: ValueKey('mini_player_active'))
+              : const SizedBox.shrink(key: ValueKey('mini_player_inactive')),
+        );
       },
+    );
+  }
+}
+
+/// Frosted backdrop and centered compact OrbReactorView card.
+class _MiniPlayerBackdropAndCard extends StatelessWidget {
+  const _MiniPlayerBackdropAndCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        // 1. Frosted glass backdrop over library content
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: () => DesktopWindowService.instance.exitMiniPlayer(),
+            child: ClipRect(
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: Container(
+                  color: Colors.black.withOpacity(0.55),
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // 2. Centered compact OrbReactorView card
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 490,
+              maxHeight: 350,
+            ),
+            child: const SizedBox(
+              width: 490,
+              height: 350,
+              child: OrbReactorView(),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
