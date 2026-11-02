@@ -302,20 +302,10 @@ class MainLayout extends StatelessWidget {
     return ValueListenableBuilder<bool>(
       valueListenable: DesktopWindowService.instance.isMiniPlayerNotifier,
       builder: (context, isMini, _) {
-        return Stack(
-          children: [
-            // Keep DesktopNavigationShell alive in the tree to preserve scroll and state
-            Offstage(
-              offstage: isMini,
-              child: const DesktopNavigationShell(),
-            ),
-            // When in compact mini-player mode, render OrbReactorView filling the compact window
-            if (isMini)
-              const Positioned.fill(
-                child: OrbReactorView(),
-              ),
-          ],
-        );
+        if (isMini) {
+          return const OrbReactorView();
+        }
+        return const DesktopNavigationShell();
       },
     );
   }
