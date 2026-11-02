@@ -45,11 +45,10 @@ class DesktopWindowService {
 
   /// Enters floating Mini Player mode.
   ///
-  /// 1. Saves current window size and position.
+  /// 1. Saves current window size and position (safely handled on Wayland).
   /// 2. Sets minimum size to [kMiniPlayerMinSize].
-  /// 3. On Linux (Wayland), also sets maximum size to [kMiniPlayerSize] to
-  ///    enforce a hard size lock that Wayland compositors (Sway, KDE, Hyprland)
-  ///    respect. Without this, `setResizable(false)` alone may be ignored.
+  /// 3. On Linux (Wayland), sets maximum size to [kMiniPlayerSize] to enforce
+  ///    a strict size lock that Wayland compositors respect.
   /// 4. Sets window size to [kMiniPlayerSize].
   /// 5. Disables window resizing (`setResizable(false)`).
   /// 6. Activates "Always on Top" (`setAlwaysOnTop(true)`).
@@ -60,11 +59,16 @@ class DesktopWindowService {
     if (_canInvokeNativeWindow) {
       try {
         _savedWindowSize = await windowManager.getSize();
-        _savedWindowPosition = await windowManager.getPosition();
+        try {
+          _savedWindowPosition = await windowManager.getPosition();
+        } catch (e) {
+          DebugLogger.log(
+            'DesktopWindowService: getPosition not supported or failed on Wayland: $e',
+          );
+        }
 
         await windowManager.setMinimumSize(kMiniPlayerMinSize);
-        // On Wayland, lock both min and max to the same target so compositors
-        // that ignore setResizable(false) still honour the fixed size.
+        // On Wayland, lock both min and max to enforce a fixed compact geometry
         if (Platform.isLinux) {
           await windowManager.setMaximumSize(kMiniPlayerSize);
         }
@@ -83,17 +87,19 @@ class DesktopWindowService {
 
   /// Exits Mini Player mode and restores standard window geometry.
   ///
-  /// Call order is critical on Linux/GTK: the GTK WM ignores `setMinimumSize`
-  /// and `setSize` while `resizable=false`, so `setResizable(true)` must be
-  /// invoked **first** to unfreeze the compositor before updating hints.
-  ///
+  /// Flow adapted to the Wayland/Mutter async lifecycle:
   /// 1. Deactivates "Always on Top" (`setAlwaysOnTop(false)`).
   /// 2. Restores window shadow (`setHasShadow(true)`).
-  /// 3. Re-enables resizing (`setResizable(true)`) — must happen before hint changes.
+  /// 3. Clears maximum size hint on Linux using `Size(-1, -1)` so the C++ plugin
+  ///    clears `GDK_HINT_MAX_SIZE`.
   /// 4. Restores standard minimum size to [kStandardMinSize].
-  /// 5. On Linux, removes the maximum size cap (`setMaximumSize(Size.zero)`).
-  /// 6. Restores saved window size and position.
-  /// 7. Updates [isMiniPlayerNotifier].
+  /// 5. Re-enables window resizing (`setResizable(true)`).
+  /// 6. Awaits a brief asynchronous pause (50ms) to allow GTK and Mutter to
+  ///    negotiate the `xdg_toplevel` configure cycle and refresh CSD border input regions.
+  /// 7. Restores saved window size (`setSize(_savedWindowSize)`).
+  /// 8. Restores saved window position wrapped safely in try-catch (Wayland does
+  ///    not allow programmatic absolute positioning).
+  /// 9. Updates [isMiniPlayerNotifier].
   Future<void> exitMiniPlayer() async {
     if (!isDesktop || !isMiniPlayerActive) return;
 
@@ -102,23 +108,35 @@ class DesktopWindowService {
         await windowManager.setAlwaysOnTop(false);
         await windowManager.setHasShadow(true);
 
-        // ── Unfreeze the GTK/Wayland WM first ──────────────────────────────
-        // On Linux, geometry hints are ignored while the window is non-resizable.
-        // Calling setResizable(true) before setMinimumSize ensures the compositor
-        // accepts the updated constraints and the subsequent setSize call.
-        await windowManager.setResizable(true);
-
-        // ── Restore geometry constraints ────────────────────────────────────
-        await windowManager.setMinimumSize(kStandardMinSize);
-        // Remove the maximum size cap applied on Wayland entry.
+        // ── 1. Clear maximum size hint using strictly negative dimensions ───
+        // In the Linux C++ plugin, passing negative values turns off the
+        // GDK_HINT_MAX_SIZE bitmask. Passing Size.zero would clamp max_size to 0x0
+        // and freeze Mutter resize handles.
         if (Platform.isLinux) {
-          await windowManager.setMaximumSize(Size.zero);
+          await windowManager.setMaximumSize(const Size(-1, -1));
         }
 
-        // ── Restore size and position ───────────────────────────────────────
+        // ── 2. Restore standard minimum size ───────────────────────────────
+        await windowManager.setMinimumSize(kStandardMinSize);
+
+        // ── 3. Re-enable window resizing ───────────────────────────────────
+        await windowManager.setResizable(true);
+
+        // ── 4. Async yield for Wayland/Mutter CSD configure event ───────────
+        // Gives GTK and the Wayland compositor time to process the xdg_toplevel
+        // configure cycle and update client-side decoration input regions.
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        // ── 5. Restore saved window size and position safely ───────────────
         await windowManager.setSize(_savedWindowSize);
         if (_savedWindowPosition != null) {
-          await windowManager.setPosition(_savedWindowPosition!);
+          try {
+            await windowManager.setPosition(_savedWindowPosition!);
+          } catch (e) {
+            DebugLogger.log(
+              'DesktopWindowService: setPosition not supported or failed on Wayland: $e',
+            );
+          }
         }
       } catch (e) {
         DebugLogger.log('DesktopWindowService: Error exiting mini player: $e');
