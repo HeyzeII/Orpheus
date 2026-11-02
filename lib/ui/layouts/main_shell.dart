@@ -317,7 +317,7 @@ class MainLayout extends StatelessWidget {
   }
 }
 
-/// Immersive frosted-glass overlay presenting the Orb Reactor Mini Player
+/// Opaque exclusive view overlay presenting the Orb Reactor Mini Player
 /// centered over the desktop shell without resizing or unmounting the window.
 class _DesktopMiniPlayerOverlay extends StatelessWidget {
   const _DesktopMiniPlayerOverlay();
@@ -328,26 +328,18 @@ class _DesktopMiniPlayerOverlay extends StatelessWidget {
       valueListenable: DesktopWindowService.instance.isMiniPlayerNotifier,
       builder: (context, isMini, _) {
         return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 280),
-          reverseDuration: const Duration(milliseconds: 220),
+          duration: const Duration(milliseconds: 260),
+          reverseDuration: const Duration(milliseconds: 200),
           switchInCurve: Curves.easeOutCubic,
           switchOutCurve: Curves.easeInCubic,
           transitionBuilder: (child, animation) {
             return FadeTransition(
               opacity: animation,
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.92, end: 1.0).animate(
-                  CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeOutBack,
-                  ),
-                ),
-                child: child,
-              ),
+              child: child,
             );
           },
           child: isMini
-              ? const _MiniPlayerBackdropAndCard(key: ValueKey('mini_player_active'))
+              ? const _MiniPlayerExclusiveView(key: ValueKey('mini_player_exclusive'))
               : const SizedBox.shrink(key: ValueKey('mini_player_inactive')),
         );
       },
@@ -355,44 +347,32 @@ class _DesktopMiniPlayerOverlay extends StatelessWidget {
   }
 }
 
-/// Frosted backdrop and centered compact OrbReactorView card.
-class _MiniPlayerBackdropAndCard extends StatelessWidget {
-  const _MiniPlayerBackdropAndCard({super.key});
+/// Solid opaque exclusive view presenting the Orb Reactor Mini Player,
+/// completely concealing the background library while keeping the DesktopTitleBar accessible.
+class _MiniPlayerExclusiveView extends StatelessWidget {
+  const _MiniPlayerExclusiveView({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // 1. Frosted glass backdrop over library content
-        Positioned.fill(
-          child: GestureDetector(
-            onTap: () => DesktopWindowService.instance.exitMiniPlayer(),
-            child: ClipRect(
-              child: BackdropFilter(
-                filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                child: Container(
-                  color: Colors.black.withOpacity(0.55),
-                ),
-              ),
-            ),
-          ),
-        ),
+    final bgColor = Theme.of(context).scaffoldBackgroundColor;
 
-        // 2. Centered compact OrbReactorView card
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxWidth: 490,
-              maxHeight: 350,
-            ),
-            child: const SizedBox(
-              width: 490,
-              height: 350,
-              child: OrbReactorView(),
-            ),
+    return Container(
+      color: bgColor, // Solid 100% opaque background matching the application theme
+      width: double.infinity,
+      height: double.infinity,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: 520,
+            maxHeight: 380,
+          ),
+          child: const SizedBox(
+            width: 490,
+            height: 350,
+            child: OrbReactorView(),
           ),
         ),
-      ],
+      ),
     );
   }
 }
