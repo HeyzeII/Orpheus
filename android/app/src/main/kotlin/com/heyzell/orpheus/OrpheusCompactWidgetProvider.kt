@@ -26,6 +26,20 @@ class OrpheusCompactWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: android.os.Bundle?
+    ) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+        try {
+            updateAppWidget(context, appWidgetManager, appWidgetId)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Unhandled exception in onAppWidgetOptionsChanged", t)
+        }
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         try {
             super.onReceive(context, intent)

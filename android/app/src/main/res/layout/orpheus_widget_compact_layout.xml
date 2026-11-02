@@ -4,22 +4,23 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_immersive_background"
-    android:paddingStart="10dp"
-    android:paddingEnd="10dp"
+    android:clipToOutline="true"
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
     android:paddingTop="6dp"
     android:paddingBottom="6dp">
 
     <!-- Carátula del Álbum (Cuadrada a la izquierda) -->
     <ImageView
         android:id="@+id/widget_compact_cover_image"
-        android:layout_width="56dp"
-        android:layout_height="56dp"
+        android:layout_width="58dp"
+        android:layout_height="58dp"
         android:layout_alignParentStart="true"
         android:layout_centerVertical="true"
         android:scaleType="centerCrop"
         android:contentDescription="@null" />
 
-    <!-- Controles Multimedia y Favorito (Alineados a la derecha) -->
+    <!-- Controles Multimedia y Favorito (Alineados a la derecha y escalables en modo ancho) -->
     <LinearLayout
         android:id="@+id/widget_compact_controls_container"
         android:layout_width="wrap_content"
@@ -32,41 +33,48 @@
         <!-- Botón Me Gusta (Favorito) -->
         <ImageButton
             android:id="@+id/widget_compact_btn_like"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:padding="8dp"
             android:background="@android:color/transparent"
             android:src="@drawable/ic_heart_outline"
-            android:scaleType="centerInside"
+            android:scaleType="fitCenter"
             android:contentDescription="@null" />
 
         <!-- Botón Anterior -->
         <ImageButton
             android:id="@+id/widget_compact_btn_prev"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="6dp"
+            android:padding="8dp"
             android:background="@android:color/transparent"
             android:src="@drawable/ic_skip_previous"
-            android:scaleType="centerInside"
+            android:scaleType="fitCenter"
             android:contentDescription="@null" />
 
-        <!-- Botón Reproducir / Pausa -->
+        <!-- Botón Reproducir / Pausa (Prominente) -->
         <ImageButton
             android:id="@+id/widget_compact_btn_play_pause"
-            android:layout_width="46dp"
-            android:layout_height="46dp"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="6dp"
+            android:padding="8dp"
             android:background="@android:color/transparent"
             android:src="@drawable/ic_play"
-            android:scaleType="centerInside"
+            android:scaleType="fitCenter"
             android:contentDescription="@null" />
 
         <!-- Botón Siguiente -->
         <ImageButton
             android:id="@+id/widget_compact_btn_next"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:padding="8dp"
             android:background="@android:color/transparent"
             android:src="@drawable/ic_skip_next"
-            android:scaleType="centerInside"
+            android:scaleType="fitCenter"
             android:contentDescription="@null" />
     </LinearLayout>
 
@@ -78,8 +86,8 @@
         android:layout_toEndOf="@id/widget_compact_cover_image"
         android:layout_toStartOf="@id/widget_compact_controls_container"
         android:layout_centerVertical="true"
-        android:layout_marginStart="10dp"
-        android:layout_marginEnd="6dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="8dp"
         android:gravity="center_vertical"
         android:orientation="vertical">
 

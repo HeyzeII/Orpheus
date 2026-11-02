@@ -3,9 +3,11 @@
     android:id="@+id/widget_container"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_immersive_background">
+    android:padding="0dp"
+    android:background="@drawable/widget_immersive_background"
+    android:clipToOutline="true">
 
-    <!-- CAPA 1: Carátula del Álbum a Pantalla Completa -->
+    <!-- CAPA 1: Carátula del Álbum a Pantalla Completa (centerCrop para cubrir de esquina a esquina sin bordes) -->
     <ImageView
         android:id="@+id/widget_cover_image"
         android:layout_width="match_parent"
@@ -13,7 +15,7 @@
         android:scaleType="centerCrop"
         android:contentDescription="@null" />
 
-    <!-- CAPA 2: Degradado de Protección de Contraste (ImageView para estricta compatibilidad con RemoteViews) -->
+    <!-- CAPA 2: Degradado de Protección de Contraste -->
     <ImageView
         android:id="@+id/widget_scrim_overlay"
         android:layout_width="match_parent"
@@ -32,16 +34,17 @@
         <!-- SECCIÓN SUPERIOR DERECHA: Botón Me Gusta (Favorito) -->
         <ImageButton
             android:id="@+id/widget_btn_like"
-            android:layout_width="60dp"
-            android:layout_height="60dp"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
             android:layout_alignParentTop="true"
             android:layout_alignParentEnd="true"
+            android:padding="8dp"
             android:background="@android:color/transparent"
             android:src="@drawable/ic_heart_outline"
-            android:scaleType="centerInside"
+            android:scaleType="fitCenter"
             android:contentDescription="@null" />
 
-        <!-- SECCIÓN SUPERIOR IZQUIERDA: Metadatos (Título y Artista) -->
+        <!-- SECCIÓN SUPERIOR IZQUIERDA: Metadatos con Presencia Equilibrada (Título 20sp, Artista 14sp) -->
         <LinearLayout
             android:id="@+id/widget_metadata_container"
             android:layout_width="match_parent"
@@ -58,7 +61,7 @@
                 android:layout_height="wrap_content"
                 android:text="Orpheus"
                 android:textColor="#FFFFFF"
-                android:textSize="25sp"
+                android:textSize="20sp"
                 android:textStyle="bold"
                 android:maxLines="1"
                 android:ellipsize="end"
@@ -71,10 +74,10 @@
                 android:id="@+id/widget_track_artist"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
+                android:layout_marginTop="3dp"
                 android:text="Escucha algo grandioso"
                 android:textColor="#E0E0E0"
-                android:textSize="19sp"
+                android:textSize="14sp"
                 android:maxLines="1"
                 android:ellipsize="end"
                 android:shadowColor="#80000000"
@@ -83,47 +86,50 @@
                 android:shadowRadius="3" />
         </LinearLayout>
 
-        <!-- SECCIÓN INFERIOR: Fila Centrada de Controles Multimedia -->
+        <!-- SECCIÓN INFERIOR: Fila Centrada de Controles Multimedia Prominentes y Fáciles de Pulsar -->
         <LinearLayout
             android:id="@+id/widget_playback_controls"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_alignParentBottom="true"
             android:layout_centerHorizontal="true"
-            android:layout_marginBottom="8dp"
+            android:layout_marginBottom="6dp"
             android:gravity="center"
             android:orientation="horizontal">
 
             <!-- Botón Pista Anterior -->
             <ImageButton
                 android:id="@+id/widget_btn_prev"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
                 android:layout_marginEnd="16dp"
+                android:padding="12dp"
                 android:background="@android:color/transparent"
                 android:src="@drawable/ic_skip_previous"
-                android:scaleType="centerInside"
+                android:scaleType="fitCenter"
                 android:contentDescription="@null" />
 
-            <!-- Botón Reproducir / Pausa (Prominente) -->
+            <!-- Botón Reproducir / Pausa (Prominente: 78dp) -->
             <ImageButton
                 android:id="@+id/widget_btn_play_pause"
-                android:layout_width="90dp"
-                android:layout_height="90dp"
+                android:layout_width="78dp"
+                android:layout_height="78dp"
+                android:padding="12dp"
                 android:background="@android:color/transparent"
                 android:src="@drawable/ic_play"
-                android:scaleType="centerInside"
+                android:scaleType="fitCenter"
                 android:contentDescription="@null" />
 
             <!-- Botón Pista Siguiente -->
             <ImageButton
                 android:id="@+id/widget_btn_next"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
                 android:layout_marginStart="16dp"
+                android:padding="12dp"
                 android:background="@android:color/transparent"
                 android:src="@drawable/ic_skip_next"
-                android:scaleType="centerInside"
+                android:scaleType="fitCenter"
                 android:contentDescription="@null" />
         </LinearLayout>
 

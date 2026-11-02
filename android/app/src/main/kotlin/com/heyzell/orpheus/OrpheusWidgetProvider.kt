@@ -39,6 +39,20 @@ class OrpheusWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: android.os.Bundle?
+    ) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+        try {
+            updateAppWidget(context, appWidgetManager, appWidgetId)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Unhandled exception in onAppWidgetOptionsChanged", t)
+        }
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         try {
             super.onReceive(context, intent)
@@ -55,7 +69,9 @@ class OrpheusWidgetProvider : AppWidgetProvider() {
         const val ACTION_TOGGLE_LIKE = "com.heyzell.orpheus.ACTION_TOGGLE_LIKE"
 
         /**
-         * Safely loads, subsamples, and optionally rounds a bitmap from disk.
+         * Safely loads, center-crops to target aspect ratio, subsamples, and rounds a bitmap from disk.
+         * Crucially, the rounded corners (24dp) are applied directly to the final cropped canvas bounds,
+         * ensuring the corner curves match the widget container without being sliced off by centerCrop.
          */
         fun loadOptimizedBitmap(
             filePath: String?,
@@ -95,7 +111,8 @@ class OrpheusWidgetProvider : AppWidgetProvider() {
                 val rawBitmap = BitmapFactory.decodeFile(file.absolutePath, decodeOptions) ?: return null
 
                 if (cornerRadiusDp > 0f && context != null) {
-                    toRoundedBitmap(rawBitmap, cornerRadiusDp * context.resources.displayMetrics.density)
+                    val cornerRadiusPx = cornerRadiusDp * context.resources.displayMetrics.density
+                    toCropRoundedBitmap(rawBitmap, reqWidth, reqHeight, cornerRadiusPx)
                 } else {
                     rawBitmap
                 }
@@ -105,14 +122,36 @@ class OrpheusWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        private fun toRoundedBitmap(bitmap: Bitmap, cornerRadiusPx: Float): Bitmap {
-            val output = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+        private fun toCropRoundedBitmap(
+            source: Bitmap,
+            targetWidth: Int,
+            targetHeight: Int,
+            cornerRadiusPx: Float
+        ): Bitmap {
+            val output = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(output)
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-            val rect = RectF(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat())
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+
+            // 1. Draw rounded rectangle mask
+            val rect = RectF(0f, 0f, targetWidth.toFloat(), targetHeight.toFloat())
             canvas.drawRoundRect(rect, cornerRadiusPx, cornerRadiusPx, paint)
+
+            // 2. Compute centerCrop transformation
+            val srcWidth = source.width.toFloat()
+            val srcHeight = source.height.toFloat()
+            val scale = maxOf(targetWidth.toFloat() / srcWidth, targetHeight.toFloat() / srcHeight)
+            val dx = (targetWidth.toFloat() - srcWidth * scale) * 0.5f
+            val dy = (targetHeight.toFloat() - srcHeight * scale) * 0.5f
+
+            val matrix = android.graphics.Matrix().apply {
+                setScale(scale, scale)
+                postTranslate(dx, dy)
+            }
+
+            // 3. Draw source bitmap masked strictly inside the rounded rect
             paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
-            canvas.drawBitmap(bitmap, 0f, 0f, paint)
+            canvas.drawBitmap(source, matrix, paint)
+
             return output
         }
 
@@ -259,7 +298,21 @@ class OrpheusWidgetProvider : AppWidgetProvider() {
                 views.setTextViewText(R.id.widget_track_title, title)
                 views.setTextViewText(R.id.widget_track_artist, artist)
 
-                val coverBitmap = loadOptimizedBitmap(coverPath, 400, 400)
+                // Widget es cuadrado (2×2 celdas). Usamos el menor de los dos ejes como lado del cuadrado.
+                val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
+                val widthDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH).takeIf { it > 0 } ?: 160
+                val heightDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT).takeIf { it > 0 } ?: 160
+                val sideDp = minOf(widthDp, heightDp)
+                val density = context.resources.displayMetrics.density
+                val sidePx = maxOf((sideDp * density).toInt(), 540)
+
+                val coverBitmap = loadOptimizedBitmap(
+                    filePath = coverPath,
+                    reqWidth = sidePx,
+                    reqHeight = sidePx,
+                    cornerRadiusDp = 24f,
+                    context = context
+                )
                 if (coverBitmap != null) {
                     views.setImageViewBitmap(R.id.widget_cover_image, coverBitmap)
                 } else {

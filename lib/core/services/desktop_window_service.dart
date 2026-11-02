@@ -84,7 +84,7 @@ class DesktopWindowService {
     }
   }
 
-  /// Enters floating Mini Player mode.
+  /// Enters floating Mini Player mode with rigid 730x380 geometry lock.
   ///
   /// Protected by strict desktop platform checks and individual try-catch blocks
   /// so that missing native plugins (e.g. on Linux) never halt resizing or state changes.
@@ -106,20 +106,17 @@ class DesktopWindowService {
         _savedWindowPosition = await windowManager.getPosition();
       } catch (_) {}
 
-      // Critical geometry calls: enforce exact dimensions for Mini Player exclusively
+      // 1. Rigorous geometric lock: min == max forces Mutter/Wayland to freeze resize handles
       try {
         await windowManager.setMinimumSize(kMiniReactorSize);
-      } catch (e) {
-        DebugLogger.log('DesktopWindowService: setMinimumSize error: $e');
-      }
-
-      try {
+        await windowManager.setMaximumSize(kMiniReactorSize);
         await windowManager.setSize(kMiniReactorSize);
+        await windowManager.setResizable(false);
       } catch (e) {
-        DebugLogger.log('DesktopWindowService: setSize error: $e');
+        DebugLogger.log('DesktopWindowService: mini-player geometry lock error: $e');
       }
 
-      // Cosmetic styling calls individually shielded against MissingPluginException on Linux
+      // 2. Styling & floating behavior
       try {
         await windowManager.setAlwaysOnTop(true);
       } catch (e) {
@@ -148,7 +145,7 @@ class DesktopWindowService {
     isMiniPlayerNotifier.value = true;
   }
 
-  /// Exits Mini Player mode and restores standard window geometry.
+  /// Exits Mini Player mode and cleanly restores main window standard geometry.
   ///
   /// Protected by strict desktop platform checks and individual try-catch blocks.
   Future<void> exitMiniPlayer() async {
@@ -166,12 +163,16 @@ class DesktopWindowService {
         DebugLogger.log('DesktopWindowService: setAlwaysOnTop error: $e');
       }
 
-      // On Linux, restore title bar style so GTK properly restores window decorations/resizing
-      if (Platform.isLinux) {
-        try {
-          await windowManager.setTitleBarStyle(TitleBarStyle.normal);
-          await windowManager.setTitleBarStyle(TitleBarStyle.hidden);
-        } catch (_) {}
+      // 1. Release maximum size constraint FIRST to prevent min > max collision in Mutter
+      try {
+        if (Platform.isLinux) {
+          // Negative dimensions turn off GDK_HINT_MAX_SIZE in window_manager_plugin.cc
+          await windowManager.setMaximumSize(const Size(-1, -1));
+        } else {
+          await windowManager.setMaximumSize(Size.zero);
+        }
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: release maximumSize error: $e');
       }
 
       if (!Platform.isLinux) {
@@ -180,28 +181,34 @@ class DesktopWindowService {
         } catch (_) {}
       }
 
-      try {
-        await windowManager.setMinimumSize(kStandardMinSize);
-      } catch (e) {
-        DebugLogger.log('DesktopWindowService: setMinimumSize error: $e');
-      }
-
-      try {
-        await windowManager.setSize(targetSize);
-      } catch (e) {
-        DebugLogger.log('DesktopWindowService: setSize error: $e');
-      }
-
+      // 2. Enable resizability and apply target dimensions
       try {
         await windowManager.setResizable(true);
+        await windowManager.setSize(targetSize);
+        await windowManager.setMinimumSize(kStandardMinSize);
       } catch (e) {
-        DebugLogger.log('DesktopWindowService: setResizable error: $e');
+        DebugLogger.log('DesktopWindowService: exit geometry error: $e');
       }
 
-      if (_savedWindowPosition != null) {
+      if (_savedWindowPosition != null && !Platform.isLinux) {
+        // setPosition is unprivileged/no-op on Wayland xdg_toplevel
         try {
           await windowManager.setPosition(_savedWindowPosition!);
         } catch (_) {}
+      }
+
+      // 3. Post-commit reassertion for Linux/Wayland:
+      // Once Mutter completes the configure/commit cycle for 1280x800, reaffirm
+      // kStandardMinSize so GTK's internal size-allocation never overrides it.
+      if (Platform.isLinux) {
+        Future.delayed(const Duration(milliseconds: 100), () async {
+          try {
+            if (!isMiniPlayerActive) {
+              await windowManager.setMinimumSize(kStandardMinSize);
+              await windowManager.setResizable(true);
+            }
+          } catch (_) {}
+        });
       }
     }
 
