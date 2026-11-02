@@ -84,10 +84,11 @@ class DesktopWindowService {
     }
   }
 
-  /// Enters floating Mini Player mode with clean sizing before freezing interactions.
+  /// Enters floating Mini Player mode.
   ///
-  /// Protected by strict desktop platform checks and individual try-catch blocks
-  /// so that missing native plugins (e.g. on Linux) never halt resizing or state changes.
+  /// Protected by strict desktop platform checks and individual try-catch blocks.
+  /// On Linux (Wayland/Mutter), avoids runtime decoration changes (setAsFrameless)
+  /// and abrupt resizable toggles that destroy the FlView or desynchronize EGL buffers.
   Future<void> enterMiniPlayer() async {
     if (!isDesktop || isMiniPlayerActive) return;
 
@@ -106,41 +107,30 @@ class DesktopWindowService {
         _savedWindowPosition = await windowManager.getPosition();
       } catch (_) {}
 
-      // 1. Ensure resizability is active so GTK/Mutter cleanly processes the size reduction
+      // 1. Pure geometric resizing (seamless across EGL/Wayland on Linux)
       try {
-        await windowManager.setResizable(true);
         await windowManager.setSize(kMiniReactorSize);
       } catch (e) {
         DebugLogger.log('DesktopWindowService: setSize error: $e');
       }
 
-      // Small frame delay so GTK and Wayland allocate the 730x380 buffer before freezing borders
-      await Future.delayed(const Duration(milliseconds: 25));
-
-      // 2. Freeze resize interactions once the window geometry is set
-      try {
-        await windowManager.setResizable(false);
-      } catch (e) {
-        DebugLogger.log('DesktopWindowService: setResizable error: $e');
-      }
-
-      // 3. Styling & floating behavior
+      // 2. Safe floating behavior
       try {
         await windowManager.setAlwaysOnTop(true);
       } catch (e) {
         DebugLogger.log('DesktopWindowService: setAlwaysOnTop error: $e');
       }
 
+      // 3. Platform-specific styling:
+      // On Linux, setAsFrameless() invokes gtk_window_set_decorated(false) which
+      // forces GTK to unrealize the window, destroying FlView / FlTaskRunner and
+      // causing a segmentation fault. Thus, frameless/shadow are macOS/Windows only.
       if (!Platform.isLinux) {
         try {
           await windowManager.setHasShadow(false);
+          await windowManager.setAsFrameless();
+          await windowManager.setResizable(false);
         } catch (_) {}
-      }
-
-      try {
-        await windowManager.setAsFrameless();
-      } catch (e) {
-        DebugLogger.log('DesktopWindowService: setAsFrameless error: $e');
       }
     }
 
@@ -171,27 +161,15 @@ class DesktopWindowService {
         DebugLogger.log('DesktopWindowService: setAlwaysOnTop error: $e');
       }
 
-      // 1. Release maximum size constraint FIRST to prevent min > max collision in Mutter
-      try {
-        if (Platform.isLinux) {
-          // Negative dimensions turn off GDK_HINT_MAX_SIZE in window_manager_plugin.cc
-          await windowManager.setMaximumSize(const Size(-1, -1));
-        } else {
-          await windowManager.setMaximumSize(Size.zero);
-        }
-      } catch (e) {
-        DebugLogger.log('DesktopWindowService: release maximumSize error: $e');
-      }
-
       if (!Platform.isLinux) {
         try {
+          await windowManager.setResizable(true);
           await windowManager.setHasShadow(true);
         } catch (_) {}
       }
 
-      // 2. Enable resizability and apply target dimensions
+      // Restore target size and standard minimum bounds cleanly
       try {
-        await windowManager.setResizable(true);
         await windowManager.setSize(targetSize);
         await windowManager.setMinimumSize(kStandardMinSize);
       } catch (e) {
@@ -203,21 +181,6 @@ class DesktopWindowService {
         try {
           await windowManager.setPosition(_savedWindowPosition!);
         } catch (_) {}
-      }
-
-      // 3. Post-commit reassertion for Linux/Wayland:
-      // Once Mutter completes the configure/commit cycle for 1280x800, reaffirm
-      // kStandardMinSize and max(-1, -1) so GTK's internal size-allocation never overrides it.
-      if (Platform.isLinux) {
-        Future.delayed(const Duration(milliseconds: 100), () async {
-          try {
-            if (!isMiniPlayerActive) {
-              await windowManager.setMaximumSize(const Size(-1, -1));
-              await windowManager.setMinimumSize(kStandardMinSize);
-              await windowManager.setResizable(true);
-            }
-          } catch (_) {}
-        });
       }
     }
 
