@@ -50,6 +50,7 @@ class _OrbReactorViewState extends State<OrbReactorView>
     final handler = OrpheusAudioHandler.hasInstance ? OrpheusAudioHandler.instance : null;
     final trackStream = handler?.currentTrackStream;
     final playingStream = handler?.isPlayingStream;
+    final volumeStream = handler?.volumeStream;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -93,73 +94,114 @@ class _OrbReactorViewState extends State<OrbReactorView>
                   builder: (context, playingSnap) {
                     final isPlaying = playingSnap.data ?? false;
 
-                    return Stack(
-                      children: [
-                        // Background drag area covering the entire widget
-                        const Positioned.fill(
-                          child: DragToMoveArea(
-                            child: SizedBox.expand(),
-                          ),
-                        ),
+                    return StreamBuilder<double>(
+                      stream: volumeStream,
+                      initialData: handler?.volume ?? 1.0,
+                      builder: (context, volumeSnap) {
+                        final volume = volumeSnap.data ?? 1.0;
 
-                        // Main Content Layer
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              // 1. Top Header: Title, Artist, Like, and Restore buttons
-                              OrbHeaderRow(track: track),
+                        return Stack(
+                          children: [
+                            // Background drag area covering the entire widget
+                            const Positioned.fill(
+                              child: DragToMoveArea(
+                                child: SizedBox.expand(),
+                              ),
+                            ),
 
-                              // 2. Center: Orb Disc with Harmonic Wave Reactor & Volume Stack
-                              Expanded(
-                                child: Stack(
-                                  alignment: Alignment.center,
-                                  children: [
-                                    // Animated Audio Waves (RepaintBoundary for isolated GPU rasterization)
-                                    Positioned.fill(
-                                      child: RepaintBoundary(
-                                        child: AnimatedBuilder(
-                                          animation: _waveController,
-                                          builder: (context, _) {
-                                            return CustomPaint(
-                                              painter: ReactorWavesPainter(
-                                                animationValue: _waveController.value,
-                                                isPlaying: isPlaying,
-                                                accentColor: AppTheme.accent,
-                                                secondaryColor: const Color(0xFF8B5CF6),
+                            // Main Content Layer with generous margins (top: 36px, left: 24px) placing metadata cleanly below macOS buttons
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(24.0, 36.0, 24.0, 18.0),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  // 1. Top Header: Title, Artist, Like, and Restore buttons
+                                  OrbHeaderRow(track: track),
+
+                                  // 2. Center: Panoramic Harmonic Wave Reactor & Orb Core Disc with Volume Column
+                                  Expanded(
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                      child: Stack(
+                                        alignment: Alignment.center,
+                                        children: [
+                                          // Panoramic Audio Waves Layer expanding horizontally across the entire width
+                                          // with lateral ShaderMask fade preventing collisions with text & volume stack
+                                          Positioned.fill(
+                                            child: ShaderMask(
+                                              shaderCallback: (Rect bounds) {
+                                                return const LinearGradient(
+                                                  begin: Alignment.centerLeft,
+                                                  end: Alignment.centerRight,
+                                                  colors: [
+                                                    Colors.transparent,
+                                                    Colors.white,
+                                                    Colors.white,
+                                                    Colors.transparent,
+                                                  ],
+                                                  stops: [0.0, 0.16, 0.84, 1.0],
+                                                ).createShader(bounds);
+                                              },
+                                              blendMode: BlendMode.dstIn,
+                                              child: RepaintBoundary(
+                                                child: AnimatedBuilder(
+                                                  animation: _waveController,
+                                                  builder: (context, _) {
+                                                    return CustomPaint(
+                                                      size: Size.infinite,
+                                                      painter: ReactorWavesPainter(
+                                                        animationValue: _waveController.value,
+                                                        isPlaying: isPlaying,
+                                                        volume: volume,
+                                                        accentColor: AppTheme.accent,
+                                                        secondaryColor: const Color(0xFF8B5CF6),
+                                                        magentaColor: const Color(0xFFD946EF),
+                                                      ),
+                                                    );
+                                                  },
+                                                ),
                                               ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                    ),
+                                            ),
+                                          ),
 
-                                    // Central Rotating Album Orb Disc
-                                    CentralOrbDisc(
-                                      coverPath: track?.customMetadata.customCoverPath,
-                                      isPlaying: isPlaying,
-                                      size: 118,
-                                      accentColor: AppTheme.accent,
-                                    ),
+                                      // Foreground Row: Symmetrical spacer, Central Vinyl Disc, Volume Column
+                                      Row(
+                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                        children: [
+                                          // Symmetrical left spacer balancing the right volume stack
+                                          const SizedBox(width: 32),
 
-                                    // Right Vertical Battery Volume Stack
-                                    const Positioned(
-                                      right: 2,
-                                      child: VolumeEnergyStack(
-                                        width: 20.0,
-                                        height: 95.0,
-                                        segments: 6,
+                                          // Central Rotating Album Orb Disc
+                                          Expanded(
+                                            child: Center(
+                                              child: CentralOrbDisc(
+                                                coverPath: track?.customMetadata.customCoverPath,
+                                                isPlaying: isPlaying,
+                                                size: 122,
+                                                accentColor: AppTheme.accent,
+                                              ),
+                                            ),
+                                          ),
+
+                                          // Right: Dedicated column for Volume Energy Stack
+                                          const SizedBox(
+                                            width: 32,
+                                            child: Center(
+                                              child: VolumeEnergyStack(
+                                                width: 22.0,
+                                                height: 105.0,
+                                                segments: 6,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
 
-                              // 3. Bottom: Progress bar and transport controls
+                              // 3. Bottom: Progress bar with timestamps and transport controls
                               OrbBottomTransport(
                                 track: track,
                                 isPlaying: isPlaying,
@@ -173,7 +215,9 @@ class _OrbReactorViewState extends State<OrbReactorView>
                   },
                 );
               },
-            ),
+            );
+          },
+        ),
           ),
         ),
       ),

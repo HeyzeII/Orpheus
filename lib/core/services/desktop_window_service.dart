@@ -22,10 +22,10 @@ class DesktopWindowService {
   bool get isMiniPlayerActive => isMiniPlayerNotifier.value;
 
   /// Target compact dimensions for the Mini Player.
-  static const Size kMiniPlayerSize = Size(320, 320);
+  static const Size kMiniPlayerSize = Size(490, 350);
 
   /// Minimum window size allowed in Mini Player mode.
-  static const Size kMiniPlayerMinSize = Size(280, 280);
+  static const Size kMiniPlayerMinSize = Size(420, 300);
 
   /// Standard minimum window size restored when exiting Mini Player.
   static const Size kStandardMinSize = Size(950, 650);
@@ -63,6 +63,7 @@ class DesktopWindowService {
         await windowManager.setSize(kMiniPlayerSize);
         await windowManager.setResizable(false);
         await windowManager.setAlwaysOnTop(true);
+        await windowManager.setHasShadow(false);
         await windowManager.setBackgroundColor(Colors.transparent);
       } catch (e) {
         DebugLogger.log('DesktopWindowService: Error entering mini player: $e');
@@ -75,16 +76,18 @@ class DesktopWindowService {
   /// Exits Mini Player mode and restores standard window geometry.
   ///
   /// 1. Deactivates "Always on Top" (`setAlwaysOnTop(false)`).
-  /// 2. Restores standard minimum size to [kStandardMinSize].
-  /// 3. Restores saved window size and position.
-  /// 4. Re-enables window resizing (`setResizable(true)`).
-  /// 5. Updates [isMiniPlayerNotifier].
+  /// 2. Restores window shadow (`setHasShadow(true)`).
+  /// 3. Restores standard minimum size to [kStandardMinSize].
+  /// 4. Restores saved window size and position.
+  /// 5. Re-enables window resizing (`setResizable(true)`).
+  /// 6. Updates [isMiniPlayerNotifier].
   Future<void> exitMiniPlayer() async {
     if (!isDesktop || !isMiniPlayerActive) return;
 
     if (_canInvokeNativeWindow) {
       try {
         await windowManager.setAlwaysOnTop(false);
+        await windowManager.setHasShadow(true);
         await windowManager.setMinimumSize(kStandardMinSize);
         await windowManager.setSize(_savedWindowSize);
         if (_savedWindowPosition != null) {

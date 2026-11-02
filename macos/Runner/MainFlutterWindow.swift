@@ -2,6 +2,11 @@ import Cocoa
 import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
+  override var isOpaque: Bool {
+    get { return false }
+    set { super.isOpaque = false }
+  }
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     var windowFrame = self.frame
@@ -12,18 +17,11 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
-    // Window transparency, background movement, and glassmorphic vibrancy support
+    // Window and FlutterView transparency and background movement support
     self.isOpaque = false
     self.backgroundColor = .clear
     self.isMovableByWindowBackground = true
-
-    // Add frosted glass visual effect view behind Flutter content
-    let visualEffectView = NSVisualEffectView(frame: self.contentView?.bounds ?? .zero)
-    visualEffectView.autoresizingMask = [.width, .height]
-    visualEffectView.blendingMode = .behindWindow
-    visualEffectView.material = .underWindowBackground
-    visualEffectView.state = .active
-    self.contentView?.addSubview(visualEffectView, positioned: .below, relativeTo: flutterViewController.view)
+    flutterViewController.backgroundColor = .clear
 
     super.awakeFromNib()
   }

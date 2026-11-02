@@ -11,18 +11,23 @@ class OrbHeaderRow extends StatelessWidget {
   const OrbHeaderRow({
     super.key,
     required this.track,
+    this.leftClearance,
   });
 
   final Track? track;
+  final double? leftClearance;
 
   @override
   Widget build(BuildContext context) {
     final title = track?.displayTitle ?? 'Orpheus';
     final artist = track?.displayArtist ?? 'Escucha algo grandioso';
+    final double safeLeft = leftClearance ?? 0.0;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        if (safeLeft > 0) SizedBox(width: safeLeft),
+
         // Track Title & Artist (Top-left)
         Expanded(
           child: Column(
@@ -35,20 +40,21 @@ class OrbHeaderRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontFamily: 'Outfit',
-                  fontSize: 12.5,
+                  fontSize: 16.5,
                   fontWeight: FontWeight.bold,
-                  letterSpacing: 0.3,
+                  letterSpacing: -0.2,
                   color: AppTheme.textPrimary,
                 ),
               ),
-              const SizedBox(height: 1),
+              const SizedBox(height: 2),
               Text(
                 artist,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontFamily: 'Inter',
-                  fontSize: 10.5,
+                  fontSize: 11.0,
+                  fontWeight: FontWeight.w500,
                   color: AppTheme.textSecondary,
                 ),
               ),
@@ -105,7 +111,7 @@ class OrbBottomTransport extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Micro Progress Bar
+        // Micro Progress Bar with Elapsed & Total Timestamps
         StreamBuilder<Duration>(
           stream: handler?.positionStream,
           builder: (context, posSnap) {
@@ -121,14 +127,48 @@ class OrbBottomTransport extends StatelessWidget {
                   ratio = (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0);
                 }
 
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: LinearProgressIndicator(
-                    value: ratio,
-                    minHeight: 2.2,
-                    backgroundColor: Colors.white.withOpacity(0.08),
-                    valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accent),
-                  ),
+                return Row(
+                  children: [
+                    SizedBox(
+                      width: 32,
+                      child: Text(
+                        _formatDuration(pos),
+                        textAlign: TextAlign.start,
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(2.5),
+                        child: LinearProgressIndicator(
+                          value: ratio,
+                          minHeight: 2.8,
+                          backgroundColor: Colors.white.withOpacity(0.08),
+                          valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accent),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 32,
+                      child: Text(
+                        _formatDuration(dur),
+                        textAlign: TextAlign.end,
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
                 );
               },
             );
@@ -144,7 +184,7 @@ class OrbBottomTransport extends StatelessWidget {
             // Previous
             _OrbTransportIconButton(
               icon: Icons.skip_previous_rounded,
-              size: 20,
+              size: 26,
               tooltip: 'Anterior',
               onTap: () => handler?.skipToPrevious(),
             ),
@@ -163,23 +203,23 @@ class OrbBottomTransport extends StatelessWidget {
                 }
               },
               child: Container(
-                width: 38,
-                height: 38,
+                width: 46,
+                height: 46,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: AppTheme.textPrimary,
                   boxShadow: [
                     BoxShadow(
                       color: AppTheme.accent.withOpacity(0.40),
-                      blurRadius: 10,
-                      spreadRadius: 1,
+                      blurRadius: 14,
+                      spreadRadius: 2,
                     ),
                   ],
                 ),
                 child: Icon(
                   isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                   color: AppTheme.bgDeep,
-                  size: 22,
+                  size: 28,
                 ),
               ),
             ),
@@ -189,7 +229,7 @@ class OrbBottomTransport extends StatelessWidget {
             // Next
             _OrbTransportIconButton(
               icon: Icons.skip_next_rounded,
-              size: 20,
+              size: 26,
               tooltip: 'Siguiente',
               onTap: () => handler?.skipToNext(),
             ),
@@ -224,8 +264,8 @@ class _OrbActionButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           hoverColor: Colors.white.withOpacity(0.08),
           child: Padding(
-            padding: const EdgeInsets.all(5),
-            child: Icon(icon, size: 16, color: iconColor),
+            padding: const EdgeInsets.all(7),
+            child: Icon(icon, size: 20, color: iconColor),
           ),
         ),
       ),
@@ -257,7 +297,7 @@ class _OrbTransportIconButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           hoverColor: Colors.white.withOpacity(0.08),
           child: Padding(
-            padding: const EdgeInsets.all(6),
+            padding: const EdgeInsets.all(8),
             child: Icon(
               icon,
               size: size,
@@ -269,3 +309,10 @@ class _OrbTransportIconButton extends StatelessWidget {
     );
   }
 }
+
+String _formatDuration(Duration d) {
+  final minutes = d.inMinutes;
+  final seconds = d.inSeconds % 60;
+  return '$minutes:${seconds.toString().padLeft(2, '0')}';
+}
+

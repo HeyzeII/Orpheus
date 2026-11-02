@@ -39,6 +39,8 @@ class TrackStats {
   /// the timezone — Orpheus always uses local time.
   void recordPlay(String monthKey) {
     totalPlays++;
+    playMonths = List<String>.from(playMonths);
+    playCountsPerMonth = List<int>.from(playCountsPerMonth);
     final index = playMonths.indexOf(monthKey);
     if (index == -1) {
       playMonths.add(monthKey);

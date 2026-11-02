@@ -28,22 +28,43 @@ void main() {
         animationValue: 0.2,
         isPlaying: false,
       );
+      final painter5 = ReactorWavesPainter(
+        animationValue: 0.2,
+        isPlaying: true,
+        magentaColor: const Color(0xFFFF0055),
+      );
+      final painter6 = ReactorWavesPainter(
+        animationValue: 0.2,
+        isPlaying: true,
+        volume: 0.5,
+      );
 
       expect(painter1.shouldRepaint(painter2), isFalse);
       expect(painter1.shouldRepaint(painter3), isTrue);
       expect(painter1.shouldRepaint(painter4), isTrue);
+      expect(painter1.shouldRepaint(painter5), isTrue);
+      expect(painter1.shouldRepaint(painter6), isTrue);
     });
 
-    test('ReactorWavesPainter paints valid paths on Canvas without errors', () {
+    test('ReactorWavesPainter paints spectrum bars and harmonic rings without errors', () {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
-      final painter = ReactorWavesPainter(
+      final painterPlaying = ReactorWavesPainter(
         animationValue: 0.35,
         isPlaying: true,
       );
 
-      // Paint at standard size (250x250)
-      expect(() => painter.paint(canvas, const Size(250, 250)), returnsNormally);
+      // Paint at panoramic size (400x210) and compact size (220x220)
+      expect(() => painterPlaying.paint(canvas, const Size(400, 210)), returnsNormally);
+      expect(() => painterPlaying.paint(canvas, const Size(220, 220)), returnsNormally);
+
+      final painterPaused = ReactorWavesPainter(
+        animationValue: 0.0,
+        isPlaying: false,
+      );
+      expect(() => painterPaused.paint(canvas, const Size(400, 210)), returnsNormally);
+      expect(() => painterPaused.paint(canvas, const Size(220, 220)), returnsNormally);
+
       final picture = recorder.endRecording();
       expect(picture, isNotNull);
     });
@@ -103,6 +124,33 @@ void main() {
       expect(find.text('Cyberpunk Odyssey'), findsOneWidget);
       expect(find.text('Orpheus Reactor'), findsOneWidget);
       expect(find.byIcon(Icons.open_in_full_rounded), findsOneWidget);
+    });
+
+    testWidgets('OrbBottomTransport renders progress bar, timestamps, and controls', (tester) async {
+      final sampleTrack = Track()
+        ..trackId = 'orb-test-2'
+        ..title = 'Neon Skyline'
+        ..duration = 200; // 3:20
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: OrbBottomTransport(
+              track: sampleTrack,
+              isPlaying: false,
+              handler: null,
+            ),
+          ),
+        ),
+      );
+
+      // Verify timestamps: 0:00 (left) and 3:20 (right)
+      expect(find.text('0:00'), findsOneWidget);
+      expect(find.text('3:20'), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      expect(find.byIcon(Icons.skip_previous_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.skip_next_rounded), findsOneWidget);
     });
   });
 }
