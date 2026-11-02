@@ -84,7 +84,7 @@ class DesktopWindowService {
     }
   }
 
-  /// Enters floating Mini Player mode with rigid 730x380 geometry lock.
+  /// Enters floating Mini Player mode with clean sizing before freezing interactions.
   ///
   /// Protected by strict desktop platform checks and individual try-catch blocks
   /// so that missing native plugins (e.g. on Linux) never halt resizing or state changes.
@@ -106,17 +106,25 @@ class DesktopWindowService {
         _savedWindowPosition = await windowManager.getPosition();
       } catch (_) {}
 
-      // 1. Rigorous geometric lock: min == max forces Mutter/Wayland to freeze resize handles
+      // 1. Ensure resizability is active so GTK/Mutter cleanly processes the size reduction
       try {
-        await windowManager.setMinimumSize(kMiniReactorSize);
-        await windowManager.setMaximumSize(kMiniReactorSize);
+        await windowManager.setResizable(true);
         await windowManager.setSize(kMiniReactorSize);
-        await windowManager.setResizable(false);
       } catch (e) {
-        DebugLogger.log('DesktopWindowService: mini-player geometry lock error: $e');
+        DebugLogger.log('DesktopWindowService: setSize error: $e');
       }
 
-      // 2. Styling & floating behavior
+      // Small frame delay so GTK and Wayland allocate the 730x380 buffer before freezing borders
+      await Future.delayed(const Duration(milliseconds: 25));
+
+      // 2. Freeze resize interactions once the window geometry is set
+      try {
+        await windowManager.setResizable(false);
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: setResizable error: $e');
+      }
+
+      // 3. Styling & floating behavior
       try {
         await windowManager.setAlwaysOnTop(true);
       } catch (e) {
@@ -199,11 +207,12 @@ class DesktopWindowService {
 
       // 3. Post-commit reassertion for Linux/Wayland:
       // Once Mutter completes the configure/commit cycle for 1280x800, reaffirm
-      // kStandardMinSize so GTK's internal size-allocation never overrides it.
+      // kStandardMinSize and max(-1, -1) so GTK's internal size-allocation never overrides it.
       if (Platform.isLinux) {
         Future.delayed(const Duration(milliseconds: 100), () async {
           try {
             if (!isMiniPlayerActive) {
+              await windowManager.setMaximumSize(const Size(-1, -1));
               await windowManager.setMinimumSize(kStandardMinSize);
               await windowManager.setResizable(true);
             }
