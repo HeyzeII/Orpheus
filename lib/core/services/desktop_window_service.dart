@@ -47,7 +47,7 @@ class DesktopWindowService {
       isDesktop && !Platform.environment.containsKey('FLUTTER_TEST');
 
   /// Initializes desktop window settings for the main window, ensuring resizability
-  /// and standard minimum dimensions without forcing any mini-player geometry.
+  /// and standard minimum dimensions from startup without forcing any mini-player geometry.
   Future<void> initialize() async {
     if (!isDesktop || !_canInvokeNativeWindow) return;
 
@@ -68,6 +68,19 @@ class DesktopWindowService {
       await windowManager.setResizable(true);
     } catch (e) {
       DebugLogger.log('DesktopWindowService: setResizable error: $e');
+    }
+
+    // On Linux/X11/Wayland, re-assert once the compositor has mapped the window
+    // to guarantee Mutter/GNOME enforces kStandardMinSize from frame zero.
+    if (Platform.isLinux) {
+      Future.delayed(const Duration(milliseconds: 100), () async {
+        try {
+          if (!isMiniPlayerActive) {
+            await windowManager.setMinimumSize(kStandardMinSize);
+            await windowManager.setResizable(true);
+          }
+        } catch (_) {}
+      });
     }
   }
 

@@ -143,10 +143,10 @@ void main() async {
       );
       await windowManager.waitUntilReadyToShow(windowOptions, () async {
         await windowManager.setSize(initialSize);
-        await windowManager.setMinimumSize(minSize);
-        await DesktopWindowService.instance.initialize();
+        await windowManager.setMinimumSize(DesktopWindowService.kStandardMinSize);
         await windowManager.show();
         await windowManager.focus();
+        await DesktopWindowService.instance.initialize();
       });
     } catch (e) {
       DebugLogger.log('WindowManager initialization notice: $e');
