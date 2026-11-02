@@ -19,9 +19,9 @@ void main() {
     test('initializes with mini player inactive and correct target dimensions', () {
       expect(service.isMiniPlayerActive, isFalse);
       expect(service.isMiniPlayerNotifier.value, isFalse);
-      expect(DesktopWindowService.kMiniPlayerSize.width, 440.0);
+      expect(DesktopWindowService.kMiniPlayerSize.width, 490.0);
       expect(DesktopWindowService.kMiniPlayerSize.height, 350.0);
-      expect(DesktopWindowService.kMiniPlayerMinSize.width, 380.0);
+      expect(DesktopWindowService.kMiniPlayerMinSize.width, 420.0);
       expect(DesktopWindowService.kMiniPlayerMinSize.height, 300.0);
       expect(DesktopWindowService.kStandardMinSize.width, 950.0);
       expect(DesktopWindowService.kStandardMinSize.height, 650.0);
