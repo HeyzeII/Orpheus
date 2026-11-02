@@ -122,30 +122,34 @@ class _DesktopTitleBarState extends State<DesktopTitleBar> with WindowListener {
               else
                 _buildBranding(),
 
-              // ── Center: Draggable title region ──
+              // ── Center: Draggable title region with double-click maximize ──
               Expanded(
                 child: DragToMoveArea(
-                  child: Center(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.graphic_eq_rounded,
-                          size: 14,
-                          color: AppTheme.accent.withOpacity(0.9),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Orpheus',
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.5,
-                            color: Colors.white.withOpacity(0.75),
+                  child: GestureDetector(
+                    onDoubleTap: _handleToggleMaximize,
+                    behavior: HitTestBehavior.translucent,
+                    child: Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.graphic_eq_rounded,
+                            size: 14,
+                            color: AppTheme.accent.withOpacity(0.9),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Text(
+                            'Orpheus',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.5,
+                              color: Colors.white.withOpacity(0.75),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -191,32 +195,36 @@ class _DesktopTitleBarState extends State<DesktopTitleBar> with WindowListener {
 
   Widget _buildBranding() {
     return DragToMoveArea(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14.0),
-        alignment: Alignment.centerLeft,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 7,
-              height: 7,
-              decoration: const BoxDecoration(
-                color: AppTheme.accent,
-                shape: BoxShape.circle,
+      child: GestureDetector(
+        onDoubleTap: _handleToggleMaximize,
+        behavior: HitTestBehavior.translucent,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14.0),
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: const BoxDecoration(
+                  color: AppTheme.accent,
+                  shape: BoxShape.circle,
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'ORPHEUS',
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.2,
-                color: Colors.white.withOpacity(0.85),
+              const SizedBox(width: 8),
+              Text(
+                'ORPHEUS',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                  color: Colors.white.withOpacity(0.85),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

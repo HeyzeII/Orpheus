@@ -46,8 +46,8 @@ class DesktopWindowService {
   bool get _canInvokeNativeWindow =>
       isDesktop && !Platform.environment.containsKey('FLUTTER_TEST');
 
-  /// Initializes desktop window settings, removing native GNOME/Mutter title bars (frameless mode)
-  /// and applying soft window shadows.
+  /// Initializes desktop window settings, removing native GNOME/Mutter title bars (frameless mode),
+  /// applying soft window shadows, setting standard minimum dimensions, and ensuring resizability.
   Future<void> initialize() async {
     if (!isDesktop || !_canInvokeNativeWindow) return;
     try {
@@ -59,6 +59,23 @@ class DesktopWindowService {
       await windowManager.setHasShadow(true);
     } catch (e) {
       DebugLogger.log('DesktopWindowService: setHasShadow error: $e');
+    }
+    if (Platform.isLinux) {
+      try {
+        await windowManager.setMaximumSize(const Size(-1, -1));
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: setMaximumSize error: $e');
+      }
+    }
+    try {
+      await windowManager.setMinimumSize(kStandardMinSize);
+    } catch (e) {
+      DebugLogger.log('DesktopWindowService: setMinimumSize error: $e');
+    }
+    try {
+      await windowManager.setResizable(true);
+    } catch (e) {
+      DebugLogger.log('DesktopWindowService: setResizable error: $e');
     }
   }
 
@@ -177,6 +194,12 @@ class DesktopWindowService {
         await windowManager.setSize(targetSize);
       } catch (e) {
         DebugLogger.log('DesktopWindowService: setSize error: $e');
+      }
+
+      try {
+        await windowManager.setResizable(true);
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: setResizable reassert error: $e');
       }
 
       if (_savedWindowPosition != null) {
