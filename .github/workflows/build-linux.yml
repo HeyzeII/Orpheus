@@ -57,6 +57,8 @@ jobs:
           BUNDLE_DIR="build/linux/x64/release/bundle"
           cp packaging/linux/org.heyzell.Orpheus.desktop "$BUNDLE_DIR/"
           cp packaging/linux/org.heyzell.Orpheus.png "$BUNDLE_DIR/"
+          cp install.sh "$BUNDLE_DIR/"
+          chmod +x "$BUNDLE_DIR/install.sh"
           tar -czvf orpheus-linux-x64.tar.gz -C "$BUNDLE_DIR" .
 
       - name: Upload Linux Release Artifact
