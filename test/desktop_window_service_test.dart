@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:orpheus/core/services/desktop_window_service.dart';
 
@@ -19,6 +21,10 @@ void main() {
     test('initializes with mini player inactive and correct target dimensions', () {
       expect(service.isMiniPlayerActive, isFalse);
       expect(service.isMiniPlayerNotifier.value, isFalse);
+      expect(DesktopWindowService.kMiniReactorSizeDesktop.width, 730.0);
+      expect(DesktopWindowService.kMiniReactorSizeDesktop.height, 380.0);
+      expect(DesktopWindowService.kMiniReactorSizeMacOS.width, 600.0);
+      expect(DesktopWindowService.kMiniReactorSizeMacOS.height, 360.0);
       expect(DesktopWindowService.kMiniReactorSize.width, 730.0);
       expect(DesktopWindowService.kMiniReactorSize.height, 380.0);
       expect(DesktopWindowService.kMiniPlayerSize.width, 730.0);
@@ -27,6 +33,13 @@ void main() {
       expect(DesktopWindowService.kMiniPlayerMinSize.height, 380.0);
       expect(DesktopWindowService.kStandardMinSize.width, 950.0);
       expect(DesktopWindowService.kStandardMinSize.height, 650.0);
+
+      // Verify dynamic platform targeting
+      if (Platform.isMacOS) {
+        expect(DesktopWindowService.targetMiniPlayerSize, DesktopWindowService.kMiniReactorSizeMacOS);
+      } else {
+        expect(DesktopWindowService.targetMiniPlayerSize, DesktopWindowService.kMiniReactorSizeDesktop);
+      }
     });
 
     test('initialize runs without errors', () async {

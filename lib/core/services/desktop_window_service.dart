@@ -21,17 +21,31 @@ class DesktopWindowService {
   /// Current Mini Player active state.
   bool get isMiniPlayerActive => isMiniPlayerNotifier.value;
 
-  /// Target exact dimensions for the Mini Player with full Orb Reactor and harmonic waves.
-  static const Size kMiniReactorSize = Size(730, 380);
+  /// Standard wide dimensions for Linux & Windows (retaining native decorations and panoramic layout).
+  static const Size kMiniReactorSizeDesktop = Size(730, 380);
+
+  /// Compact floating card dimensions for macOS (frameless and tailored for Orb Reactor).
+  static const Size kMiniReactorSizeMacOS = Size(600, 360);
+
+  /// Default constant for backward compatibility.
+  static const Size kMiniReactorSize = kMiniReactorSizeDesktop;
 
   /// Target compact dimensions for the Mini Player (alias for backwards compatibility).
-  static const Size kMiniPlayerSize = kMiniReactorSize;
+  static const Size kMiniPlayerSize = kMiniReactorSizeDesktop;
 
   /// Minimum window size allowed in Mini Player mode.
-  static const Size kMiniPlayerMinSize = kMiniReactorSize;
+  static const Size kMiniPlayerMinSize = kMiniReactorSizeDesktop;
 
   /// Standard minimum window size restored when exiting Mini Player.
   static const Size kStandardMinSize = Size(950, 650);
+
+  /// Dynamic target dimensions resolved according to current operating system.
+  static Size get targetMiniPlayerSize {
+    if (!kIsWeb && Platform.isMacOS) {
+      return kMiniReactorSizeMacOS;
+    }
+    return kMiniReactorSizeDesktop;
+  }
 
   /// Saved standard window bounds prior to entering Mini Player mode.
   Size _savedWindowSize = const Size(1280, 800);
@@ -107,21 +121,32 @@ class DesktopWindowService {
         _savedWindowPosition = await windowManager.getPosition();
       } catch (_) {}
 
-      // 1. Pure geometric resizing (seamless across EGL/Wayland on Linux)
+      final miniSize = targetMiniPlayerSize;
+
+      // 1. Lower minimum bounds first on macOS so Cocoa/NSWindow allows shrinking below kStandardMinSize
+      if (Platform.isMacOS) {
+        try {
+          await windowManager.setMinimumSize(miniSize);
+        } catch (e) {
+          DebugLogger.log('DesktopWindowService: setMinimumSize error: $e');
+        }
+      }
+
+      // 2. Pure geometric resizing (seamless across EGL/Wayland on Linux and macOS)
       try {
-        await windowManager.setSize(kMiniReactorSize);
+        await windowManager.setSize(miniSize);
       } catch (e) {
         DebugLogger.log('DesktopWindowService: setSize error: $e');
       }
 
-      // 2. Safe floating behavior
+      // 3. Safe floating behavior
       try {
         await windowManager.setAlwaysOnTop(true);
       } catch (e) {
         DebugLogger.log('DesktopWindowService: setAlwaysOnTop error: $e');
       }
 
-      // 3. Platform-specific styling:
+      // 4. Platform-specific styling:
       // On Linux, setAsFrameless() invokes gtk_window_set_decorated(false) which
       // forces GTK to unrealize the window, destroying FlView / FlTaskRunner and
       // causing a segmentation fault. Thus, frameless/shadow are macOS/Windows only.
@@ -135,8 +160,9 @@ class DesktopWindowService {
     }
 
     if (kDebugMode) {
+      final miniSize = targetMiniPlayerSize;
       debugPrint(
-        '>>> [Orpheus MiniPlayer] ACTIVADO | Tamaño de Ventana: ${kMiniReactorSize.width}x${kMiniReactorSize.height}',
+        '>>> [Orpheus MiniPlayer] ACTIVADO | Tamaño de Ventana: ${miniSize.width}x${miniSize.height}',
       );
     }
 
@@ -165,6 +191,13 @@ class DesktopWindowService {
         try {
           await windowManager.setResizable(true);
           await windowManager.setHasShadow(true);
+          // Re-assert transparent full-size title bar style on macOS to restore
+          // native traffic light controls seamlessly over DesktopTitleBar without
+          // leaving any persistent gray system title bar or title text.
+          await windowManager.setTitleBarStyle(
+            TitleBarStyle.hidden,
+            windowButtonVisibility: true,
+          );
         } catch (_) {}
       }
 

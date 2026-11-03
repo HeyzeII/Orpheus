@@ -171,5 +171,23 @@ void main() {
       expect(find.byType(OrbReactorView), findsOneWidget);
       expect(find.byType(LayoutBuilder), findsWidgets);
     });
+
+    testWidgets('OrbReactorView builds and renders within compact macOS constraints', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(600, 360));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: SizedBox(
+            width: 600,
+            height: 360,
+            child: OrbReactorView(),
+          ),
+        ),
+      );
+
+      expect(find.byType(OrbReactorView), findsOneWidget);
+      expect(find.byType(LayoutBuilder), findsWidgets);
+    });
   });
 }
