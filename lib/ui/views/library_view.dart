@@ -30,6 +30,15 @@ import '../widgets/video_badge.dart';
 enum LibraryTab { tracks, albums, artists, playlists, videos }
 enum _DuplicateResolution { onlyNew, all, cancel }
 
+/// Sorting criteria for library collections (Albums, Artists, etc.).
+enum LibrarySortCriteria {
+  mostPlayed,
+  mostTracks,
+  recentlyAdded,
+  alphabetical,
+  alphabeticalDesc,
+}
+
 /// Main Library View — Browsing and playback controller for the local music database.
 class LibraryView extends StatefulWidget {
   const LibraryView({super.key});
@@ -48,6 +57,10 @@ class _LibraryViewState extends State<LibraryView> {
   List<Playlist> _playlists = [];
   Set<String> _likedTrackIds = {};
 
+  // Sorting state for Albums & Artists
+  LibrarySortCriteria _albumSort = LibrarySortCriteria.alphabetical;
+  LibrarySortCriteria _artistSort = LibrarySortCriteria.alphabetical;
+
   // Dynamic cover cache-busting versions
   final Map<String, int> _coverVersions = {};
 
@@ -59,6 +72,11 @@ class _LibraryViewState extends State<LibraryView> {
   Map<int, Track> _tracksById = {};
   Map<String, Track> _firstTrackByAlbum = {};
   Map<String, int> _trackCountByArtist = {};
+  Map<String, int> _playCountByAlbum = {};
+  Map<String, int> _trackCountByAlbum = {};
+  Map<String, int> _latestTrackIdByAlbum = {};
+  Map<String, int> _playCountByArtist = {};
+  Map<String, int> _latestTrackIdByArtist = {};
 
   // ── Nested Navigator (library detail views) ────────────────────────────────
   // Routes rendered here stay within the LibraryView slot of the IndexedStack,
@@ -181,18 +199,35 @@ class _LibraryViewState extends State<LibraryView> {
     // 1. Build O(1) track lookup dictionary
     final tracksById = <int, Track>{for (final t in tracks) t.id: t};
 
-    // 2. Pre-index first track for each album cover
+    // 2. Pre-index album statistics (first track, total track count, total plays, latest id)
     final firstTrackByAlbum = <String, Track>{};
-    for (final t in tracks) {
-      firstTrackByAlbum.putIfAbsent(t.displayAlbum, () => t);
-    }
+    final playCountByAlbum = <String, int>{};
+    final trackCountByAlbum = <String, int>{};
+    final latestTrackIdByAlbum = <String, int>{};
 
-    // 3. Pre-index track counts per artist (avoiding linear scans on every list tile)
+    // 3. Pre-index artist statistics (track count, total plays, latest id)
     final trackCountByArtist = <String, int>{};
+    final playCountByArtist = <String, int>{};
+    final latestTrackIdByArtist = <String, int>{};
+
     for (final t in tracks) {
+      // Album aggregations
+      final alb = t.displayAlbum;
+      firstTrackByAlbum.putIfAbsent(alb, () => t);
+      playCountByAlbum[alb] = (playCountByAlbum[alb] ?? 0) + t.playCount;
+      trackCountByAlbum[alb] = (trackCountByAlbum[alb] ?? 0) + 1;
+      if (t.id > (latestTrackIdByAlbum[alb] ?? 0)) {
+        latestTrackIdByAlbum[alb] = t.id;
+      }
+
+      // Artist aggregations
       for (final a in t.individualArtists) {
         final key = a.toLowerCase();
         trackCountByArtist[key] = (trackCountByArtist[key] ?? 0) + 1;
+        playCountByArtist[key] = (playCountByArtist[key] ?? 0) + t.playCount;
+        if (t.id > (latestTrackIdByArtist[key] ?? 0)) {
+          latestTrackIdByArtist[key] = t.id;
+        }
       }
     }
 
@@ -213,7 +248,12 @@ class _LibraryViewState extends State<LibraryView> {
       _likedTrackIds = likedIds;
       _tracksById = tracksById;
       _firstTrackByAlbum = firstTrackByAlbum;
+      _playCountByAlbum = playCountByAlbum;
+      _trackCountByAlbum = trackCountByAlbum;
+      _latestTrackIdByAlbum = latestTrackIdByAlbum;
       _trackCountByArtist = trackCountByArtist;
+      _playCountByArtist = playCountByArtist;
+      _latestTrackIdByArtist = latestTrackIdByArtist;
       _isLoading = false;
     });
   }
@@ -1013,10 +1053,37 @@ class _LibraryViewState extends State<LibraryView> {
       return a.toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
 
+    filtered.sort((a, b) {
+      switch (_albumSort) {
+        case LibrarySortCriteria.mostPlayed:
+          final pA = _playCountByAlbum[a] ?? 0;
+          final pB = _playCountByAlbum[b] ?? 0;
+          if (pA != pB) return pB.compareTo(pA);
+          return a.toLowerCase().compareTo(b.toLowerCase());
+        case LibrarySortCriteria.mostTracks:
+          final tA = _trackCountByAlbum[a] ?? 0;
+          final tB = _trackCountByAlbum[b] ?? 0;
+          if (tA != tB) return tB.compareTo(tA);
+          return a.toLowerCase().compareTo(b.toLowerCase());
+        case LibrarySortCriteria.recentlyAdded:
+          final idA = _latestTrackIdByAlbum[a] ?? 0;
+          final idB = _latestTrackIdByAlbum[b] ?? 0;
+          if (idA != idB) return idB.compareTo(idA);
+          return a.toLowerCase().compareTo(b.toLowerCase());
+        case LibrarySortCriteria.alphabeticalDesc:
+          return b.toLowerCase().compareTo(a.toLowerCase());
+        case LibrarySortCriteria.alphabetical:
+          return a.toLowerCase().compareTo(b.toLowerCase());
+      }
+    });
+
     if (filtered.isEmpty) {
       return Column(
         children: [
-          _buildSearchBar(),
+          _buildSearchBar(
+            sortCriteria: _albumSort,
+            onSortChanged: (criteria) => setState(() => _albumSort = criteria),
+          ),
           Expanded(child: _buildEmptyState('No se encontraron álbumes.')),
         ],
       );
@@ -1025,11 +1092,14 @@ class _LibraryViewState extends State<LibraryView> {
     return LayoutBuilder(builder: (context, constraints) {
       final isMobile = constraints.maxWidth < 600;
       final int cols = isMobile ? 2 : 5;
-      const double ratio = 0.72;
+      const double ratio = 0.68;
 
       return Column(
         children: [
-          _buildSearchBar(),
+          _buildSearchBar(
+            sortCriteria: _albumSort,
+            onSortChanged: (criteria) => setState(() => _albumSort = criteria),
+          ),
           Expanded(
             child: GridView.builder(
               padding: EdgeInsets.only(top: 16, bottom: bottomPad > 0 ? bottomPad : 16),
@@ -1104,6 +1174,23 @@ class _LibraryViewState extends State<LibraryView> {
                             style: const TextStyle(
                                 color: AppTheme.textSecondary, fontSize: 11),
                           ),
+                          const SizedBox(height: 2),
+                          Builder(builder: (_) {
+                            final trackCount = _trackCountByAlbum[albumName] ?? 1;
+                            final playCount = _playCountByAlbum[albumName] ?? 0;
+                            final trackLabel = trackCount == 1 ? '1 canción' : '$trackCount canciones';
+                            final playLabel = playCount == 1 ? '1 escucha' : '$playCount escuchas';
+                            return Text(
+                              '$trackLabel • $playLabel',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppTheme.textHint,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            );
+                          }),
                         ],
                       ),
                     ),
@@ -1123,10 +1210,39 @@ class _LibraryViewState extends State<LibraryView> {
       return a.toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
 
+    filtered.sort((a, b) {
+      final keyA = a.toLowerCase();
+      final keyB = b.toLowerCase();
+      switch (_artistSort) {
+        case LibrarySortCriteria.mostPlayed:
+          final pA = _playCountByArtist[keyA] ?? 0;
+          final pB = _playCountByArtist[keyB] ?? 0;
+          if (pA != pB) return pB.compareTo(pA);
+          return keyA.compareTo(keyB);
+        case LibrarySortCriteria.mostTracks:
+          final tA = _trackCountByArtist[keyA] ?? 0;
+          final tB = _trackCountByArtist[keyB] ?? 0;
+          if (tA != tB) return tB.compareTo(tA);
+          return keyA.compareTo(keyB);
+        case LibrarySortCriteria.recentlyAdded:
+          final idA = _latestTrackIdByArtist[keyA] ?? 0;
+          final idB = _latestTrackIdByArtist[keyB] ?? 0;
+          if (idA != idB) return idB.compareTo(idA);
+          return keyA.compareTo(keyB);
+        case LibrarySortCriteria.alphabeticalDesc:
+          return keyB.compareTo(keyA);
+        case LibrarySortCriteria.alphabetical:
+          return keyA.compareTo(keyB);
+      }
+    });
+
     if (filtered.isEmpty) {
       return Column(
         children: [
-          _buildSearchBar(),
+          _buildSearchBar(
+            sortCriteria: _artistSort,
+            onSortChanged: (criteria) => setState(() => _artistSort = criteria),
+          ),
           Expanded(child: _buildEmptyState('No se encontraron artistas.')),
         ],
       );
@@ -1134,7 +1250,10 @@ class _LibraryViewState extends State<LibraryView> {
 
     return Column(
       children: [
-        _buildSearchBar(),
+        _buildSearchBar(
+          sortCriteria: _artistSort,
+          onSortChanged: (criteria) => setState(() => _artistSort = criteria),
+        ),
         Expanded(
           child: ListView.builder(
             padding: EdgeInsets.only(top: 16, bottom: bottomPad > 0 ? bottomPad : 16),
@@ -1169,10 +1288,16 @@ class _LibraryViewState extends State<LibraryView> {
                       style: const TextStyle(
                           color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
                     ),
-                    subtitle: Text(
-                      '$count ${count == 1 ? 'canción' : 'canciones'}',
-                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                    ),
+                    subtitle: Builder(builder: (_) {
+                      final trackCount = count;
+                      final plays = _playCountByArtist[artistName.toLowerCase()] ?? 0;
+                      final trackLabel = trackCount == 1 ? '1 canción' : '$trackCount canciones';
+                      final playLabel = plays == 1 ? '1 escucha' : '$plays escuchas';
+                      return Text(
+                        '$trackLabel • $playLabel',
+                        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                      );
+                    }),
                     trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textSecondary),
                     onTap: () => _openArtist(artistName, bottomPad),
                     onLongPress: () {
@@ -2956,34 +3081,179 @@ class _LibraryViewState extends State<LibraryView> {
   // SHARED SUBWIDGETS
   // ══════════════════════════════════════════════════════════════════════════
 
-  Widget _buildSearchBar() {
+  Widget _buildSearchBar({
+    LibrarySortCriteria? sortCriteria,
+    ValueChanged<LibrarySortCriteria>? onSortChanged,
+  }) {
+    final searchField = TextField(
+      style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+      decoration: InputDecoration(
+        hintText: 'Buscar en tu biblioteca...',
+        hintStyle: const TextStyle(color: AppTheme.textHint, fontSize: 13),
+        prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary, size: 18),
+        filled: true,
+        fillColor: AppTheme.bgSurface,
+        contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: AppTheme.divider),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: AppTheme.accent),
+        ),
+      ),
+      onChanged: (val) {
+        setState(() {
+          _searchQuery = val;
+        });
+      },
+    );
+
+    final Widget child;
+    if (sortCriteria != null && onSortChanged != null) {
+      child = Row(
+        children: [
+          Expanded(child: searchField),
+          const SizedBox(width: 8),
+          _buildSortDropdownButton(sortCriteria, onSortChanged),
+        ],
+      );
+    } else {
+      child = searchField;
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
-      child: TextField(
-        style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
-        decoration: InputDecoration(
-          hintText: 'Buscar en tu biblioteca...',
-          hintStyle: const TextStyle(color: AppTheme.textHint, fontSize: 13),
-          prefixIcon: const Icon(Icons.search_rounded, color: AppTheme.textSecondary, size: 18),
-          filled: true,
-          fillColor: AppTheme.bgSurface,
-          contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: AppTheme.divider),
+      child: child,
+    );
+  }
+
+  Widget _buildSortDropdownButton(
+    LibrarySortCriteria currentSort,
+    ValueChanged<LibrarySortCriteria> onSortChanged,
+  ) {
+    return Tooltip(
+      message: 'Ordenar por',
+      child: PopupMenuButton<LibrarySortCriteria>(
+        initialValue: currentSort,
+        onSelected: onSortChanged,
+        color: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: AppTheme.divider),
+        ),
+        itemBuilder: (_) => [
+          _sortMenuItem(
+            currentSort,
+            LibrarySortCriteria.mostPlayed,
+            'Más reproducidos',
+            Icons.local_fire_department_rounded,
           ),
-          focusedBorder: OutlineInputBorder(
+          _sortMenuItem(
+            currentSort,
+            LibrarySortCriteria.mostTracks,
+            'Más canciones',
+            Icons.library_music_rounded,
+          ),
+          _sortMenuItem(
+            currentSort,
+            LibrarySortCriteria.recentlyAdded,
+            'Recientemente añadidos',
+            Icons.history_rounded,
+          ),
+          _sortMenuItem(
+            currentSort,
+            LibrarySortCriteria.alphabetical,
+            'Alfabético (A - Z)',
+            Icons.sort_by_alpha_rounded,
+          ),
+          _sortMenuItem(
+            currentSort,
+            LibrarySortCriteria.alphabeticalDesc,
+            'Alfabético (Z - A)',
+            Icons.sort_by_alpha_rounded,
+          ),
+        ],
+        child: Container(
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: AppTheme.bgHover,
             borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: AppTheme.accent),
+            border: Border.all(color: AppTheme.divider),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.swap_vert_rounded, size: 16, color: AppTheme.textSecondary),
+              const SizedBox(width: 6),
+              Text(
+                _sortCriteriaLabel(currentSort),
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  color: AppTheme.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.arrow_drop_down_rounded, size: 16, color: AppTheme.textSecondary),
+            ],
           ),
         ),
-        onChanged: (val) {
-          setState(() {
-            _searchQuery = val;
-          });
-        },
       ),
     );
+  }
+
+  PopupMenuItem<LibrarySortCriteria> _sortMenuItem(
+    LibrarySortCriteria currentSort,
+    LibrarySortCriteria criteria,
+    String label,
+    IconData icon,
+  ) {
+    final active = currentSort == criteria;
+    return PopupMenuItem<LibrarySortCriteria>(
+      value: criteria,
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 16,
+            color: active ? AppTheme.accent : AppTheme.textSecondary,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                color: active ? AppTheme.accent : AppTheme.textPrimary,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ),
+          if (active) ...[
+            const SizedBox(width: 6),
+            const Icon(Icons.check_rounded, size: 16, color: AppTheme.accent),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _sortCriteriaLabel(LibrarySortCriteria criteria) {
+    switch (criteria) {
+      case LibrarySortCriteria.mostPlayed:
+        return 'Más reproducidos';
+      case LibrarySortCriteria.mostTracks:
+        return 'Más canciones';
+      case LibrarySortCriteria.recentlyAdded:
+        return 'Recientes';
+      case LibrarySortCriteria.alphabetical:
+        return 'A - Z';
+      case LibrarySortCriteria.alphabeticalDesc:
+        return 'Z - A';
+    }
   }
 
   // ── Collection-level context menus ──────────────────────────────────────

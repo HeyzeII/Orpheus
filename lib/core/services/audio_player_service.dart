@@ -84,11 +84,12 @@ class AudioPlayerService {
   /// Currently active track.
   Track? _currentTrack;
 
-  /// Whether current track playback session has reached the 80% completion threshold.
-  bool _is80PercentTracked = false;
+  /// Whether current track playback session has reached the effective play threshold
+  /// (>30s played or >=50% duration, or completed).
+  bool _isEffectivePlayTracked = false;
 
   void _checkAndRecordPrematureSkip(Track? track, Duration pos, Duration dur) {
-    if (track == null || _is80PercentTracked) return;
+    if (track == null || _isEffectivePlayTracked) return;
     final totalSec = dur > Duration.zero ? dur.inSeconds : track.duration;
     if (totalSec > 20 && pos.inSeconds < 15) {
       AudioAnalyticsService.instance.recordSkip(track.trackId);
@@ -181,11 +182,13 @@ class AudioPlayerService {
       if (_disposed) return;
       _positionController.add(pos);
 
-      // Behavioral Analytics: Track 80% completion threshold
-      if (!_is80PercentTracked && _currentTrack != null) {
-        final dur = duration;
-        if (dur > Duration.zero && (pos.inMilliseconds / dur.inMilliseconds) >= 0.80) {
-          _is80PercentTracked = true;
+      // Behavioral Analytics: Track effective playback threshold (>30s or >=50% duration)
+      if (!_isEffectivePlayTracked && _currentTrack != null) {
+        final dur = duration > Duration.zero ? duration : Duration(seconds: _currentTrack!.duration);
+        final bool isEffective = (dur > Duration.zero && (pos.inMilliseconds / dur.inMilliseconds) >= 0.50) ||
+            pos >= const Duration(seconds: 30);
+        if (isEffective) {
+          _isEffectivePlayTracked = true;
           AudioAnalyticsService.instance.recordCompletion(_currentTrack!.trackId);
         }
       }
@@ -206,17 +209,15 @@ class AudioPlayerService {
       if (completed) {
         final finishedTrack = currentTrack;
         if (finishedTrack != null) {
-          if (!_is80PercentTracked) {
-            _is80PercentTracked = true;
+          // If the track completed but was too short for the 30s / 50% threshold, record it here once
+          if (!_isEffectivePlayTracked) {
+            _isEffectivePlayTracked = true;
             AudioAnalyticsService.instance.recordCompletion(finishedTrack.trackId);
           }
-          try {
-            await _db.recordPlay(finishedTrack);
-          } catch (_) {}
         }
 
         if (_repeatMode == PlayerRepeatMode.single) {
-          _is80PercentTracked = false;
+          _isEffectivePlayTracked = false;
           await _player.seek(Duration.zero);
           await _player.play();
         } else {
@@ -571,7 +572,7 @@ class AudioPlayerService {
     if (_currentTrack != null) {
       _checkAndRecordPrematureSkip(_currentTrack, position, duration);
     }
-    _is80PercentTracked = false;
+    _isEffectivePlayTracked = false;
     if (Platform.environment.containsKey('FLUTTER_TEST')) return;
     try {
       await _player.stop();
@@ -1151,7 +1152,7 @@ class AudioPlayerService {
     if (_currentTrack != null && _currentTrack!.trackId != track.trackId) {
       _checkAndRecordPrematureSkip(_currentTrack, position, duration);
     }
-    _is80PercentTracked = false;
+    _isEffectivePlayTracked = false;
 
     unawaited(_saveCurrentPlaybackState(
       overrideTrackId: track.trackId,
