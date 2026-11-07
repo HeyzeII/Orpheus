@@ -50,6 +50,10 @@ class DesktopWindowService {
   /// Saved standard window bounds prior to entering Mini Player mode.
   Size _savedWindowSize = const Size(1280, 800);
   Offset? _savedWindowPosition;
+  bool _wasMaximizedBeforeMini = false;
+
+  /// Whether the main window was maximized prior to entering Mini Player mode.
+  bool get wasMaximizedBeforeMini => _wasMaximizedBeforeMini;
 
   /// Strict desktop platform check ensuring Android, iOS and Web are never affected.
   bool get isDesktop =>
@@ -107,9 +111,21 @@ class DesktopWindowService {
     if (!isDesktop || isMiniPlayerActive) return;
 
     if (_canInvokeNativeWindow) {
+      // 0. Detect and unmaximize if the window was maximized, so Mutter/Wayland does not
+      // retain the maximized flag and snap back to full screen when losing focus.
+      try {
+        _wasMaximizedBeforeMini = await windowManager.isMaximized();
+        if (_wasMaximizedBeforeMini) {
+          await windowManager.unmaximize();
+        }
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: unmaximize error: $e');
+      }
+
       try {
         final currentSize = await windowManager.getSize();
-        if (currentSize.width >= kStandardMinSize.width &&
+        if (!_wasMaximizedBeforeMini &&
+            currentSize.width >= kStandardMinSize.width &&
             currentSize.height >= kStandardMinSize.height) {
           _savedWindowSize = currentSize;
         }
@@ -123,30 +139,39 @@ class DesktopWindowService {
 
       final miniSize = targetMiniPlayerSize;
 
-      // 1. Lower minimum bounds first on macOS so Cocoa/NSWindow allows shrinking below kStandardMinSize
-      if (Platform.isMacOS) {
+      // 1. Lower minimum bounds across all desktop platforms so compositors (Cocoa/NSWindow,
+      // Mutter/Wayland, X11) accept miniSize without violating minimum bounds on focus changes.
+      try {
+        await windowManager.setMinimumSize(miniSize);
+      } catch (e) {
+        DebugLogger.log('DesktopWindowService: setMinimumSize error: $e');
+      }
+
+      // 2. On Linux, lock maximumSize to miniSize to prevent Mutter/KWin from expanding the
+      // window or re-tiling it upon losing focus.
+      if (Platform.isLinux) {
         try {
-          await windowManager.setMinimumSize(miniSize);
+          await windowManager.setMaximumSize(miniSize);
         } catch (e) {
-          DebugLogger.log('DesktopWindowService: setMinimumSize error: $e');
+          DebugLogger.log('DesktopWindowService: setMaximumSize error: $e');
         }
       }
 
-      // 2. Pure geometric resizing (seamless across EGL/Wayland on Linux and macOS)
+      // 3. Pure geometric resizing (seamless across EGL/Wayland on Linux and macOS)
       try {
         await windowManager.setSize(miniSize);
       } catch (e) {
         DebugLogger.log('DesktopWindowService: setSize error: $e');
       }
 
-      // 3. Safe floating behavior
+      // 4. Safe floating behavior
       try {
         await windowManager.setAlwaysOnTop(true);
       } catch (e) {
         DebugLogger.log('DesktopWindowService: setAlwaysOnTop error: $e');
       }
 
-      // 4. Platform-specific styling:
+      // 5. Platform-specific styling:
       // On Linux, setAsFrameless() invokes gtk_window_set_decorated(false) which
       // forces GTK to unrealize the window, destroying FlView / FlTaskRunner and
       // causing a segmentation fault. Thus, frameless/shadow are macOS/Windows only.
@@ -187,6 +212,15 @@ class DesktopWindowService {
         DebugLogger.log('DesktopWindowService: setAlwaysOnTop error: $e');
       }
 
+      // 1. Release maximum size constraint on Linux (-1, -1 disables GDK_HINT_MAX_SIZE in window_manager_plugin.cc)
+      if (Platform.isLinux) {
+        try {
+          await windowManager.setMaximumSize(const Size(-1, -1));
+        } catch (e) {
+          DebugLogger.log('DesktopWindowService: release maximumSize error: $e');
+        }
+      }
+
       if (!Platform.isLinux) {
         try {
           await windowManager.setResizable(true);
@@ -201,15 +235,20 @@ class DesktopWindowService {
         } catch (_) {}
       }
 
-      // Restore target size and standard minimum bounds cleanly
+      // 2. Restore standard dimensions and minimum bounds cleanly
       try {
-        await windowManager.setSize(targetSize);
-        await windowManager.setMinimumSize(kStandardMinSize);
+        if (_wasMaximizedBeforeMini) {
+          await windowManager.setMinimumSize(kStandardMinSize);
+          await windowManager.maximize();
+        } else {
+          await windowManager.setSize(targetSize);
+          await windowManager.setMinimumSize(kStandardMinSize);
+        }
       } catch (e) {
         DebugLogger.log('DesktopWindowService: exit geometry error: $e');
       }
 
-      if (_savedWindowPosition != null && !Platform.isLinux) {
+      if (!_wasMaximizedBeforeMini && _savedWindowPosition != null && !Platform.isLinux) {
         // setPosition is unprivileged/no-op on Wayland xdg_toplevel
         try {
           await windowManager.setPosition(_savedWindowPosition!);
@@ -237,7 +276,8 @@ class DesktopWindowService {
 
   /// For unit testing: sets the active mini player state directly without native window calls.
   @visibleForTesting
-  void setMiniPlayerActiveForTesting(bool active) {
+  void setMiniPlayerActiveForTesting(bool active, {bool wasMaximized = false}) {
     isMiniPlayerNotifier.value = active;
+    _wasMaximizedBeforeMini = wasMaximized;
   }
 }

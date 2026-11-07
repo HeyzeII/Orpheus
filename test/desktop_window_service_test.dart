@@ -80,5 +80,16 @@ void main() {
         expect(service.isMiniPlayerActive, isFalse);
       }
     });
+
+    test('exitMiniPlayer handles previously maximized window gracefully', () async {
+      service.setMiniPlayerActiveForTesting(true, wasMaximized: true);
+      expect(service.isMiniPlayerActive, isTrue);
+      expect(service.wasMaximizedBeforeMini, isTrue);
+
+      if (service.isDesktop) {
+        await service.exitMiniPlayer();
+        expect(service.isMiniPlayerActive, isFalse);
+      }
+    });
   });
 }
