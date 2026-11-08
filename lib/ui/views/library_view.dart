@@ -824,6 +824,18 @@ class _LibraryViewState extends State<LibraryView> {
     }
   }
 
+  String _getLibrarySubtitle() {
+    final trackCount = _allTracks.length;
+    final trackLabel = trackCount == 1 ? '1 canción' : '$trackCount canciones';
+    final totalDuration = _allTracks.fold<int>(0, (sum, t) => sum + t.duration);
+    final hours = totalDuration ~/ 3600;
+    final minutes = (totalDuration % 3600) ~/ 60;
+    final durationStr = hours > 0
+        ? '$hours h ${minutes.toString().padLeft(2, '0')} min'
+        : '$minutes min';
+    return '$trackLabel • $durationStr';
+  }
+
   /// Builds the base library page content (header + tabs + tab body).
   /// This is the initial route of the nested Navigator.
   Widget _buildLibraryRoot(BuildContext context, double bottomPad) {
@@ -832,25 +844,94 @@ class _LibraryViewState extends State<LibraryView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ── Tabs Header ────────────────────────────────────────────────────────
+        // ── Tabs & Hero Header ─────────────────────────────────────────────────
         Padding(
           padding: EdgeInsets.fromLTRB(
             isMobile ? 16 : 32,
-            isMobile ? (MediaQuery.of(context).padding.top + 12) : 36,
+            isMobile ? (MediaQuery.of(context).padding.top + 12) : 32,
             isMobile ? 16 : 32,
             0,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Tu Biblioteca',
-                style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      fontSize: isMobile ? 26 : null,
+              if (!isMobile) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Tu Biblioteca',
+                          style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                                fontFamily: 'Outfit',
+                                letterSpacing: -0.5,
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _getLibrarySubtitle(),
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            color: AppTheme.textSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
-              ),
-              const SizedBox(height: 18),
+                    const Spacer(),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.accent,
+                        foregroundColor: AppTheme.bgDeep,
+                        minimumSize: const Size(0, 40),
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        elevation: 0,
+                      ),
+                      onPressed: _allTracks.isEmpty
+                          ? null
+                          : () => _playTracks(_allTracks, 0, contextName: 'Biblioteca'),
+                      icon: const Icon(Icons.play_arrow_rounded, size: 20, color: AppTheme.bgDeep),
+                      label: const Text(
+                        'Reproducir',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.textPrimary,
+                        side: const BorderSide(color: AppTheme.divider, width: 1),
+                        minimumSize: const Size(0, 40),
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      ),
+                      onPressed: _allTracks.isEmpty
+                          ? null
+                          : () => _shufflePlayTracks(_allTracks, contextName: 'Biblioteca'),
+                      icon: const Icon(Icons.shuffle_rounded, size: 18, color: AppTheme.accent),
+                      label: const Text(
+                        'Aleatorio',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+              ] else ...[
+                Text(
+                  'Tu Biblioteca',
+                  style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 26,
+                      ),
+                ),
+                const SizedBox(height: 18),
+              ],
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
@@ -985,6 +1066,140 @@ class _LibraryViewState extends State<LibraryView> {
   // TAB BUILDERS
   // ══════════════════════════════════════════════════════════════════════════
 
+  // ── Quick Access Section ───────────────────────────────────────────────────
+  Widget _buildQuickAccessSection(double bottomPad) {
+    // 1. Obtener o sintetizar la playlist de Liked Tracks
+    final likedPlaylist = _playlists.cast<Playlist?>().firstWhere(
+      (p) => p?.playlistId == '__liked__',
+      orElse: () => null,
+    );
+
+    final likedTracks = _allTracks.where((t) => _likedTrackIds.contains(t.trackId)).toList();
+    final likedCount = _likedTrackIds.length;
+
+    // 2. Obtener las 2 playlists más recientes
+    final recentPlaylists = _playlists
+        .where((p) => p.playlistId != '__liked__')
+        .toList()
+      ..sort((a, b) {
+        final aTime = a.updatedAt?.millisecondsSinceEpoch ?? 0;
+        final bTime = b.updatedAt?.millisecondsSinceEpoch ?? 0;
+        return bTime.compareTo(aTime);
+      });
+
+    final topRecentPlaylists = recentPlaylists.take(2).toList();
+
+    // Arte para Liked Tracks: custom cover si existe, de lo contrario gradiente vibrante con corazón
+    final customCover = likedPlaylist?.customCoverPath;
+    Widget likedArtwork;
+    if (likedPlaylist != null && customCover != null && customCover.isNotEmpty) {
+      likedArtwork = PlaylistCover(
+        playlist: likedPlaylist,
+        allTracks: _allTracks,
+        tracksById: _tracksById,
+        size: 64,
+        coverVersion: _coverVersions[likedPlaylist.playlistId],
+      );
+    } else {
+      likedArtwork = Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF5A32A3), Color(0xFF1DB954)],
+          ),
+        ),
+        child: const Center(
+          child: Icon(Icons.favorite_rounded, color: Colors.white, size: 28),
+        ),
+      );
+    }
+
+    // Construcción de la tarjeta fija de Liked Tracks
+    final likedCard = _QuickAccessCard(
+      artwork: likedArtwork,
+      title: 'Canciones que te gustan',
+      subtitle: '$likedCount ${likedCount == 1 ? "canción" : "canciones"}',
+      onTap: () {
+        final target = likedPlaylist ??
+            (Playlist()
+              ..playlistId = '__liked__'
+              ..name = 'Canciones que te gustan'
+              ..description = 'Tracks you have marked as liked.'
+              ..isDefault = true
+              ..trackIds = likedTracks.map((t) => t.id).toList());
+        _openPlaylist(target, bottomPad);
+      },
+      onPlay: () {
+        if (likedTracks.isNotEmpty) {
+          _playTracks(likedTracks, 0, contextName: 'Canciones que te gustan');
+        }
+      },
+    );
+
+    // Construcción de las tarjetas de playlists recientes
+    final playlistCards = topRecentPlaylists.map((pl) {
+      final trackCount = pl.trackIds.length;
+      final plTracks = pl.trackIds
+          .map((id) => _tracksById[id])
+          .whereType<Track>()
+          .toList();
+
+      return _QuickAccessCard(
+        artwork: PlaylistCover(
+          playlist: pl,
+          allTracks: _allTracks,
+          tracksById: _tracksById,
+          size: 64,
+          coverVersion: _coverVersions[pl.playlistId],
+        ),
+        title: pl.name,
+        subtitle: '$trackCount ${trackCount == 1 ? "canción" : "canciones"}',
+        onTap: () => _openPlaylist(pl, bottomPad),
+        onPlay: () {
+          if (plTracks.isNotEmpty) {
+            _playTracks(plTracks, 0, contextName: 'Playlist: ${pl.name}');
+          }
+        },
+      );
+    }).toList();
+
+    final allCards = [likedCard, ...playlistCards];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktop = constraints.maxWidth >= 700;
+        if (isDesktop) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 14, bottom: 2),
+            child: Row(
+              children: [
+                for (int i = 0; i < allCards.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 14),
+                  Expanded(child: allCards[i]),
+                ],
+              ],
+            ),
+          );
+        } else {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.only(top: 12, bottom: 4),
+            child: Row(
+              children: [
+                for (int i = 0; i < allCards.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 12),
+                  SizedBox(width: 240, child: allCards[i]),
+                ],
+              ],
+            ),
+          );
+        }
+      },
+    );
+  }
+
   // ── Tracks Tab ─────────────────────────────────────────────────────────────
   Widget _buildTracksTab({double bottomPad = 0}) {
     final filtered = _allTracks.where((t) {
@@ -999,6 +1214,8 @@ class _LibraryViewState extends State<LibraryView> {
       final isMobile = constraints.maxWidth < 600;
       return Column(
         children: [
+          if (_searchQuery.isEmpty)
+            _buildQuickAccessSection(bottomPad),
           _buildSearchBar(),
           Expanded(
             child: filtered.isEmpty
@@ -1091,7 +1308,7 @@ class _LibraryViewState extends State<LibraryView> {
 
     return LayoutBuilder(builder: (context, constraints) {
       final isMobile = constraints.maxWidth < 600;
-      final int cols = isMobile ? 2 : 5;
+      final double maxExtent = isMobile ? 180.0 : 210.0;
       const double ratio = 0.68;
 
       return Column(
@@ -1103,8 +1320,8 @@ class _LibraryViewState extends State<LibraryView> {
           Expanded(
             child: GridView.builder(
               padding: EdgeInsets.only(top: 16, bottom: bottomPad > 0 ? bottomPad : 16),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: cols,
+              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: maxExtent,
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 20,
                 childAspectRatio: ratio,
@@ -1248,57 +1465,42 @@ class _LibraryViewState extends State<LibraryView> {
       );
     }
 
-    return Column(
-      children: [
-        _buildSearchBar(
-          sortCriteria: _artistSort,
-          onSortChanged: (criteria) => setState(() => _artistSort = criteria),
-        ),
-        Expanded(
-          child: ListView.builder(
-            padding: EdgeInsets.only(top: 16, bottom: bottomPad > 0 ? bottomPad : 16),
-            itemCount: filtered.length,
-            itemBuilder: (context, idx) {
-              final artistName = filtered[idx];
-              final count = _trackCountByArtist[artistName.toLowerCase()] ?? 0;
+    return LayoutBuilder(builder: (context, constraints) {
+      final isMobile = constraints.maxWidth < 600;
+      final double maxExtent = isMobile ? 170.0 : 200.0;
 
-              return Material(
-                color: AppTheme.bgSurface,
-                borderRadius: BorderRadius.circular(8),
-                clipBehavior: Clip.antiAlias,
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.divider),
-                  ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    leading: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: const BoxDecoration(
-                        color: AppTheme.bgHover,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.person_rounded, color: AppTheme.accent, size: 26),
-                    ),
-                    title: Text(
-                      artistName,
-                      style: const TextStyle(
-                          color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                    subtitle: Builder(builder: (_) {
-                      final trackCount = count;
-                      final plays = _playCountByArtist[artistName.toLowerCase()] ?? 0;
-                      final trackLabel = trackCount == 1 ? '1 canción' : '$trackCount canciones';
-                      final playLabel = plays == 1 ? '1 escucha' : '$plays escuchas';
-                      return Text(
-                        '$trackLabel • $playLabel',
-                        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                      );
-                    }),
-                    trailing: const Icon(Icons.chevron_right_rounded, color: AppTheme.textSecondary),
+      return Column(
+        children: [
+          _buildSearchBar(
+            sortCriteria: _artistSort,
+            onSortChanged: (criteria) => setState(() => _artistSort = criteria),
+          ),
+          Expanded(
+            child: GridView.builder(
+              padding: EdgeInsets.only(top: 16, bottom: bottomPad > 0 ? bottomPad : 16),
+              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: maxExtent,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 20,
+                childAspectRatio: 0.78,
+              ),
+              itemCount: filtered.length,
+              itemBuilder: (context, idx) {
+                final artistName = filtered[idx];
+                final count = _trackCountByArtist[artistName.toLowerCase()] ?? 0;
+                final plays = _playCountByArtist[artistName.toLowerCase()] ?? 0;
+                final trackLabel = count == 1 ? '1 canción' : '$count canciones';
+                final playLabel = plays == 1 ? '1 escucha' : '$plays escuchas';
+
+                final firstTrack = _allTracks.firstWhere(
+                  (t) => t.individualArtists.any((a) => a.toLowerCase() == artistName.toLowerCase()),
+                  orElse: () => _allTracks.isNotEmpty ? _allTracks.first : Track(),
+                );
+                final coverPath = firstTrack.customMetadata.customCoverPath;
+
+                return MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
                     onTap: () => _openArtist(artistName, bottomPad),
                     onLongPress: () {
                       final artistTracks = _allTracks
@@ -1307,14 +1509,77 @@ class _LibraryViewState extends State<LibraryView> {
                           .toList();
                       _showArtistContextMenu(context, artistName, artistTracks);
                     },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.bgSurface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppTheme.divider),
+                      ),
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: Center(
+                              child: AspectRatio(
+                                aspectRatio: 1,
+                                child: Container(
+                                  decoration: const BoxDecoration(
+                                    color: AppTheme.bgHover,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: coverPath != null
+                                      ? TrackCoverArt(
+                                          coverPath: coverPath,
+                                          fit: BoxFit.cover,
+                                          borderRadius: BorderRadius.zero,
+                                          fallbackIcon: Icons.person_rounded,
+                                          fallbackIconSize: 32,
+                                        )
+                                      : const Center(
+                                          child: Icon(Icons.person_rounded, color: AppTheme.accent, size: 36),
+                                        ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            artistName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontFamily: 'Outfit',
+                              color: AppTheme.textPrimary,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$trackLabel • $playLabel',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              color: AppTheme.textSecondary,
+                              fontSize: 11.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
-        ),
-      ],
-    );
+        ],
+      );
+    });
   }
 
   // ── Playlists Tab ──────────────────────────────────────────────────────────
@@ -1351,21 +1616,12 @@ class _LibraryViewState extends State<LibraryView> {
               ? _buildEmptyState('No tienes playlists creadas.')
               : LayoutBuilder(
                   builder: (context, constraints) {
-                    // Adapt grid columns based on available width
-                    final width = constraints.maxWidth;
-                    final int cols = width >= 1200
-                        ? 6
-                        : width >= 900
-                            ? 5
-                            : width >= 650
-                                ? 4
-                                : width >= 420
-                                    ? 3
-                                    : 2;
+                    final isMobile = constraints.maxWidth < 600;
+                    final double maxExtent = isMobile ? 180.0 : 220.0;
                     return GridView.builder(
                       padding: EdgeInsets.only(bottom: bottomPad > 0 ? bottomPad : 16),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: cols,
+                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: maxExtent,
                         crossAxisSpacing: 16,
                         mainAxisSpacing: 20,
                         childAspectRatio: 0.72,
@@ -3841,17 +4097,24 @@ class _LibraryViewState extends State<LibraryView> {
         decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: AppTheme.divider, width: 1)),
         ),
-        child: Row(
-          children: [
-            const SizedBox(width: 40, child: Text('#', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
-            Expanded(flex: titleFlex, child: const Text('TÍTULO', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
-            if (showArtistCol)
-              Expanded(flex: artistFlex, child: const Text('ARTISTA', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
-            if (showAlbumCol)
-              Expanded(flex: albumFlex, child: const Text('ÁLBUM', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
-            const SizedBox(width: 70, child: Align(alignment: Alignment.centerRight, child: Text('DURACIÓN', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold)))),
-            const SizedBox(width: 110),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              const SizedBox(width: 40, child: Center(child: Text('#', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold)))),
+              Expanded(flex: titleFlex, child: const Text('TÍTULO', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
+              if (showArtistCol) ...[
+                const SizedBox(width: 14),
+                Expanded(flex: artistFlex, child: const Text('ARTISTA', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
+              ],
+              if (showAlbumCol) ...[
+                const SizedBox(width: 14),
+                Expanded(flex: albumFlex, child: const Text('ÁLBUM', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold))),
+              ],
+              const SizedBox(width: 70, child: Align(alignment: Alignment.centerRight, child: Text('DURACIÓN', style: TextStyle(color: AppTheme.textHint, fontSize: 11, fontWeight: FontWeight.bold)))),
+              const SizedBox(width: 110),
+            ],
+          ),
         ),
       ),
     );
@@ -4071,7 +4334,7 @@ class _TrackRowState extends State<_TrackRow> {
             onLongPress: widget.onLongPress,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
               decoration: BoxDecoration(
                 color: isCurrent
                     ? AppTheme.accent.withOpacity(0.12)
@@ -4095,118 +4358,163 @@ class _TrackRowState extends State<_TrackRow> {
                   // Index / Play / Equalizer
                   SizedBox(
                     width: 40,
-                    child: _hovered
-                        ? GestureDetector(
-                            onTap: widget.onPlay,
-                            child: const Icon(Icons.play_arrow_rounded, color: AppTheme.accent, size: 18),
-                          )
-                        : (isCurrent
-                            ? StreamBuilder<bool>(
-                                stream: OrpheusAudioHandler.instance.isPlayingStream,
-                                initialData: OrpheusAudioHandler.instance.isPlaying,
-                                builder: (_, playSnap) => Center(
-                                  child: AnimatedEqualizer(
-                                    isPlaying: playSnap.data ?? false,
-                                    barCount: 3,
-                                    barWidth: 2.5,
-                                    maxHeight: 14.0,
-                                    minHeight: 3.0,
+                    child: Center(
+                      child: _hovered
+                          ? MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                onTap: widget.onPlay,
+                                child: const Icon(Icons.play_arrow_rounded, color: AppTheme.accent, size: 22),
+                              ),
+                            )
+                          : (isCurrent
+                              ? StreamBuilder<bool>(
+                                  stream: OrpheusAudioHandler.instance.isPlayingStream,
+                                  initialData: OrpheusAudioHandler.instance.isPlaying,
+                                  builder: (_, playSnap) => Center(
+                                    child: AnimatedEqualizer(
+                                      isPlaying: playSnap.data ?? false,
+                                      barCount: 3,
+                                      barWidth: 2.5,
+                                      maxHeight: 14.0,
+                                      minHeight: 3.0,
+                                    ),
                                   ),
-                                ),
-                              )
-                            : Text(
-                                widget.index.toString(),
-                                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-                              )),
+                                )
+                              : Text(
+                                  widget.index.toString(),
+                                  style: const TextStyle(
+                                    fontFamily: 'Inter',
+                                    color: AppTheme.textSecondary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                )),
+                    ),
                   ),
                   // Title column: flex adapts to which other columns are visible
                   Expanded(
                     flex: (widget.isAlbumDetail || widget.isArtistDetail) ? 6 : 5,
                     child: Row(
                       children: [
-                        if (widget.track.customMetadata.customCoverPath != null) ...[
-                          TrackCoverArt(
-                            coverPath: widget.track.customMetadata.customCoverPath,
-                            width: 24,
-                            height: 24,
-                            borderRadius: BorderRadius.circular(3),
-                            cacheWidth: 48,
-                            fallbackIconSize: 12,
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        Expanded(
-                          child: Text(
-                            widget.track.displayTitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: isCurrent ? AppTheme.accent : AppTheme.textPrimary,
-                              fontSize: 13,
-                              fontWeight: isCurrent ? FontWeight.bold : FontWeight.w500,
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: SizedBox(
+                            width: 42,
+                            height: 42,
+                            child: TrackCoverArt(
+                              coverPath: widget.track.customMetadata.customCoverPath,
+                              width: 42,
+                              height: 42,
+                              borderRadius: BorderRadius.circular(6),
+                              cacheWidth: 84,
+                              fallbackIcon: Icons.music_note_rounded,
+                              fallbackIconSize: 20,
                             ),
                           ),
                         ),
-                        if (widget.track.isVideo) ...[
-                          const SizedBox(width: 8),
-                          const VideoBadge(),
-                        ],
-                    if (widget.track.downloadSource != null) ...[
-                      const SizedBox(width: 6),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 60),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppTheme.divider,
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: Text(
-                            widget.track.downloadSource!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 8, color: AppTheme.accent),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                widget.track.displayTitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontFamily: 'Outfit',
+                                  color: isCurrent ? AppTheme.accent : AppTheme.textPrimary,
+                                  fontSize: 14,
+                                  fontWeight: isCurrent ? FontWeight.bold : FontWeight.w600,
+                                  letterSpacing: -0.1,
+                                ),
+                              ),
+                              if (widget.track.isVideo || widget.track.downloadSource != null) ...[
+                                const SizedBox(height: 3),
+                                Row(
+                                  children: [
+                                    if (widget.track.isVideo) ...[
+                                      const VideoBadge(),
+                                      const SizedBox(width: 6),
+                                    ],
+                                    if (widget.track.downloadSource != null) ...[
+                                      ConstrainedBox(
+                                        constraints: const BoxConstraints(maxWidth: 80),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: AppTheme.divider,
+                                            borderRadius: BorderRadius.circular(3),
+                                          ),
+                                          child: Text(
+                                            widget.track.downloadSource!,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(fontSize: 8.5, color: AppTheme.accent),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ],
+                            ],
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  // Artist — hidden in artist-detail view (redundant)
+                  if (!widget.isArtistDetail)
+                    Expanded(
+                      flex: widget.isAlbumDetail ? 3 : 2,
+                      child: Text(
+                        widget.track.displayArtist,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          color: AppTheme.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                        ),
                       ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              // Artist — hidden in artist-detail view (redundant)
-              if (!widget.isArtistDetail)
-                Expanded(
-                  flex: widget.isAlbumDetail ? 3 : 2,
-                  child: Text(
-                    widget.track.displayArtist,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                    ),
+                  // Album — hidden in album-detail view (redundant); always shown in artist-detail
+                  if (!widget.isAlbumDetail && (widget.isArtistDetail || MediaQuery.sizeOf(context).width >= 600))
+                    Expanded(
+                      flex: widget.isArtistDetail ? 3 : 2,
+                      child: Text(
+                        widget.track.displayAlbum,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          color: AppTheme.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  // Duration
+                  SizedBox(
+                    width: 70,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        widget.durationStr,
+                        style: const TextStyle(
+                          fontFamily: 'Inter',
+                          color: AppTheme.textSecondary,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              // Album — hidden in album-detail view (redundant); always shown in artist-detail
-              if (!widget.isAlbumDetail && (widget.isArtistDetail || MediaQuery.sizeOf(context).width >= 600))
-                Expanded(
-                  flex: widget.isArtistDetail ? 3 : 2,
-                  child: Text(
-                    widget.track.displayAlbum,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-                  ),
-                ),
-              // Duration
-              SizedBox(
-                width: 70,
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    widget.durationStr,
-                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-                  ),
-                ),
-              ),
               // Actions
               SizedBox(
                 width: 110,
@@ -4952,3 +5260,136 @@ class _ImageCropDialogState extends State<_ImageCropDialog> {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QUICK ACCESS CARD WIDGET
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _QuickAccessCard extends StatefulWidget {
+  final Widget artwork;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final VoidCallback onPlay;
+
+  const _QuickAccessCard({
+    required this.artwork,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    required this.onPlay,
+  });
+
+  @override
+  State<_QuickAccessCard> createState() => _QuickAccessCardState();
+}
+
+class _QuickAccessCardState extends State<_QuickAccessCard> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          height: 64,
+          decoration: BoxDecoration(
+            color: _isHovered ? AppTheme.bgHover : AppTheme.bgSurface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: _isHovered
+                  ? AppTheme.accent.withOpacity(0.4)
+                  : AppTheme.divider.withOpacity(0.6),
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Row(
+            children: [
+              // Arte izquierdo cuadrado
+              SizedBox(
+                width: 64,
+                height: 64,
+                child: widget.artwork,
+              ),
+              const SizedBox(width: 12),
+
+              // Metadatos centrales (Título único y conteo)
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Outfit',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      widget.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Botón de reproducción flotante con hover
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 150),
+                opacity: _isHovered ? 1.0 : 0.0,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: widget.onPlay,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: AppTheme.accent,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.accent.withOpacity(0.35),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow_rounded,
+                          color: AppTheme.bgDeep,
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
