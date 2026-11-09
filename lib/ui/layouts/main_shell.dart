@@ -10,6 +10,7 @@ import '../../core/models/track.dart';
 import '../../core/network/orpheus_beacon_service.dart';
 import '../../core/services/app_navigation_coordinator.dart';
 import '../../core/services/audio_handler.dart';
+import '../../core/services/audio_player_service.dart';
 import '../../core/services/audio_scanner.dart';
 import '../../core/services/permission_service.dart';
 import '../theme/app_theme.dart';
@@ -46,6 +47,7 @@ class DesktopNavigationShell extends StatefulWidget {
 class _DesktopNavigationShellState extends State<DesktopNavigationShell> with WidgetsBindingObserver {
   NavDestination _selected = AppNavigationCoordinator.instance.currentDestination.value;
   bool _showLyrics = AppNavigationCoordinator.instance.desktopLyricsOpen.value;
+  StreamSubscription<String>? _playbackErrorSub;
 
   void _toggleLyrics() => AppNavigationCoordinator.instance.toggleDesktopLyrics();
 
@@ -55,10 +57,19 @@ class _DesktopNavigationShellState extends State<DesktopNavigationShell> with Wi
     WidgetsBinding.instance.addObserver(this);
     AppNavigationCoordinator.instance.currentDestination.addListener(_onNavCoordinatorChanged);
     AppNavigationCoordinator.instance.desktopLyricsOpen.addListener(_onLyricsCoordinatorChanged);
+    _playbackErrorSub = AudioPlayerService.instance.playbackErrorStream.listen((msg) {
+      if (!mounted) return;
+      AppToast.showText(
+        context,
+        msg,
+        icon: Icons.error_outline_rounded,
+      );
+    });
   }
 
   @override
   void dispose() {
+    _playbackErrorSub?.cancel();
     AppNavigationCoordinator.instance.currentDestination.removeListener(_onNavCoordinatorChanged);
     AppNavigationCoordinator.instance.desktopLyricsOpen.removeListener(_onLyricsCoordinatorChanged);
     WidgetsBinding.instance.removeObserver(this);
@@ -331,12 +342,21 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
   final List<int> _navigationHistory = [];
   bool _expandedPlayerOpen = false;
   StreamSubscription<bool>? _notificationSub;
+  StreamSubscription<String>? _playbackErrorSub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     AppNavigationCoordinator.instance.currentDestination.addListener(_onMobileNavChanged);
+    _playbackErrorSub = AudioPlayerService.instance.playbackErrorStream.listen((msg) {
+      if (!mounted) return;
+      AppToast.showText(
+        context,
+        msg,
+        icon: Icons.error_outline_rounded,
+      );
+    });
     _notificationSub = AudioService.notificationClicked.listen((clicked) {
       if (clicked && !_expandedPlayerOpen && mounted) {
         _openExpandedPlayer();
@@ -358,6 +378,7 @@ class _MobileNavigationShellState extends State<MobileNavigationShell>
 
   @override
   void dispose() {
+    _playbackErrorSub?.cancel();
     AppNavigationCoordinator.instance.currentDestination.removeListener(_onMobileNavChanged);
     _notificationSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);

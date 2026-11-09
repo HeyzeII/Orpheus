@@ -711,6 +711,47 @@ void main() {
       expect(player.contextQueue.length, 4);
       expect(player.contextQueue.any((t) => t.trackId == toRemove.trackId), isFalse);
     });
+
+    group('Defensive Playback & Unsupported Codec Watchdog', () {
+      test('playback failure emits to playbackErrorStream and auto-skips to next track', () async {
+        await player.loadPlaylist([track1, track2], initialIndex: 0);
+        expect(player.currentTrack?.trackId, 't1');
+
+        String? emittedError;
+        final sub = player.playbackErrorStream.listen((err) {
+          emittedError = err;
+        });
+
+        player.triggerPlaybackFailureForTest(track1, reason: 'Unsupported codec aac in m4a');
+        await Future.delayed(Duration.zero);
+
+        expect(emittedError, contains('No se pudo reproducir'));
+
+        // Wait for the 150ms delay in _handlePlaybackFailure
+        await Future.delayed(const Duration(milliseconds: 200));
+
+        // Current track should have auto-skipped to track2
+        expect(player.currentTrack?.trackId, 't2');
+
+        await sub.cancel();
+      });
+
+      test('repeated playback failures exceeding total queue safely stop player without crashing', () async {
+        await player.loadPlaylist([track1, track2], initialIndex: 0);
+
+        // Fail track1
+        player.triggerPlaybackFailureForTest(track1, reason: 'Corrupt file');
+        await Future.delayed(const Duration(milliseconds: 200));
+        expect(player.currentTrack?.trackId, 't2');
+
+        // Fail track2
+        player.triggerPlaybackFailureForTest(track2, reason: 'Corrupt file');
+        await Future.delayed(const Duration(milliseconds: 250));
+
+        // When all tracks fail, player stops
+        expect(player.currentTrack, isNull);
+      });
+    });
   });
 }
 

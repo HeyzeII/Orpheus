@@ -10,6 +10,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../database/local_database.dart';
 import '../models/playback_state.dart' as local;
 import '../models/track.dart';
+import '../utils/debug_logger.dart';
 import 'audio_analytics_service.dart';
 
 enum PlayerRepeatMode {
@@ -127,9 +128,15 @@ class AudioPlayerService {
   final _pastContextController = StreamController<List<Track>>.broadcast();
   final _activeContextController = StreamController<List<Track>>.broadcast();
   final _playbackDisplayController = StreamController<List<Track>>.broadcast();
+  final _playbackErrorController = StreamController<String>.broadcast();
 
   AudioSession? _audioSession;
   final List<StreamSubscription> _subscriptions = [];
+
+  // ── Watchdog & Codec Fallback State ────────────────────────────────────────
+  Timer? _playbackWatchdogTimer;
+  bool _hasPlaybackStarted = false;
+  bool _isExplicitlyPaused = false;
 
   // ── Radio Session State ────────────────────────────────────────────────────
 
@@ -182,6 +189,14 @@ class AudioPlayerService {
       if (_disposed) return;
       _positionController.add(pos);
 
+      // Confirmar reproducción efectiva: desarmar watchdog y resetear errores consecutivos
+      if (!_hasPlaybackStarted && pos > const Duration(milliseconds: 100)) {
+        _hasPlaybackStarted = true;
+        _consecutiveErrors = 0;
+        _playbackWatchdogTimer?.cancel();
+        _playbackWatchdogTimer = null;
+      }
+
       // Behavioral Analytics: Track effective playback threshold (>30s or >=50% duration)
       if (!_isEffectivePlayTracked && _currentTrack != null) {
         final dur = duration > Duration.zero ? duration : Duration(seconds: _currentTrack!.duration);
@@ -223,6 +238,15 @@ class AudioPlayerService {
         } else {
           await next();
         }
+      }
+    }));
+
+    _subscriptions.add(_player.stream.error.listen((err) {
+      if (_disposed) return;
+      DebugLogger.log('AudioPlayerService: Error recibido de libmpv: $err');
+      final current = _currentTrack;
+      if (current != null && !_hasPlaybackStarted) {
+        _handlePlaybackFailure(current, reason: 'Error de libmpv: $err');
       }
     }));
   }
@@ -458,6 +482,7 @@ class AudioPlayerService {
   // ── Streams for UI ─────────────────────────────────────────────────────────
 
   Stream<Track?> get currentTrackStream => _currentTrackController.stream;
+  Stream<String> get playbackErrorStream => _playbackErrorController.stream;
   Stream<bool> get isPlayingStream => _isPlayingController.stream;
   Stream<Duration> get positionStream => _positionController.stream;
   Stream<Duration> get durationStream => _durationController.stream;
@@ -548,6 +573,7 @@ class AudioPlayerService {
   }
 
   Future<void> play() async {
+    _isExplicitlyPaused = false;
     if (Platform.environment.containsKey('FLUTTER_TEST')) return;
     await _safeSetActive(true);
     try {
@@ -559,6 +585,9 @@ class AudioPlayerService {
   }
 
   Future<void> pause() async {
+    _isExplicitlyPaused = true;
+    _playbackWatchdogTimer?.cancel();
+    _playbackWatchdogTimer = null;
     if (Platform.environment.containsKey('FLUTTER_TEST')) return;
     try {
       await _player.pause();
@@ -569,17 +598,21 @@ class AudioPlayerService {
   }
 
   Future<void> stop() async {
+    _isExplicitlyPaused = true;
+    _playbackWatchdogTimer?.cancel();
+    _playbackWatchdogTimer = null;
     if (_currentTrack != null) {
       _checkAndRecordPrematureSkip(_currentTrack, position, duration);
     }
     _isEffectivePlayTracked = false;
-    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
-    try {
-      await _player.stop();
-    } catch (e) {
-      debugPrint('Error stopping audio: $e');
+    if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+      try {
+        await _player.stop();
+      } catch (e) {
+        debugPrint('Error stopping audio: $e');
+      }
+      await _safeSetActive(false);
     }
-    await _safeSetActive(false);
     _currentTrack = null;
     _isTransientActive = false;
     _notifyState();
@@ -588,6 +621,9 @@ class AudioPlayerService {
   /// Stops playback and resets queue state.
   /// Set [clearHistory] to true only for explicit test cleanup or complete app resets.
   Future<void> stopAndReset({bool clearHistory = false}) async {
+    _isExplicitlyPaused = true;
+    _playbackWatchdogTimer?.cancel();
+    _playbackWatchdogTimer = null;
     if (!Platform.environment.containsKey('FLUTTER_TEST')) {
       await _player.stop();
     }
@@ -1154,6 +1190,12 @@ class AudioPlayerService {
     }
     _isEffectivePlayTracked = false;
 
+    // Reset watchdog state for the new track
+    _playbackWatchdogTimer?.cancel();
+    _playbackWatchdogTimer = null;
+    _hasPlaybackStarted = false;
+    _isExplicitlyPaused = false;
+
     unawaited(_saveCurrentPlaybackState(
       overrideTrackId: track.trackId,
       overridePositionMs: 0,
@@ -1168,28 +1210,21 @@ class AudioPlayerService {
       try {
         final file = File(track.filePath);
         if (!file.existsSync()) {
-          _consecutiveErrors++;
-          if (_consecutiveErrors >= _activeContext.length + _userQueue.length + 1) {
-            _consecutiveErrors = 0;
-            await stop();
-            return;
-          }
-          _currentTrackController.add(null);
-          Future.delayed(const Duration(milliseconds: 100), () {
-            next();
-          });
+          _handlePlaybackFailure(
+            track,
+            reason: 'El archivo local no existe en disco',
+          );
           return;
         }
-      } catch (_) {
-        _currentTrackController.add(null);
-        Future.delayed(const Duration(milliseconds: 100), () {
-          next();
-        });
+      } catch (e) {
+        _handlePlaybackFailure(
+          track,
+          reason: 'Error accediendo al archivo local: $e',
+        );
         return;
       }
     }
 
-    _consecutiveErrors = 0;
     try {
       await _safeSetActive(true);
       final mediaUri = formatMediaUri(track.filePath);
@@ -1207,11 +1242,81 @@ class AudioPlayerService {
         ),
         play: true,
       );
-    } catch (e) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        next();
+
+      // Watchdog defensivo: si tras 3.5 segundos (7s si es remoto) libmpv no inicia reproducción
+      // (position > 100ms) ni reporta error, consideramos el códec no soportado o archivo bloqueado.
+      final watchdogDuration = isRemote
+          ? const Duration(seconds: 7)
+          : const Duration(milliseconds: 3500);
+
+      _playbackWatchdogTimer = Timer(watchdogDuration, () {
+        if (_disposed) return;
+        if (!_hasPlaybackStarted &&
+            !_isExplicitlyPaused &&
+            _currentTrack?.trackId == track.trackId) {
+          _handlePlaybackFailure(
+            track,
+            reason: 'Tiempo de espera de decodificación agotado (>3.5s). Posible códec no soportado o libmpv bloqueado.',
+          );
+        }
       });
+    } catch (e) {
+      DebugLogger.log('AudioPlayerService: Excepción al invocar _player.open: $e');
+      _handlePlaybackFailure(track, reason: 'Excepción abriendo pista: $e');
     }
+  }
+
+  void _handlePlaybackFailure(Track failedTrack, {required String reason}) {
+    if (_disposed) return;
+    _playbackWatchdogTimer?.cancel();
+    _playbackWatchdogTimer = null;
+
+    String trackTitle;
+    try {
+      trackTitle = failedTrack.displayTitle;
+    } catch (_) {
+      trackTitle = failedTrack.trackId;
+    }
+
+    String trackPath;
+    try {
+      trackPath = failedTrack.filePath;
+    } catch (_) {
+      trackPath = 'unknown';
+    }
+
+    DebugLogger.log(
+      'AudioPlayerService: ⚠️ Fallo de reproducción en "$trackTitle" '
+      '($trackPath) - $reason. Saltando automáticamente a la siguiente pista...',
+    );
+
+    _playbackErrorController.add(
+      'No se pudo reproducir "$trackTitle". Códec no soportado o archivo dañado.',
+    );
+
+    _consecutiveErrors++;
+    final totalQueue = max(1, _activeContext.length + _userQueue.length);
+    if (_consecutiveErrors >= totalQueue) {
+      DebugLogger.log(
+        'AudioPlayerService: Se alcanzó el límite de fallos consecutivos ($_consecutiveErrors >= $totalQueue). Deteniendo reproducción.',
+      );
+      _consecutiveErrors = 0;
+      unawaited(stop());
+      return;
+    }
+
+    _currentTrackController.add(null);
+    Future.delayed(const Duration(milliseconds: 150), () {
+      if (_disposed) return;
+      if (_currentTrack?.trackId == failedTrack.trackId) {
+        next();
+      }
+    });
+  }
+
+  @visibleForTesting
+  void triggerPlaybackFailureForTest(Track track, {required String reason}) {
+    _handlePlaybackFailure(track, reason: reason);
   }
 
   Future<void> _saveCurrentPlaybackState({
@@ -1346,6 +1451,8 @@ class AudioPlayerService {
 
   Future<void> dispose() async {
     _disposed = true;
+    _playbackWatchdogTimer?.cancel();
+    _playbackWatchdogTimer = null;
     await _safeSetActive(false);
     for (final sub in _subscriptions) {
       await sub.cancel();
@@ -1354,6 +1461,7 @@ class AudioPlayerService {
     _videoController = null; // release before player disposal
     await _player.dispose();
 
+    await _playbackErrorController.close();
     await _currentTrackController.close();
     await _isPlayingController.close();
     await _positionController.close();
