@@ -196,24 +196,102 @@ class SyncDownloadManager {
   final summaryNotifier =
       ValueNotifier<SyncProgressSummary>(SyncProgressSummary.empty());
 
-  // ── Directory Resolution ───────────────────────────────────────────────────
+  // ── Directory Resolution & Custom Path Management ─────────────────────────
 
   /// Resolves the absolute directory on disk where synchronized files will be stored.
+  ///
+  /// Priority:
+  /// 1. In-memory [customDownloadDirectory] override (e.g. for unit tests or transient sessions).
+  /// 2. Persisted custom download path in [LocalDatabase] ([AppConfig.customDownloadPath]).
+  /// 3. Default clean documents path: `<ApplicationDocumentsDirectory>/Orpheus/Downloads`.
+  /// 4. Fallback support path: `<ApplicationSupportDirectory>/downloads`.
+  /// 5. Temporary directory fallback.
   Future<Directory> resolveDownloadDirectory() async {
     if (customDownloadDirectory != null) {
+      if (!customDownloadDirectory!.existsSync()) {
+        try {
+          await customDownloadDirectory!.create(recursive: true);
+        } catch (_) {}
+      }
       return customDownloadDirectory!;
     }
 
     try {
+      final persistedPath = await _db.getCustomDownloadPath();
+      if (persistedPath != null && persistedPath.trim().isNotEmpty) {
+        final dir = Directory(persistedPath.trim());
+        if (!dir.existsSync()) {
+          await dir.create(recursive: true);
+        }
+        return dir;
+      }
+    } catch (_) {}
+
+    try {
       final docDir = await getApplicationDocumentsDirectory();
-      return Directory(p.join(docDir.path, 'Orpheus', 'Downloads'));
+      final baseDir = Directory(p.join(docDir.path, 'Orpheus', 'Downloads'));
+      if (!baseDir.existsSync()) {
+        await baseDir.create(recursive: true);
+      }
+      return baseDir;
     } catch (_) {
       try {
         final supportDir = await getApplicationSupportDirectory();
-        return Directory(p.join(supportDir.path, 'downloads'));
+        final fallbackDir = Directory(p.join(supportDir.path, 'downloads'));
+        if (!fallbackDir.existsSync()) {
+          await fallbackDir.create(recursive: true);
+        }
+        return fallbackDir;
       } catch (_) {
         return Directory.systemTemp.createTempSync('orpheus_downloads_');
       }
+    }
+  }
+
+  /// Sets a custom download directory, optionally persisting it in the local database.
+  ///
+  /// If [directory] is `null`, resets to the default Documents/Orpheus/Downloads directory.
+  /// If [persist] is `true` (default), the preference is saved in [LocalDatabase] for future sessions.
+  Future<void> setCustomDownloadDirectory(Directory? directory, {bool persist = true}) async {
+    customDownloadDirectory = directory;
+    if (directory != null && !directory.existsSync()) {
+      try {
+        await directory.create(recursive: true);
+      } catch (_) {}
+    }
+    if (persist) {
+      try {
+        await _db.setCustomDownloadPath(directory?.path);
+      } catch (_) {}
+    }
+  }
+
+  /// Sets a custom download directory by path string, optionally persisting it in the local database.
+  Future<void> setCustomDownloadPath(String? path, {bool persist = true}) async {
+    final clean = path?.trim();
+    final dir = (clean != null && clean.isNotEmpty) ? Directory(clean) : null;
+    await setCustomDownloadDirectory(dir, persist: persist);
+  }
+
+  /// Returns the current active download directory path on disk.
+  Future<String> getActiveDownloadPath() async {
+    final dir = await resolveDownloadDirectory();
+    return dir.path;
+  }
+
+  /// Resets the download directory to the default Documents/Orpheus/Downloads directory.
+  Future<void> resetToDefaultDownloadDirectory({bool persist = true}) async {
+    await setCustomDownloadDirectory(null, persist: persist);
+  }
+
+  /// Returns `true` if a custom download directory is currently active (in-memory or in database).
+  Future<bool> isCustomDirectoryConfigured() async {
+    if (customDownloadDirectory != null) return true;
+    try {
+      final persisted = await _db.getCustomDownloadPath();
+      return persisted != null && persisted.trim().isNotEmpty;
+    } catch (_) {
+      return false;
     }
   }
 

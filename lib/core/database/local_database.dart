@@ -981,6 +981,21 @@ class LocalDatabase {
     });
   }
 
+  /// Sets and persists the custom download directory path in [AppConfig].
+  /// Passing `null` or an empty string resets to the default Documents/Orpheus/Downloads directory.
+  Future<void> setCustomDownloadPath(String? path) async {
+    final config = await getConfig();
+    final clean = path?.trim();
+    config.customDownloadPath = (clean != null && clean.isNotEmpty) ? clean : null;
+    await saveConfig(config);
+  }
+
+  /// Returns the configured custom download directory path from [AppConfig], or `null` if using default.
+  Future<String?> getCustomDownloadPath() async {
+    final config = await getConfig();
+    return config.customDownloadPath;
+  }
+
   /// Adds an ignored artist pair to the conflict-resolution list.
   ///
   /// The pair is stored only if an equivalent entry does not already exist.

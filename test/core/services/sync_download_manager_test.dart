@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -17,6 +18,17 @@ void main() {
   late Directory tempDir;
   late Directory downloadDir;
   const baseUrl = 'http://192.168.1.100:50505';
+
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (MethodCall methodCall) async {
+        return Directory.systemTemp.path;
+      },
+    );
+  });
 
   setUp(() async {
     tempDir = await Directory.systemTemp.createTemp('orpheus_sync_mgr_test_');
@@ -578,6 +590,39 @@ void main() {
       expect(downloadedFile.existsSync(), isTrue);
       expect(await downloadedFile.readAsBytes(), equals(originalAudioBytes));
       expect(remoteTrack.filePath, equals(downloadedFile.path));
+    });
+
+    test('resolves customDownloadDirectory override when set in-memory', () async {
+      final customDir = Directory('${tempDir.path}/custom_dl');
+      final manager = SyncDownloadManager(customDownloadDirectory: customDir);
+
+      final resolved = await manager.resolveDownloadDirectory();
+      expect(resolved.path, equals(customDir.path));
+      expect(await manager.getActiveDownloadPath(), equals(customDir.path));
+      expect(await manager.isCustomDirectoryConfigured(), isTrue);
+    });
+
+    test('setCustomDownloadPath updates active download directory', () async {
+      final manager = SyncDownloadManager(customDownloadDirectory: downloadDir);
+      final newDir = Directory('${tempDir.path}/new_custom_path');
+
+      await manager.setCustomDownloadPath(newDir.path, persist: false);
+      expect(manager.customDownloadDirectory?.path, equals(newDir.path));
+      expect(await manager.getActiveDownloadPath(), equals(newDir.path));
+
+      // Reset
+      await manager.resetToDefaultDownloadDirectory(persist: false);
+      expect(manager.customDownloadDirectory, isNull);
+    });
+
+    test('setCustomDownloadDirectory with null resets to default path', () async {
+      final manager = SyncDownloadManager(customDownloadDirectory: downloadDir);
+      await manager.setCustomDownloadDirectory(null, persist: false);
+
+      expect(manager.customDownloadDirectory, isNull);
+      final resolved = await manager.resolveDownloadDirectory();
+      expect(resolved.path, contains('Orpheus'));
+      expect(resolved.path, contains('Downloads'));
     });
   });
 }

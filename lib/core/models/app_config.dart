@@ -54,6 +54,9 @@ class AppConfig {
   /// Strict Offline Mode: immediately blocks all outgoing HTTP requests across the app.
   bool strictOfflineMode = false;
 
+  /// Custom user-selected download directory path, or null for default documents path.
+  String? customDownloadPath;
+
   /// Network policy for downloading remote album art.
   @enumerated
   CoverDownloadPolicy coverDownloadPolicy = CoverDownloadPolicy.wifiOnly;

@@ -29,18 +29,23 @@ const AppConfigSchema = CollectionSchema(
       type: IsarType.byte,
       enumMap: _AppConfigcoverDownloadPolicyEnumValueMap,
     ),
-    r'scanDirectories': PropertySchema(
+    r'customDownloadPath': PropertySchema(
       id: 2,
+      name: r'customDownloadPath',
+      type: IsarType.string,
+    ),
+    r'scanDirectories': PropertySchema(
+      id: 3,
       name: r'scanDirectories',
       type: IsarType.stringList,
     ),
     r'strictOfflineMode': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'strictOfflineMode',
       type: IsarType.bool,
     ),
     r'theme': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'theme',
       type: IsarType.string,
     )
@@ -71,6 +76,12 @@ int _appConfigEstimateSize(
   bytesCount += 3 +
       ConflictResolutionSchema.estimateSize(object.conflictResolution,
           allOffsets[ConflictResolution]!, allOffsets);
+  {
+    final value = object.customDownloadPath;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.scanDirectories.length * 3;
   {
     for (var i = 0; i < object.scanDirectories.length; i++) {
@@ -95,9 +106,10 @@ void _appConfigSerialize(
     object.conflictResolution,
   );
   writer.writeByte(offsets[1], object.coverDownloadPolicy.index);
-  writer.writeStringList(offsets[2], object.scanDirectories);
-  writer.writeBool(offsets[3], object.strictOfflineMode);
-  writer.writeString(offsets[4], object.theme);
+  writer.writeString(offsets[2], object.customDownloadPath);
+  writer.writeStringList(offsets[3], object.scanDirectories);
+  writer.writeBool(offsets[4], object.strictOfflineMode);
+  writer.writeString(offsets[5], object.theme);
 }
 
 AppConfig _appConfigDeserialize(
@@ -116,10 +128,11 @@ AppConfig _appConfigDeserialize(
   object.coverDownloadPolicy = _AppConfigcoverDownloadPolicyValueEnumMap[
           reader.readByteOrNull(offsets[1])] ??
       CoverDownloadPolicy.wifiOnly;
+  object.customDownloadPath = reader.readStringOrNull(offsets[2]);
   object.id = id;
-  object.scanDirectories = reader.readStringList(offsets[2]) ?? [];
-  object.strictOfflineMode = reader.readBool(offsets[3]);
-  object.theme = reader.readString(offsets[4]);
+  object.scanDirectories = reader.readStringList(offsets[3]) ?? [];
+  object.strictOfflineMode = reader.readBool(offsets[4]);
+  object.theme = reader.readString(offsets[5]);
   return object;
 }
 
@@ -142,10 +155,12 @@ P _appConfigDeserializeProp<P>(
               reader.readByteOrNull(offset)] ??
           CoverDownloadPolicy.wifiOnly) as P;
     case 2:
-      return (reader.readStringList(offset) ?? []) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 3:
-      return (reader.readBool(offset)) as P;
+      return (reader.readStringList(offset) ?? []) as P;
     case 4:
+      return (reader.readBool(offset)) as P;
+    case 5:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -306,6 +321,160 @@ extension AppConfigQueryFilter
         includeLower: includeLower,
         upper: upper,
         includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      customDownloadPathIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'customDownloadPath',
+      ));
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      customDownloadPathIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'customDownloadPath',
+      ));
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      customDownloadPathEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'customDownloadPath',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      customDownloadPathGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'customDownloadPath',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      customDownloadPathLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'customDownloadPath',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      customDownloadPathBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'customDownloadPath',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      customDownloadPathStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'customDownloadPath',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      customDownloadPathEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'customDownloadPath',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      customDownloadPathContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'customDownloadPath',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      customDownloadPathMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'customDownloadPath',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      customDownloadPathIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'customDownloadPath',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterFilterCondition>
+      customDownloadPathIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'customDownloadPath',
+        value: '',
       ));
     });
   }
@@ -758,6 +927,19 @@ extension AppConfigQuerySortBy on QueryBuilder<AppConfig, AppConfig, QSortBy> {
     });
   }
 
+  QueryBuilder<AppConfig, AppConfig, QAfterSortBy> sortByCustomDownloadPath() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'customDownloadPath', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterSortBy>
+      sortByCustomDownloadPathDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'customDownloadPath', Sort.desc);
+    });
+  }
+
   QueryBuilder<AppConfig, AppConfig, QAfterSortBy> sortByStrictOfflineMode() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'strictOfflineMode', Sort.asc);
@@ -796,6 +978,19 @@ extension AppConfigQuerySortThenBy
       thenByCoverDownloadPolicyDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'coverDownloadPolicy', Sort.desc);
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterSortBy> thenByCustomDownloadPath() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'customDownloadPath', Sort.asc);
+    });
+  }
+
+  QueryBuilder<AppConfig, AppConfig, QAfterSortBy>
+      thenByCustomDownloadPathDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'customDownloadPath', Sort.desc);
     });
   }
 
@@ -846,6 +1041,14 @@ extension AppConfigQueryWhereDistinct
     });
   }
 
+  QueryBuilder<AppConfig, AppConfig, QDistinct> distinctByCustomDownloadPath(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'customDownloadPath',
+          caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<AppConfig, AppConfig, QDistinct> distinctByScanDirectories() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'scanDirectories');
@@ -885,6 +1088,13 @@ extension AppConfigQueryProperty
       coverDownloadPolicyProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'coverDownloadPolicy');
+    });
+  }
+
+  QueryBuilder<AppConfig, String?, QQueryOperations>
+      customDownloadPathProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'customDownloadPath');
     });
   }
 
